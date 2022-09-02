@@ -69,6 +69,7 @@ import org.apache.hadoop.hdds.protocol.proto.SCMSecurityProtocolProtos.SCMGetCer
 import org.apache.hadoop.hdds.protocolPB.SCMSecurityProtocolClientSideTranslatorPB;
 import org.apache.hadoop.hdds.scm.ScmInfo;
 import org.apache.hadoop.hdds.scm.client.HddsClientUtils;
+import org.apache.hadoop.hdds.server.OzoneAdmins;
 import org.apache.hadoop.hdds.utils.db.Table;
 import org.apache.hadoop.hdds.utils.db.Table.KeyValue;
 import org.apache.hadoop.hdds.utils.db.TableIterator;
@@ -225,7 +226,7 @@ import static org.apache.hadoop.ozone.OzoneConfigKeys.OZONE_ACL_AUTHORIZER_CLASS
 import static org.apache.hadoop.ozone.OzoneConfigKeys.OZONE_ACL_ENABLED;
 import static org.apache.hadoop.ozone.OzoneConfigKeys.OZONE_ACL_ENABLED_DEFAULT;
 import static org.apache.hadoop.ozone.OzoneConfigKeys.OZONE_ADMINISTRATORS;
-import static org.apache.hadoop.ozone.OzoneConfigKeys.OZONE_ADMINISTRATORS_WILDCARD;
+import static org.apache.hadoop.ozone.OzoneConfigKeys.OZONE_ADMINISTRATORS_GROUPS;
 import static org.apache.hadoop.ozone.OzoneConfigKeys.OZONE_FLEXIBLE_FQDN_RESOLUTION_ENABLED;
 import static org.apache.hadoop.ozone.OzoneConfigKeys.OZONE_FLEXIBLE_FQDN_RESOLUTION_ENABLED_DEFAULT;
 import static org.apache.hadoop.ozone.OzoneConfigKeys.OZONE_KEY_PREALLOCATION_BLOCKS_MAX;
@@ -333,7 +334,7 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
   /**
    * OM super user / admin list.
    */
-  private final Collection<String> omAdminUsernames;
+  private final OzoneAdmins omAdmins;
 
   private final OMMetrics metrics;
   private final ProtocolMessageMetrics<ProtocolMessageEnum>
@@ -572,7 +573,11 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
         OMMultiTenantManager.checkAndEnableMultiTenancy(this, conf);
 
     // Get admin list
-    omAdminUsernames = getOzoneAdminsFromConfig(configuration);
+    Collection<String> omAdminUsernames =
+        getOzoneAdminsFromConfig(configuration);
+    Collection<String> omAdminGroups =
+        getOzoneAdminsGroupsFromConfig(configuration);
+    omAdmins = new OzoneAdmins(omAdminUsernames, omAdminGroups);
     instantiateServices(false);
 
     // Create special volume s3v which is required for S3G.
@@ -748,7 +753,7 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
         authorizer.setBucketManager(bucketManager);
         authorizer.setKeyManager(keyManager);
         authorizer.setPrefixManager(prefixManager);
-        authorizer.setOzoneAdmins(omAdminUsernames);
+        authorizer.setOzoneAdmins(omAdmins);
         authorizer.setAllowListAllVolumes(allowListAllVolumes);
       }
     } else {
@@ -3172,32 +3177,33 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
     // are flushed to the table. This should be acceptable for a list tenant
     // request.
 
-    final TableIterator<String, ? extends KeyValue<String, OmDBTenantState>>
-        iterator = tenantStateTable.iterator();
+    try (TableIterator<String, ? extends KeyValue<String, OmDBTenantState>>
+        iterator = tenantStateTable.iterator()) {
 
-    final List<TenantState> tenantStateList = new ArrayList<>();
+      final List<TenantState> tenantStateList = new ArrayList<>();
 
-    // Iterate table
-    while (iterator.hasNext()) {
-      final Table.KeyValue<String, OmDBTenantState> dbEntry = iterator.next();
-      final String tenantId = dbEntry.getKey();
-      final OmDBTenantState omDBTenantState = dbEntry.getValue();
-      assert (tenantId.equals(omDBTenantState.getTenantId()));
-      tenantStateList.add(TenantState.newBuilder()
-          .setTenantId(omDBTenantState.getTenantId())
-          .setBucketNamespaceName(omDBTenantState.getBucketNamespaceName())
-          .setUserRoleName(omDBTenantState.getUserRoleName())
-          .setAdminRoleName(omDBTenantState.getAdminRoleName())
-          .setBucketNamespacePolicyName(
-              omDBTenantState.getBucketNamespacePolicyName())
-          .setBucketPolicyName(omDBTenantState.getBucketPolicyName())
-          .build());
+      // Iterate table
+      while (iterator.hasNext()) {
+        final Table.KeyValue<String, OmDBTenantState> dbEntry = iterator.next();
+        final String tenantId = dbEntry.getKey();
+        final OmDBTenantState omDBTenantState = dbEntry.getValue();
+        assert (tenantId.equals(omDBTenantState.getTenantId()));
+        tenantStateList.add(TenantState.newBuilder()
+            .setTenantId(omDBTenantState.getTenantId())
+            .setBucketNamespaceName(omDBTenantState.getBucketNamespaceName())
+            .setUserRoleName(omDBTenantState.getUserRoleName())
+            .setAdminRoleName(omDBTenantState.getAdminRoleName())
+            .setBucketNamespacePolicyName(
+                omDBTenantState.getBucketNamespacePolicyName())
+            .setBucketPolicyName(omDBTenantState.getBucketPolicyName())
+            .build());
+      }
+
+      AUDIT.logReadSuccess(buildAuditMessageForSuccess(
+          OMAction.LIST_TENANT, new LinkedHashMap<>()));
+
+      return new TenantStateList(tenantStateList);
     }
-
-    AUDIT.logReadSuccess(buildAuditMessageForSuccess(
-        OMAction.LIST_TENANT, new LinkedHashMap<>()));
-
-    return new TenantStateList(tenantStateList);
   }
 
   /**
@@ -4068,11 +4074,19 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
     return ozAdmins;
   }
 
+  Collection<String> getOzoneAdminsGroupsFromConfig(OzoneConfiguration conf) {
+    return conf.getTrimmedStringCollection(OZONE_ADMINISTRATORS_GROUPS);
+  }
+
   /**
    * Return the list of Ozone administrators in effect.
    */
   Collection<String> getOmAdminUsernames() {
-    return omAdminUsernames;
+    return omAdmins.getAdminUsernames();
+  }
+
+  public Collection<String> getOmAdminGroups() {
+    return omAdmins.getAdminGroups();
   }
 
   /**
@@ -4080,22 +4094,7 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
    * @param callerUgi Caller UserGroupInformation
    */
   public boolean isAdmin(UserGroupInformation callerUgi) {
-    if (callerUgi == null) {
-      return false;
-    } else {
-      return isAdmin(callerUgi.getShortUserName())
-          || isAdmin(callerUgi.getUserName());
-    }
-  }
-
-  @VisibleForTesting
-  private boolean isAdmin(String username) {
-    if (omAdminUsernames == null) {
-      return false;
-    } else {
-      return omAdminUsernames.contains(OZONE_ADMINISTRATORS_WILDCARD) ||
-          omAdminUsernames.contains(username);
-    }
+    return callerUgi != null && omAdmins.isAdmin(callerUgi);
   }
 
   /**

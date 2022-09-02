@@ -27,6 +27,7 @@ import org.apache.hadoop.hdds.conf.ConfigurationSource;
 import org.apache.hadoop.hdds.protocol.DatanodeDetails;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos;
 import org.apache.hadoop.hdds.protocol.proto.StorageContainerDatanodeProtocolProtos.ContainerReplicaProto;
+import org.apache.hadoop.hdds.protocol.proto.StorageContainerDatanodeProtocolProtos.ContainerReplicaProto.State;
 import org.apache.hadoop.hdds.scm.PlacementPolicy;
 import org.apache.hadoop.hdds.scm.container.ContainerID;
 import org.apache.hadoop.hdds.scm.container.ContainerInfo;
@@ -42,7 +43,10 @@ import org.apache.hadoop.hdds.scm.ha.SCMService;
 import org.apache.hadoop.hdds.scm.node.NodeManager;
 import org.apache.hadoop.hdds.scm.node.NodeStatus;
 import org.apache.hadoop.hdds.scm.node.states.NodeNotFoundException;
+import org.apache.hadoop.hdds.scm.server.StorageContainerManager;
 import org.apache.hadoop.hdds.server.events.EventPublisher;
+import org.apache.hadoop.ozone.protocol.commands.CloseContainerCommand;
+import org.apache.hadoop.ozone.protocol.commands.CommandForDatanode;
 import org.apache.hadoop.ozone.protocol.commands.SCMCommand;
 import org.apache.hadoop.util.ExitUtil;
 import org.apache.ratis.protocol.exceptions.NotLeaderException;
@@ -53,6 +57,7 @@ import java.io.IOException;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -64,6 +69,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.stream.Collectors;
 
 import static org.apache.hadoop.hdds.conf.ConfigTag.OZONE;
 import static org.apache.hadoop.hdds.conf.ConfigTag.SCM;
@@ -146,6 +152,7 @@ public class ReplicationManager implements SCMService {
       overRepQueue;
   private final ECUnderReplicationHandler ecUnderReplicationHandler;
   private final ECOverReplicationHandler ecOverReplicationHandler;
+  private final int maintenanceRedundancy;
 
   /**
    * Constructs ReplicationManager instance with the given configuration.
@@ -184,6 +191,7 @@ public class ReplicationManager implements SCMService {
     this.nodeManager = nodeManager;
     this.underRepQueue = createUnderReplicatedQueue();
     this.overRepQueue = new LinkedList<>();
+    this.maintenanceRedundancy = rmConf.maintenanceRemainingRedundancy;
     ecUnderReplicationHandler = new ECUnderReplicationHandler(
         containerPlacement, conf, nodeManager);
     ecOverReplicationHandler =
@@ -364,7 +372,7 @@ public class ReplicationManager implements SCMService {
     List<ContainerReplicaOp> pendingOps =
         containerReplicaPendingOps.getPendingOps(containerID);
     return ecUnderReplicationHandler.processAndCreateCommands(replicas,
-        pendingOps, result, 0);
+        pendingOps, result, maintenanceRedundancy);
   }
 
   public Map<DatanodeDetails, SCMCommand<?>> processOverReplicatedContainer(
@@ -375,7 +383,7 @@ public class ReplicationManager implements SCMService {
     List<ContainerReplicaOp> pendingOps =
         containerReplicaPendingOps.getPendingOps(containerID);
     return ecOverReplicationHandler.processAndCreateCommands(replicas,
-        pendingOps, result, 0);
+        pendingOps, result, maintenanceRedundancy);
   }
 
   public long getScmTerm() throws NotLeaderException {
@@ -401,10 +409,20 @@ public class ReplicationManager implements SCMService {
       return new ContainerHealthResult.HealthyResult(containerInfo);
     }
 
+    if (containerInfo.getState() == HddsProtos.LifeCycleState.CLOSED) {
+      List<ContainerReplica> unhealthyReplicas = replicas.stream()
+          .filter(r -> !compareState(containerInfo.getState(), r.getState()))
+          .collect(Collectors.toList());
+
+      if (unhealthyReplicas.size() > 0) {
+        handleUnhealthyReplicas(containerInfo, unhealthyReplicas);
+      }
+    }
+
     List<ContainerReplicaOp> pendingOps =
         containerReplicaPendingOps.getPendingOps(containerID);
-    ContainerHealthResult health = ecContainerHealthCheck
-        .checkHealth(containerInfo, replicas, pendingOps, 0);
+    ContainerHealthResult health = ecContainerHealthCheck.checkHealth(
+        containerInfo, replicas, pendingOps, maintenanceRedundancy);
       // TODO - should the report have a HEALTHY state, rather than just bad
       //        states? It would need to be added to legacy RM too.
     if (health.getHealthState()
@@ -430,6 +448,67 @@ public class ReplicationManager implements SCMService {
       }
     }
     return health;
+  }
+
+  /**
+   * Handles unhealthy container.
+   * A container is inconsistent if any of the replica state doesn't
+   * match the container state. We have to take appropriate action
+   * based on state of the replica.
+   *
+   * @param container ContainerInfo
+   * @param unhealthyReplicas List of ContainerReplica
+   */
+  private void handleUnhealthyReplicas(final ContainerInfo container,
+      List<ContainerReplica> unhealthyReplicas) {
+    Iterator<ContainerReplica> iterator = unhealthyReplicas.iterator();
+    while (iterator.hasNext()) {
+      final ContainerReplica replica = iterator.next();
+      final ContainerReplicaProto.State state = replica.getState();
+      if (state == State.OPEN || state == State.CLOSING) {
+        sendCloseCommand(container, replica.getDatanodeDetails(), true);
+        iterator.remove();
+      }
+    }
+  }
+
+  /**
+   * Sends close container command for the given container to the given
+   * datanode.
+   *
+   * @param container Container to be closed
+   * @param datanode The datanode on which the container
+   *                  has to be closed
+   * @param force Should be set to true if we want to force close.
+   */
+  private void sendCloseCommand(final ContainerInfo container,
+      final DatanodeDetails datanode, final boolean force) {
+
+    ContainerID containerID = container.containerID();
+    LOG.info("Sending close container command for container {}" +
+        " to datanode {}.", containerID, datanode);
+    CloseContainerCommand closeContainerCommand =
+        new CloseContainerCommand(container.getContainerID(),
+            container.getPipelineID(), force);
+    try {
+      closeContainerCommand.setTerm(scmContext.getTermOfLeader());
+    } catch (NotLeaderException nle) {
+      LOG.warn("Skip sending close container command,"
+          + " since current SCM is not leader.", nle);
+      return;
+    }
+    closeContainerCommand.setEncodedToken(getContainerToken(containerID));
+    eventPublisher.fireEvent(SCMEvents.DATANODE_COMMAND,
+        new CommandForDatanode<>(datanode.getUuid(), closeContainerCommand));
+  }
+
+  private String getContainerToken(ContainerID containerID) {
+    if (scmContext.getScm() instanceof StorageContainerManager) {
+      StorageContainerManager scm =
+          (StorageContainerManager) scmContext.getScm();
+      return scm.getContainerTokenGenerator().generateEncodedToken(containerID);
+    }
+    return ""; // unit test
   }
 
   /**
@@ -609,12 +688,55 @@ public class ReplicationManager implements SCMService {
       this.maintenanceReplicaMinimum = replicaCount;
     }
 
+    /**
+     * Defines how many redundant replicas of a container must be online for a
+     * node to enter maintenance. Currently, only used for EC containers. We
+     * need to consider removing the "maintenance.replica.minimum" setting
+     * and having both Ratis and EC use this new one.
+     */
+    @Config(key = "maintenance.remaining.redundancy",
+        type = ConfigType.INT,
+        defaultValue = "1",
+        tags = {SCM, OZONE},
+        description = "The number of redundant containers in a group which" +
+            " must be available for a node to enter maintenance. If putting" +
+            " a node into maintenance reduces the redundancy below this value" +
+            " , the node will remain in the ENTERING_MAINTENANCE state until" +
+            " a new replica is created. For Ratis containers, the default" +
+            " value of 1 ensures at least two replicas are online, meaning 1" +
+            " more can be lost without data becoming unavailable. For any EC" +
+            " container it will have at least dataNum + 1 online, allowing" +
+            " the loss of 1 more replica before data becomes unavailable." +
+            " Currently only EC containers use this setting. Ratis containers" +
+            " use hdds.scm.replication.maintenance.replica.minimum. For EC," +
+            " if nodes are in maintenance, it is likely reconstruction reads" +
+            " will be required if some of the data replicas are offline. This" +
+            " is seamless to the client, but will affect read performance."
+    )
+    private int maintenanceRemainingRedundancy = 1;
+
+    public void setMaintenanceRemainingRedundancy(int redundancy) {
+      this.maintenanceRemainingRedundancy = redundancy;
+    }
+
+    public int getMaintenanceRemainingRedundancy() {
+      return maintenanceRemainingRedundancy;
+    }
+
     public long getInterval() {
       return interval;
     }
 
     public long getUnderReplicatedInterval() {
       return underReplicatedInterval;
+    }
+
+    public void setUnderReplicatedInterval(Duration duration) {
+      this.underReplicatedInterval = duration.toMillis();
+    }
+
+    public void setOverReplicatedInterval(Duration duration) {
+      this.overReplicatedInterval = duration.toMillis();
     }
 
     public long getOverReplicatedInterval() {
@@ -719,8 +841,8 @@ public class ReplicationManager implements SCMService {
         containerInfo.containerID());
     List<ContainerReplicaOp> pendingOps =
         containerReplicaPendingOps.getPendingOps(containerInfo.containerID());
-    // TODO: define maintenance redundancy for EC (HDDS-6975)
-    return new ECContainerReplicaCount(containerInfo, replicas, pendingOps, 0);
+    return new ECContainerReplicaCount(
+        containerInfo, replicas, pendingOps, maintenanceRedundancy);
   }
 
   /**
