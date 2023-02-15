@@ -252,6 +252,12 @@ import org.apache.hadoop.ozone.om.helpers.OmDBTenantState;
 import org.apache.hadoop.ozone.om.helpers.OmDBUserPrincipalInfo;
 import org.apache.hadoop.ozone.om.helpers.OmKeyArgs;
 import org.apache.hadoop.ozone.om.helpers.OmKeyInfo;
+import org.apache.hadoop.ozone.om.helpers.OmKeyLocationInfo;
+import org.apache.hadoop.ozone.om.helpers.OmLifecycleConfiguration;
+import org.apache.hadoop.ozone.om.helpers.OmMultipartCommitUploadPartInfo;
+import org.apache.hadoop.ozone.om.helpers.OmMultipartInfo;
+import org.apache.hadoop.ozone.om.helpers.OmMultipartUploadCompleteInfo;
+import org.apache.hadoop.ozone.om.helpers.OmMultipartUploadCompleteList;
 import org.apache.hadoop.ozone.om.helpers.OmMultipartUploadList;
 import org.apache.hadoop.ozone.om.helpers.OmMultipartUploadListParts;
 import org.apache.hadoop.ozone.om.helpers.OmVolumeArgs;
@@ -3049,6 +3055,12 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
             .collect(Collectors.toList());
 
     return new ListKeysLightResult(basicKeysList, listKeysResult.isTruncated());
+  }
+
+  @Override
+  public List<OmLifecycleConfiguration> listLifeCycleConfigurationsByUser(
+      String userName) throws IOException {
+    throw new UnsupportedOperationException("Not implemented yet");
   }
 
   @Override

@@ -69,6 +69,7 @@ import org.apache.hadoop.ozone.om.helpers.OmDeleteKeys;
 import org.apache.hadoop.ozone.om.helpers.OmKeyArgs;
 import org.apache.hadoop.ozone.om.helpers.OmKeyInfo;
 import org.apache.hadoop.ozone.om.helpers.OmKeyLocationInfo;
+import org.apache.hadoop.ozone.om.helpers.OmLifecycleConfiguration;
 import org.apache.hadoop.ozone.om.helpers.OmMultipartCommitUploadPartInfo;
 import org.apache.hadoop.ozone.om.helpers.OmMultipartInfo;
 import org.apache.hadoop.ozone.om.helpers.OmMultipartUpload;
@@ -2680,6 +2681,12 @@ public final class OzoneManagerProtocolClientSideTranslatorPB
       throw new IllegalArgumentException("Unsupported safe mode action " +
           action);
     }
+  }
+
+  @Override
+  public List<OmLifecycleConfiguration> listLifeCycleConfigurationsByUser(
+          String userName) throws IOException {
+    throw new UnsupportedOperationException("Not implemented yet");
   }
 
   @VisibleForTesting

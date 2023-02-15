@@ -41,6 +41,7 @@ import org.apache.hadoop.ozone.om.helpers.OmDeleteKeys;
 import org.apache.hadoop.ozone.om.helpers.OmKeyArgs;
 import org.apache.hadoop.ozone.om.helpers.OmKeyInfo;
 import org.apache.hadoop.ozone.om.helpers.OmKeyLocationInfo;
+import org.apache.hadoop.ozone.om.helpers.OmLifecycleConfiguration;
 import org.apache.hadoop.ozone.om.helpers.OmMultipartCommitUploadPartInfo;
 import org.apache.hadoop.ozone.om.helpers.OmMultipartInfo;
 import org.apache.hadoop.ozone.om.helpers.OmMultipartUploadCompleteInfo;
@@ -1153,41 +1154,13 @@ public interface OzoneManagerProtocol
       throws IOException;
 
   /**
-   * Gets the tags for the specified key.
-   * @param args Key args
-   * @return Tags associated with the key.
-   */
-  @Override
-  Map<String, String> getObjectTagging(OmKeyArgs args) throws IOException;
-
-  /**
-   * Sets the tags to an existing key.
-   * @param args Key args
-   */
-  default void putObjectTagging(OmKeyArgs args) throws IOException {
-    throw new UnsupportedOperationException("OzoneManager does not require " +
-        "this to be implemented, as write requests use a new approach.");
-  }
-
-  /**
-   * Removes all the tags from the specified key.
-   * @param args Key args
-   */
-  default void deleteObjectTagging(OmKeyArgs args) throws IOException {
-    throw new UnsupportedOperationException("OzoneManager does not require " +
-        "this to be implemented, as write requests use a new approach.");
-  }
-
-  /**
-   * Get status of last triggered quota repair in OM.
-   * @return String
+   * Returns a list of lifecycle configurations for a specific user,
+   * Or return all if the calling user is an admin and no userName passed.
+   *
+   * @param userName will be used to filter rules that belongs to the user.
+   * @return The list of lifecycle configurations belongs to the user.
    * @throws IOException
    */
-  String getQuotaRepairStatus() throws IOException;
-
-  /**
-   * start quota repair in OM.
-   * @throws IOException
-   */
-  void startQuotaRepair(List<String> buckets) throws IOException;
+  List<OmLifecycleConfiguration> listLifeCycleConfigurationsByUser(
+          String userName) throws IOException;
 }
