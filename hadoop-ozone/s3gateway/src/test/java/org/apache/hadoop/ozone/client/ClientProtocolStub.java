@@ -68,9 +68,9 @@ import org.apache.hadoop.security.token.Token;
 public class ClientProtocolStub implements ClientProtocol {
   private static final String STUB_KERBEROS_ID = "stub_kerberos_id";
   private static final String STUB_SECRET = "stub_secret";
-  private final ObjectStoreStub objectStoreStub;
+  private final ObjectStore objectStoreStub;
 
-  public ClientProtocolStub(ObjectStoreStub objectStoreStub) {
+  public ClientProtocolStub(ObjectStore objectStoreStub) {
     this.objectStoreStub = objectStoreStub;
   }
 

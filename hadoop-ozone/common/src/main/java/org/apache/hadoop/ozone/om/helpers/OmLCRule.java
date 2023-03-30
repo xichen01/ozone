@@ -179,6 +179,7 @@ public final class OmLCRule {
         builder.addAction(action.getProtobuf());
       }
     }
+
     if (filter != null) {
       builder.setFilter(filter.getProtobuf());
     }

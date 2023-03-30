@@ -34,6 +34,8 @@ import com.google.common.annotations.VisibleForTesting;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
+import java.time.format.DateTimeParseException;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -50,6 +52,7 @@ import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.MultivaluedMap;
 import javax.ws.rs.core.Response;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.hadoop.hdds.scm.client.HddsClientUtils;
 import org.apache.hadoop.ozone.OzoneConsts;
 import org.apache.hadoop.ozone.audit.AuditAction;
 import org.apache.hadoop.ozone.audit.AuditEventStatus;
@@ -61,10 +64,12 @@ import org.apache.hadoop.ozone.audit.Auditor;
 import org.apache.hadoop.ozone.client.OzoneBucket;
 import org.apache.hadoop.ozone.client.OzoneClient;
 import org.apache.hadoop.ozone.client.OzoneKey;
+import org.apache.hadoop.ozone.client.OzoneLifecycleConfiguration;
 import org.apache.hadoop.ozone.client.OzoneVolume;
 import org.apache.hadoop.ozone.client.protocol.ClientProtocol;
 import org.apache.hadoop.ozone.om.exceptions.OMException;
 import org.apache.hadoop.ozone.om.exceptions.OMException.ResultCodes;
+import org.apache.hadoop.ozone.om.helpers.OmLifecycleConfiguration;
 import org.apache.hadoop.ozone.om.protocol.S3Auth;
 import org.apache.hadoop.ozone.s3.RequestIdentifier;
 import org.apache.hadoop.ozone.s3.exception.OS3Exception;
@@ -441,11 +446,99 @@ public abstract class EndpointBase implements Auditor {
     return Collections.unmodifiableMap(tags);
   }
 
+  protected void createLifecycleConfiguration(
+      LifecycleConfiguration lifecycleConfiguration, String bucketName)
+      throws IOException, OS3Exception{
+
+    String s3VolumeName = HddsClientUtils.getDefaultS3VolumeName(client.getConfiguration());
+
+    try {
+      OmLifecycleConfiguration lcc =
+          lifecycleConfiguration.toOmLifecycleConfiguration(s3VolumeName,
+              bucketName);
+      client.getObjectStore().getClientProxy().createLifecycleConfiguration(
+            lcc);
+    } catch (OMException ex) {
+      if (ex.getResult() == ResultCodes.INVALID_REQUEST) {
+        throw S3ErrorTable.newError(S3ErrorTable.INVALID_REQUEST,
+            bucketName);
+      } else if (ex.getResult() == ResultCodes.BUCKET_NOT_FOUND) {
+        throw S3ErrorTable.newError(S3ErrorTable.NO_SUCH_BUCKET,
+            bucketName);
+      } else if (ex.getResult() == ResultCodes.PERMISSION_DENIED) {
+        throw S3ErrorTable.newError(S3ErrorTable.ACCESS_DENIED,
+            bucketName);
+      }
+      throw ex;
+    } catch (DateTimeParseException ex) {
+      throw S3ErrorTable.newError(S3ErrorTable.INVALID_REQUEST, bucketName);
+    } catch (WebApplicationException ex) {
+      OS3Exception exception = S3ErrorTable.newError(S3ErrorTable.MALFORMED_XML, bucketName);
+      exception.setErrorMessage(exception.getErrorMessage() + ". " + ex.getMessage());
+      throw exception;
+    } catch (IllegalArgumentException ex) {
+      OS3Exception exception = S3ErrorTable.newError(S3ErrorTable.INVALID_REQUEST, bucketName);
+      exception.setErrorMessage(ex.getMessage());
+      throw exception;
+    } catch (Exception e) {
+      if (OmUtils.isWrappingAccessControlException(e)) {
+        throw Objects.requireNonNull(
+            S3ErrorTable.getAccessControlDeniedError(
+                OmUtils.unWrappingAccessControlException(e)));
+      }
+      throw e;
+    }
+  }
+
+  protected void deleteLifecycleConfiguration(String bucketName)
+      throws IOException, OS3Exception {
+    String s3VolumeName = HddsClientUtils.getDefaultS3VolumeName(client.getConfiguration());
+    try {
+      client.getObjectStore().getClientProxy().deleteLifecycleConfiguration(
+          s3VolumeName, bucketName);
+    } catch (OMException ex) {
+      if (ex.getResult() == ResultCodes.LIFECYCLE_CONFIGURATION_NOT_FOUND) {
+        throw S3ErrorTable.newError(
+            S3ErrorTable.NO_SUCH_LIFECYCLE_CONFIGURATION, bucketName);
+      }
+      throw ex;
+    } catch (Exception e) {
+      if (OmUtils.isWrappingAccessControlException(e)) {
+        throw Objects.requireNonNull(
+            S3ErrorTable.getAccessControlDeniedError(
+                OmUtils.unWrappingAccessControlException(e)));
+      }
+      throw e;
+    }
+  }
+
+  protected OzoneLifecycleConfiguration getLifecycleConfiguration(
+      String bucketName) throws IOException, OS3Exception {
+    String s3VolumeName = HddsClientUtils.getDefaultS3VolumeName(client.getConfiguration());
+    try {
+      return client.getObjectStore().getClientProxy().getLifecycleConfiguration(
+          s3VolumeName, bucketName);
+    } catch (OMException ex) {
+      if (ex.getResult() == ResultCodes.LIFECYCLE_CONFIGURATION_NOT_FOUND) {
+        throw S3ErrorTable.newError(
+            S3ErrorTable.NO_SUCH_LIFECYCLE_CONFIGURATION, bucketName);
+      }
+      throw ex;
+    } catch (Exception e) {
+      if (OmUtils.isWrappingAccessControlException(e)) {
+        throw Objects.requireNonNull(
+            S3ErrorTable.getAccessControlDeniedError(
+                OmUtils.unWrappingAccessControlException(e)));
+      }
+      throw e;
+    }
+  }
+
   private AuditMessage.Builder auditMessageBaseBuilder(AuditAction op,
       Map<String, String> auditMap) {
     auditMap.put("x-amz-request-id", requestIdentifier.getRequestId());
     auditMap.put("x-amz-id-2", requestIdentifier.getAmzId());
-    
+
     AuditMessage.Builder builder = new AuditMessage.Builder()
         .forOperation(op)
         .withParams(auditMap);
