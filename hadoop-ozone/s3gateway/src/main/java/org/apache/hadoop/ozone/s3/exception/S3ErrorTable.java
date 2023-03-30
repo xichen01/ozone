@@ -28,6 +28,7 @@ import static org.apache.hadoop.ozone.OzoneConsts.S3_REQUEST_HEADER_METADATA_SIZ
 import static org.apache.hadoop.ozone.s3.util.S3Consts.RANGE_NOT_SATISFIABLE;
 
 import java.util.function.Function;
+import org.apache.hadoop.security.AccessControlException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -154,6 +155,10 @@ public final class S3ErrorTable {
       HTTP_FORBIDDEN
   );
 
+  public static final OS3Exception NO_SUCH_LIFECYCLE_CONFIGURATION =
+      new OS3Exception("NoSuchLifecycleConfiguration",
+      "The specified lifecycle configurations does not exist", HTTP_NOT_FOUND);
+
   public static OS3Exception newError(OS3Exception e, String resource) {
     return newError(e, resource, null);
   }
@@ -183,5 +188,15 @@ public final class S3ErrorTable {
 
   public static OS3Exception getInternalError(Exception e) {
     return generateInternalError.apply(e);
+  }
+
+  private static final Function<AccessControlException, OS3Exception>
+      GENERATE_ACCESS_CONTROL_ERROR = e ->
+      new OS3Exception("AccessControlDenied",
+          e.getMessage(), HTTP_FORBIDDEN);
+
+  public static OS3Exception getAccessControlDeniedError(
+      AccessControlException e) {
+    return GENERATE_ACCESS_CONTROL_ERROR.apply(e);
   }
 }

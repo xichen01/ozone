@@ -42,6 +42,7 @@ import org.apache.hadoop.ozone.om.helpers.ErrorInfo;
 import org.apache.hadoop.ozone.om.helpers.LeaseKeyInfo;
 import org.apache.hadoop.ozone.om.helpers.OmKeyArgs;
 import org.apache.hadoop.ozone.om.helpers.OmKeyLocationInfo;
+import org.apache.hadoop.ozone.om.helpers.OmLifecycleConfiguration;
 import org.apache.hadoop.ozone.om.helpers.OmMultipartInfo;
 import org.apache.hadoop.ozone.om.helpers.OmMultipartUploadCompleteInfo;
 import org.apache.hadoop.ozone.om.helpers.OmVolumeArgs;
@@ -68,9 +69,9 @@ import org.apache.hadoop.security.token.Token;
 public class ClientProtocolStub implements ClientProtocol {
   private static final String STUB_KERBEROS_ID = "stub_kerberos_id";
   private static final String STUB_SECRET = "stub_secret";
-  private final ObjectStoreStub objectStoreStub;
+  private final ObjectStore objectStoreStub;
 
-  public ClientProtocolStub(ObjectStoreStub objectStoreStub) {
+  public ClientProtocolStub(ObjectStore objectStoreStub) {
     this.objectStoreStub = objectStoreStub;
   }
 
@@ -787,6 +788,22 @@ public class ClientProtocolStub implements ClientProtocol {
   @Override
   public void deleteObjectTagging(String volumeName, String bucketName, String keyName) throws IOException {
     getBucket(volumeName, bucketName).deleteObjectTagging(keyName);
+  }
+
+  @Override
+  public OzoneLifecycleConfiguration getLifecycleConfiguration(String volumeName, String bucketName)
+      throws IOException {
+    return null;
+  }
+
+  @Override
+  public void createLifecycleConfiguration(OmLifecycleConfiguration lifecycleConfiguration) throws IOException {
+
+  }
+
+  @Override
+  public void deleteLifecycleConfiguration(String volumeName, String bucketName) throws IOException {
+
   }
 
 }

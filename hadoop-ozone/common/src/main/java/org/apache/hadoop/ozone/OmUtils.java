@@ -66,6 +66,7 @@ import org.apache.hadoop.hdds.conf.ConfigurationSource;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos;
 import org.apache.hadoop.hdds.scm.client.HddsClientUtils;
+import org.apache.hadoop.ipc.RemoteException;
 import org.apache.hadoop.net.NetUtils;
 import org.apache.hadoop.ozone.conf.OMClientConfig;
 import org.apache.hadoop.ozone.ha.ConfUtils;
@@ -76,6 +77,7 @@ import org.apache.hadoop.ozone.om.helpers.OmKeyInfo;
 import org.apache.hadoop.ozone.om.helpers.RepeatedOmKeyInfo;
 import org.apache.hadoop.ozone.om.helpers.ServiceInfo;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos;
+import org.apache.hadoop.security.AccessControlException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -966,5 +968,20 @@ public final class OmUtils {
       LOG.error("Failure in resolving OM host address", e);
       throw e;
     }
+  }
+
+  public static boolean isWrappingAccessControlException(Exception e) {
+    if (e instanceof RemoteException) {
+      return ((RemoteException) e).unwrapRemoteException() instanceof AccessControlException;
+    }
+    return false;
+  }
+
+  public static AccessControlException unWrappingAccessControlException(
+      Exception e) {
+    assert e instanceof RemoteException;
+    assert ((RemoteException) e).unwrapRemoteException() instanceof AccessControlException;
+
+    return (AccessControlException) ((RemoteException) e).unwrapRemoteException();
   }
 }
