@@ -260,6 +260,32 @@ public final class ChunkUtils {
   }
 
   /**
+   * Validates chunk data and returns a file object to Chunk File that we are
+   * expected to write data to.
+   *
+   * @param chunkFile - chunkFile to write data into.
+   * @param info - chunk info.
+   * @return true if the chunkFile exists and chunkOffset &lt; chunkFile length,
+   *         false otherwise.
+   */
+  public static boolean validateChunkForOverwrite(FileChannel chunkFile,
+                                                  ChunkInfo info) {
+
+    if (isOverWriteRequested(chunkFile, info)) {
+      if (!isOverWritePermitted(info)) {
+        LOG.warn("Duplicate write chunk request. Chunk overwrite " +
+            "without explicit request. {}", info);
+      }
+      return true;
+    }
+
+    // TODO: when overwriting a chunk, we should ensure that the new chunk
+    //  size is same as the old chunk size
+
+    return false;
+  }
+
+  /**
    * Checks if we are getting a request to overwrite an existing range of
    * chunk.
    *
@@ -273,9 +299,31 @@ public final class ChunkUtils {
     if (!chunkFile.exists()) {
       return false;
     }
-
     long offset = chunkInfo.getOffset();
     return offset < chunkFile.length();
+  }
+
+  /**
+   * Checks if we are getting a request to overwrite an existing range of
+   * chunk.
+   *
+   * @param chunkFile - FileChannel of the file want ot check
+   * @param chunkInfo - Buffer to write
+   * @return bool
+   */
+  public static boolean isOverWriteRequested(FileChannel chunkFile, ChunkInfo
+      chunkInfo) {
+    long fileLen;
+    try {
+      fileLen = chunkFile.size(); // todo filename in LOG and exception?
+    } catch (IOException e) {
+      String msg = "IO error encountered while getting the file size";
+      LOG.error(msg, e.getMessage());
+      throw new UncheckedIOException("IO error encountered while " +
+          "getting the file size for ", e);
+    }
+    long offset = chunkInfo.getOffset();
+    return offset < fileLen;
   }
 
   /**
