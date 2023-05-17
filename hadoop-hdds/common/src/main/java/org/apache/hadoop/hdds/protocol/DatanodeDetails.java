@@ -823,7 +823,8 @@ public class DatanodeDetails extends NodeImpl implements
       @BelongsToHDDSLayoutVersion(WEBUI_PORTS_IN_DATANODEDETAILS)
       HTTP,
       @BelongsToHDDSLayoutVersion(WEBUI_PORTS_IN_DATANODEDETAILS)
-      HTTPS;
+      HTTPS,
+      CLIENT_RPC;
 
       public static final Set<Name> ALL_PORTS = ImmutableSet.copyOf(
           Name.values());
