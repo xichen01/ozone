@@ -20,6 +20,8 @@ package org.apache.hadoop.ozone.container.keyvalue.statemachine.background;
 
 import java.io.File;
 import java.io.IOException;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.UUID;
 import java.util.LinkedList;
 import java.util.Objects;
@@ -85,7 +87,7 @@ public class BlockDeletingService extends BackgroundService {
   private final ConfigurationSource conf;
 
   private final int blockLimitPerInterval;
-
+  private final Duration blockDeletingMaxLockHoldingTime;
   private final BlockDeletingServiceMetrics metrics;
 
   // Task priority is useful when a to-delete block has weight.
@@ -109,6 +111,8 @@ public class BlockDeletingService extends BackgroundService {
     this.conf = conf;
     DatanodeConfiguration dnConf = conf.getObject(DatanodeConfiguration.class);
     this.blockLimitPerInterval = dnConf.getBlockDeletionLimit();
+    this.blockDeletingMaxLockHoldingTime =
+        dnConf.getBlockDeletingMaxLockHoldingTime();
     metrics = BlockDeletingServiceMetrics.create();
   }
 
@@ -153,7 +157,8 @@ public class BlockDeletingService extends BackgroundService {
       for (ContainerBlockInfo containerBlockInfo : containers) {
         containerBlockInfos =
             new BlockDeletingTask(containerBlockInfo.containerData,
-                TASK_PRIORITY_DEFAULT, containerBlockInfo.numBlocksToDelete);
+                TASK_PRIORITY_DEFAULT, containerBlockInfo.numBlocksToDelete,
+                blockDeletingMaxLockHoldingTime);
         queue.add(containerBlockInfos);
         totalBlocks += containerBlockInfo.numBlocksToDelete;
       }
@@ -284,17 +289,38 @@ public class BlockDeletingService extends BackgroundService {
 
     private final int priority;
     private final KeyValueContainerData containerData;
-    private final long blocksToDelete;
+    private long blocksToDelete;
+    private Duration blockDeletingMaxLockHoldingTime;
 
     BlockDeletingTask(ContainerData containerName, int priority,
-        long blocksToDelete) {
+        long blocksToDelete, Duration blockDeletingMaxLockHoldingTime) {
       this.priority = priority;
       this.containerData = (KeyValueContainerData) containerName;
       this.blocksToDelete = blocksToDelete;
+      this.blockDeletingMaxLockHoldingTime = blockDeletingMaxLockHoldingTime;
     }
 
     @Override
     public BackgroundTaskResult call() throws Exception {
+      ContainerBackgroundTaskResult result =
+          new ContainerBackgroundTaskResult();
+      while (blocksToDelete > 0) {
+        ContainerBackgroundTaskResult crr = handleDeleteTask();
+        blocksToDelete -= crr.getSize();
+        result.addAll(crr.getDeletedBlocks());
+        if (blocksToDelete > 0 && crr.getSize() == 0) {
+          LOG.warn("Block deletion failed, remaining Blocks to be deleted {}," +
+                  " but no Block be deleted. Container" +
+                  " {}, pending block count {}",
+              blocksToDelete, containerData.getContainerID(),
+              containerData.getNumPendingDeletionBlocks());
+          break;
+        }
+      }
+      return result;
+    }
+
+    private ContainerBackgroundTaskResult handleDeleteTask() throws Exception {
       ContainerBackgroundTaskResult crr;
       final Container container = ozoneContainer.getContainerSet()
           .getContainer(containerData.getContainerID());
@@ -350,6 +376,7 @@ public class BlockDeletingService extends BackgroundService {
         if (toDeleteBlocks.isEmpty()) {
           LOG.debug("No under deletion block found in container : {}",
               containerData.getContainerID());
+          blocksToDelete = 0;
           return crr;
         }
 
@@ -504,6 +531,7 @@ public class BlockDeletingService extends BackgroundService {
           // actually no delete transactions for the container, so reset the
           // pending delete block count to the correct value of zero.
           containerData.resetPendingDeleteBlockCount(meta);
+          blocksToDelete = 0;
           return crr;
         }
 
@@ -518,12 +546,18 @@ public class BlockDeletingService extends BackgroundService {
         int deletedBlocksProcessed = deleteBlocksResult.getBlocksProcessed();
         int deletedBlocksCount = deleteBlocksResult.getBlocksDeleted();
         long releasedBytes = deleteBlocksResult.getBytesReleased();
+        List<DeletedBlocksTransaction> deletedBlocksTxs =
+            deleteBlocksResult.getDeletedBlockTransactions();
+        deleteBlocksResult.getDeletedBlockTransactions().forEach(
+            tx -> crr.addAll(tx.getLocalIDList().stream()
+                .map(String::valueOf).collect(Collectors.toList()))
+        );
 
         // Once blocks are deleted... remove the blockID from blockDataTable
         // and also remove the transactions from txnTable.
         try (BatchOperation batch = meta.getStore().getBatchHandler()
             .initBatchOperation()) {
-          for (DeletedBlocksTransaction delTx : delBlocks) {
+          for (DeletedBlocksTransaction delTx : deletedBlocksTxs) {
             deleter.apply(deleteTxns, batch, delTx.getTxID());
             for (Long blk : delTx.getLocalIDList()) {
               blockDataTable.deleteWithBatch(batch,
@@ -579,6 +613,9 @@ public class BlockDeletingService extends BackgroundService {
       int blocksProcessed = 0;
       int blocksDeleted = 0;
       long bytesReleased = 0;
+      List<DeletedBlocksTransaction> deletedBlocksTxs = new ArrayList<>();
+      Instant startTime = Instant.now();
+
       for (DeletedBlocksTransaction entry : delBlocks) {
         for (Long blkLong : entry.getLocalIDList()) {
           String blk = containerData.getBlockKey(blkLong);
@@ -622,14 +659,31 @@ public class BlockDeletingService extends BackgroundService {
             }
           }
         }
+        deletedBlocksTxs.add(entry);
+        Duration execTime = Duration.between(startTime, Instant.now());
+        if (deletedBlocksTxs.size() < delBlocks.size() &&
+            execTime.compareTo(getBlockDeletingMaxLockHoldingTime()) > 0) {
+          LOG.info("Max lock hold time ({} ms) reached after {} ms. " +
+                  "Completed {} transactions, deleted {} blocks." +
+                  "In container: {}." +
+                  "Releasing lock and resuming deletion later.",
+              getBlockDeletingMaxLockHoldingTime().toMillis(),
+              execTime.toMillis(), deletedBlocksTxs.size(), blocksDeleted,
+              container.getContainerData().getContainerID());
+          break;
+        }
       }
       return new DeleteTransactionStats(blocksProcessed,
-          blocksDeleted, bytesReleased);
+          blocksDeleted, bytesReleased, deletedBlocksTxs);
     }
 
     @Override
     public int getPriority() {
       return priority;
+    }
+
+    public Duration getBlockDeletingMaxLockHoldingTime() {
+      return blockDeletingMaxLockHoldingTime;
     }
   }
 
@@ -650,11 +704,13 @@ public class BlockDeletingService extends BackgroundService {
     private final int blocksProcessed;
     private final int blocksDeleted;
     private final long bytesReleased;
-
-    DeleteTransactionStats(int proceeded, int deleted, long released) {
+    private final List<DeletedBlocksTransaction> delBlockTxs;
+    DeleteTransactionStats(int proceeded, int deleted, long released,
+        List<DeletedBlocksTransaction> delBlocks) {
       blocksProcessed =  proceeded;
       blocksDeleted = deleted;
       bytesReleased = released;
+      delBlockTxs = delBlocks;
     }
 
     public int getBlocksProcessed() {
@@ -667,6 +723,10 @@ public class BlockDeletingService extends BackgroundService {
 
     public long getBytesReleased() {
       return bytesReleased;
+    }
+
+    public List<DeletedBlocksTransaction> getDeletedBlockTransactions() {
+      return delBlockTxs;
     }
   }
 }
