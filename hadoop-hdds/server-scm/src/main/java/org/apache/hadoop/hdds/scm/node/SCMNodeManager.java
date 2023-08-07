@@ -87,6 +87,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 
 import static org.apache.hadoop.hdds.protocol.DatanodeDetails.Port.Name.HTTP;
@@ -130,6 +131,8 @@ public class SCMNodeManager implements NodeManager {
   private final HDDSLayoutVersionManager scmLayoutVersionManager;
   private final EventPublisher scmNodeEventPublisher;
   private final SCMContext scmContext;
+  private final Map<SCMCommandProto.Type,
+      BiConsumer<DatanodeDetails, SCMCommand<?>>> sendCommandNotifyMap;
 
   /**
    * Lock used to synchronize some operation in Node manager to ensure a
@@ -176,6 +179,13 @@ public class SCMNodeManager implements NodeManager {
     String dnLimit = conf.get(ScmConfigKeys.OZONE_DATANODE_PIPELINE_LIMIT);
     this.heavyNodeCriteria = dnLimit == null ? 0 : Integer.parseInt(dnLimit);
     this.scmContext = scmContext;
+    this.sendCommandNotifyMap = new HashMap<>();
+  }
+
+  @Override
+  public void registerSendCommandNotify(SCMCommandProto.Type type,
+      BiConsumer<DatanodeDetails, SCMCommand<?>> scmCommand) {
+    this.sendCommandNotifyMap.put(type, scmCommand);
   }
 
   private void registerMXBean() {
@@ -515,6 +525,15 @@ public class SCMNodeManager implements NodeManager {
           commandQueue.getDatanodeCommandSummary(datanodeDetails.getUuid());
       List<SCMCommand> commands =
           commandQueue.getCommand(datanodeDetails.getUuid());
+
+      // Update the SCMCommand of deleteBlocksCommand Status
+      for (SCMCommand<?> command : commands) {
+        if (sendCommandNotifyMap.get(command.getType()) != null) {
+          sendCommandNotifyMap.get(command.getType())
+              .accept(datanodeDetails, command);
+        }
+      }
+
       if (queueReport != null) {
         processNodeCommandQueueReport(datanodeDetails, queueReport, summary);
       }

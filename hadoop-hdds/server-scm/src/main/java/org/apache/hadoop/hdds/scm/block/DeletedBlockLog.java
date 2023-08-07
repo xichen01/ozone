@@ -20,9 +20,6 @@ package org.apache.hadoop.hdds.scm.block;
 import java.util.Set;
 import org.apache.hadoop.hdds.protocol.DatanodeDetails;
 import org.apache.hadoop.hdds.protocol.proto
-    .StorageContainerDatanodeProtocolProtos.ContainerBlocksDeletionACKProto
-    .DeleteBlockTransactionResult;
-import org.apache.hadoop.hdds.protocol.proto
     .StorageContainerDatanodeProtocolProtos.DeletedBlocksTransaction;
 import org.apache.hadoop.hdds.utils.db.Table;
 
@@ -30,7 +27,6 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * The DeletedBlockLog is a persisted log in SCM to keep tracking
@@ -88,14 +84,11 @@ public interface DeletedBlockLog extends Closeable {
   int resetCount(List<Long> txIDs) throws IOException;
 
   /**
-   * Commits a transaction means to delete all footprints of a transaction
-   * from the log. This method doesn't guarantee all transactions can be
-   * successfully deleted, it tolerate failures and tries best efforts to.
-   *  @param transactionResults - delete block transaction results.
-   * @param dnID - ID of datanode which acknowledges the delete block command.
+   * Get SCMDeletedBlockTransactionStatusManager.
+   * @return an Object of SCMDeletedBlockTransactionStatusManager
    */
-  void commitTransactions(List<DeleteBlockTransactionResult> transactionResults,
-      UUID dnID);
+  SCMDeletedBlockTransactionStatusManager
+      getSCMDeletedBlockTransactionStatusManager();
 
   /**
    * Creates block deletion transactions for a set of containers,
