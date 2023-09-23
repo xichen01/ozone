@@ -30,8 +30,6 @@ import java.util.concurrent.TimeUnit;
  */
 public interface ConfigurationSource {
 
-  Map<Class<?>, Object> SINGLETONS = new ConcurrentHashMap<>();
-
   String[] EMPTY_STRING_ARRAY = {};
 
   String get(String key);
@@ -154,22 +152,6 @@ public interface ConfigurationSource {
   default boolean isConfigured(String key) {
     return get(key) != null;
   }
-
-  /**
-   * Returns a singleton instance of the given configuration class.
-   * If an instance of the class has already been created,
-   * it will be returned; otherwise, a new instance will be created,
-   * stored in a map for future retrieval.
-   *
-   * @param configurationClass The class for which a singleton
-   *                           instance is required
-   * @return a singleton instance of the given class
-   */
-  default <T> T getObject(Class<T> configurationClass) {
-    return (T) SINGLETONS.computeIfAbsent(configurationClass,
-        c -> createConfigurationObject(configurationClass));
-  }
-
   /**
    * Create a Configuration object and inject the required configuration values.
    *
@@ -177,7 +159,7 @@ public interface ConfigurationSource {
    *                           the configuration.
    * @return Initiated java object where the config fields are injected.
    */
-  default <T> T createConfigurationObject(Class<T> configurationClass) {
+  default <T> T getObject(Class<T> configurationClass) {
 
     T configObject;
 
