@@ -80,6 +80,8 @@ public class BlockDeletingService extends BackgroundService {
     }
     this.conf = conf;
     dnConf = conf.getObject(DatanodeConfiguration.class);
+    ozoneContainer.getContext().getParent()
+        .getReconfigurationHandler().register(dnConf);
     this.blockDeletingMaxLockHoldingTime =
         dnConf.getBlockDeletingMaxLockHoldingTime();
     metrics = BlockDeletingServiceMetrics.create();

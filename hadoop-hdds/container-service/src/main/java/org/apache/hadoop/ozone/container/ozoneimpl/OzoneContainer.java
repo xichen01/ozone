@@ -269,7 +269,7 @@ public class OzoneContainer {
    */
   @VisibleForTesting
   public OzoneContainer(
-      DatanodeDetails datanodeDetails, OzoneConfiguration conf,
+      DatanodeDetails datanodeDetails, ConfigurationSource conf,
       StateContext context) throws IOException {
     this(datanodeDetails, conf, context, null, null);
   }
@@ -555,6 +555,10 @@ public class OzoneContainer {
 
   public BlockDeletingService getBlockDeletingService() {
     return blockDeletingService;
+  }
+
+  public StateContext getContext() {
+    return context;
   }
 
 }

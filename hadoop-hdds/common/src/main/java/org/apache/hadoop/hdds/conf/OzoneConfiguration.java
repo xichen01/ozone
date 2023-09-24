@@ -37,7 +37,6 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.SortedSet;
 import java.util.TreeSet;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 import org.apache.hadoop.conf.Configuration;
@@ -60,8 +59,6 @@ import static org.apache.hadoop.ozone.OzoneConfigKeys.OZONE_CONTAINER_COPY_WORKD
 @InterfaceAudience.Private
 public class OzoneConfiguration extends Configuration
     implements MutableConfigurationSource {
-
-  private final Map<Class<?>, Object> singletons = new ConcurrentHashMap<>();
 
   public static final SortedSet<String> TAGS = unmodifiableSortedSet(
       Arrays.stream(ConfigTag.values())
@@ -150,22 +147,6 @@ public class OzoneConfiguration extends Configuration
     // this override issue.
     addResource("core-site.xml");
     addResource("ozone-site.xml");
-  }
-
-  /**
-   * Returns a singleton instance of the given configuration class.
-   * If an instance of the class has already been created,
-   * it will be returned; otherwise, a new instance will be created,
-   * stored in a map for future retrieval.
-   *
-   * @param configurationClass The class for which a singleton
-   *                           instance is required
-   * @return a singleton instance of the given class
-   */
-  @Override
-  public  <T> T getObject(Class<T> configurationClass) {
-    return (T) singletons.computeIfAbsent(configurationClass,
-        c -> MutableConfigurationSource.super.getObject(configurationClass));
   }
 
   public List<Property> readPropertyFromXml(URL url) throws JAXBException {
