@@ -30,6 +30,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import org.apache.hadoop.hdds.HddsUtils;
 import org.apache.hadoop.hdds.conf.ConfigurationSource;
+import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.conf.ReconfigurationHandler;
 import org.apache.hadoop.hdds.datanode.metadata.DatanodeCRLStore;
 import org.apache.hadoop.hdds.protocol.DatanodeDetails;
@@ -271,7 +272,8 @@ public class DatanodeStateMachine implements Closeable {
   @VisibleForTesting
   public DatanodeStateMachine(DatanodeDetails datanodeDetails,
                               ConfigurationSource conf) throws IOException {
-    this(datanodeDetails, conf, null, null, null, null, null);
+    this(datanodeDetails, conf, null, null, null, null,
+        new ReconfigurationHandler("DN", (OzoneConfiguration) conf, op -> { }));
   }
 
   private int getEndPointTaskThreadPoolSize() {
