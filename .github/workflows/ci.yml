@@ -69,6 +69,19 @@ jobs:
         env:
           ALL_BASIC_CHECKS: "${{ steps.selective-checks.outputs.basic-checks }}"
         run: dev-support/ci/categorize_basic_checks.sh
+      - name: Check System Information
+        run: |
+          echo "Operating System Details:"
+          cat /etc/os-release
+          
+          echo "CPU Information:"
+          lscpu
+
+          echo "Memory Information:"
+          free -h
+          
+          echo "ENV"
+          env
   build:
     needs:
       - build-info
