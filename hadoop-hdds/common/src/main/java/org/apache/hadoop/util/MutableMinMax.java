@@ -35,11 +35,6 @@ import static org.apache.hadoop.metrics2.lib.Interns.info;
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
 public class MutableMinMax extends MutableMetric {
-  private final MinMax intervalMinMax = new MinMax();
-  private final MinMax prevMinMax = new MinMax();
-  private final MetricsInfo iMinInfo;
-  private final MetricsInfo iMaxInfo;
-
   /**
    * Construct a minMax metric.
    * @param registry    MetricsRegistry of the metric
@@ -49,20 +44,6 @@ public class MutableMinMax extends MutableMetric {
    */
   public MutableMinMax(MetricsRegistry registry,
       String name, String description, String valueName) {
-    String ucName = StringUtils.capitalize(name);
-    String desc = StringUtils.uncapitalize(description);
-    String uvName = StringUtils.capitalize(valueName);
-    String lvName = StringUtils.uncapitalize(valueName);
-    iMinInfo = info(ucName + "IMin" + uvName,
-        "Min " + lvName + " for " + desc + "in the last reporting interval");
-    iMaxInfo = info(ucName + "IMax" + uvName,
-        "Max " + lvName + " for " + desc + "in the last reporting interval");
-    // hadoop.metrics2 only supports standard types of Metrics registered
-    // with annotations, but not custom types of metrics.
-    // Registering here is for compatibility with metric classes
-    // that are only registered with annotations and do not override getMetrics.
-    registry.newGauge(iMinInfo, 0);
-    registry.newGauge(iMaxInfo, 0);
   }
 
   /**
@@ -70,24 +51,10 @@ public class MutableMinMax extends MutableMetric {
    * @param value of the metric
    */
   public synchronized void add(long value) {
-    intervalMinMax.add(value);
     setChanged();
-  }
-
-  private MinMax lastMinMax() {
-    return changed() ? intervalMinMax : prevMinMax;
   }
 
   @Override
   public void snapshot(MetricsRecordBuilder builder, boolean all) {
-    if (all || this.changed()) {
-      builder.addGauge(iMinInfo, lastMinMax().min());
-      builder.addGauge(iMaxInfo, lastMinMax().max());
-      if (changed()) {
-        prevMinMax.reset(intervalMinMax);
-        intervalMinMax.reset();
-        clearChanged();
-      }
-    }
   }
 }
