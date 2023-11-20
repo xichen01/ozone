@@ -103,7 +103,7 @@ public class Gateway extends GenericCli {
     loginS3GUser(ozoneConfiguration);
     setHttpBaseDir();
     httpServer = new S3GatewayHttpServer(ozoneConfiguration, "s3gateway");
-    metrics = S3GatewayMetrics.create(ozoneConfiguration);
+    metrics = S3GatewayMetrics.create();
     start();
 
     ShutdownHookManager.get().addShutdownHook(() -> {
