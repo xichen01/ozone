@@ -1357,13 +1357,14 @@ public class RpcClient implements ClientProtocol {
         .addAllMetadataGdpr(metadata)
         .setAcls(getAclList())
         .setLatestVersionLocation(getLatestVersionLocation);
-
+    boolean isEC = replicationConfig != null &&
+        replicationConfig.getReplicationType() == HddsProtos.ReplicationType.EC;
     OpenKeySession openKey = ozoneManagerClient.openKey(builder.build());
     // For bucket with layout OBJECT_STORE, when create an empty file (size=0),
     // OM will set DataSize to OzoneConfigKeys#OZONE_SCM_BLOCK_SIZE,
     // which will cause S3G's atomic write length check to fail,
     // so reset size to 0 here.
-    if (isS3GRequest.get() && size == 0) {
+    if ((isS3GRequest.get() || isEC) && size == 0) {
       openKey.getKeyInfo().setDataSize(size);
     }
     return createOutputStream(openKey);

@@ -138,11 +138,16 @@ public final class ECKeyOutputStream extends KeyOutputStream
     this.config.setStreamBufferSize(ecChunkSize);
     this.numDataBlks = builder.getReplicationConfig().getData();
     this.numParityBlks = builder.getReplicationConfig().getParity();
-    ecChunkBufferCache = new ECChunkBuffers(
-        ecChunkSize, numDataBlks, numParityBlks, bufferPool);
+    OmKeyInfo info = builder.getOpenHandler().getKeyInfo();
+    if (info.getDataSize() > 0) {
+      ecChunkBufferCache = new ECChunkBuffers(
+          ecChunkSize, numDataBlks, numParityBlks, bufferPool);
+    } else {
+      ecChunkBufferCache = new ECChunkBuffers(
+          0, numDataBlks, numParityBlks, bufferPool);
+    }
     chunkIndex = 0;
     ecStripeQueue = new ArrayBlockingQueue<>(config.getEcStripeQueueSize());
-    OmKeyInfo info = builder.getOpenHandler().getKeyInfo();
     blockOutputStreamEntryPool =
         new ECBlockOutputStreamEntryPool(config,
             builder.getOmClient(), builder.getRequestID(),
