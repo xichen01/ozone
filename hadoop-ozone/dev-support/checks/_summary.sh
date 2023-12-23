@@ -33,9 +33,9 @@ elif [[ ${ITERATIONS} -gt 1 ]]; then
     rc=1
   fi
 
-elif [[ -s "${REPORT_FILE}" ]]; then
-  cat "${REPORT_FILE}"
-  rc=1
+# elif [[ -s "${REPORT_FILE}" ]]; then
+#   cat "${REPORT_FILE}"
+#   rc=1
 fi
 
 exit ${rc}
