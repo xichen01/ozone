@@ -205,7 +205,7 @@ public class TestBlockDeletion {
 
   @ParameterizedTest
   @MethodSource("replicationConfigs")
-  @Flaky("HDDS-9962")
+//  @Flaky("HDDS-9962")
   public void testBlockDeletion(ReplicationConfig repConfig) throws Exception {
     String volumeName = UUID.randomUUID().toString();
     String bucketName = UUID.randomUUID().toString();
@@ -293,11 +293,6 @@ public class TestBlockDeletion {
     Assertions.assertFalse(containerIdsWithDeletedBlocks.isEmpty());
     // Containers in the DN and SCM should have same delete transactionIds
     matchContainerTransactionIds();
-    // Containers in the DN and SCM should have same delete transactionIds
-    // after DN restart. The assertion is just to verify that the state of
-    // containerInfos in dn and scm is consistent after dn restart.
-    cluster.restartHddsDatanode(0, true);
-    matchContainerTransactionIds();
 
     // Verify transactions committed
     GenericTestUtils.waitFor(() -> {
@@ -309,6 +304,13 @@ public class TestBlockDeletion {
         return false;
       }
     }, 500, 10000);
+
+    // Containers in the DN and SCM should have same delete transactionIds
+    // after DN restart. The assertion is just to verify that the state of
+    // containerInfos in dn and scm is consistent after dn restart.
+    cluster.restartHddsDatanode(0, true);
+    matchContainerTransactionIds();
+
     Assertions.assertEquals(metrics.getNumBlockDeletionTransactionCreated(),
         metrics.getNumBlockDeletionTransactionCompleted());
     Assertions.assertTrue(metrics.getNumBlockDeletionCommandSent() >=

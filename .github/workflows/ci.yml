@@ -16,7 +16,7 @@ name: full-ci
 on:
   workflow_call:
 env:
-  FAIL_FAST: ${{ github.event_name == 'pull_request' }}
+  FAIL_FAST: true
   MAVEN_OPTS: -Dhttp.keepAlive=false -Dmaven.wagon.http.pool=false -Dmaven.wagon.http.retryHandler.class=standard -Dmaven.wagon.http.retryHandler.count=3
   OZONE_WITH_COVERAGE: ${{ github.repository == 'apache/ozone' && github.event_name != 'pull_request' }}
 jobs:
@@ -25,17 +25,17 @@ jobs:
     env:
       GITHUB_CONTEXT: ${{ toJson(github) }}
     outputs:
-      acceptance-suites: ${{ steps.acceptance-suites.outputs.suites }}
-      needs-basic-check: ${{ steps.categorize-basic-checks.outputs.needs-basic-check }}
-      needs-unit-check: ${{ steps.categorize-basic-checks.outputs.needs-unit-check }}
-      basic-checks: ${{ steps.categorize-basic-checks.outputs.basic-checks }}
-      unit-checks: ${{ steps.categorize-basic-checks.outputs.unit-checks }}
-      needs-build: ${{ steps.selective-checks.outputs.needs-build }}
-      needs-compile: ${{ steps.selective-checks.outputs.needs-compile }}
-      needs-compose-tests: ${{ steps.selective-checks.outputs.needs-compose-tests }}
-      needs-dependency-check: ${{ steps.selective-checks.outputs.needs-dependency-check }}
+#      acceptance-suites: ${{ steps.acceptance-suites.outputs.suites }}
+#      needs-basic-check: ${{ steps.categorize-basic-checks.outputs.needs-basic-check }}
+#      needs-unit-check: ${{ steps.categorize-basic-checks.outputs.needs-unit-check }}
+#      basic-checks: ${{ steps.categorize-basic-checks.outputs.basic-checks }}
+#      unit-checks: ${{ steps.categorize-basic-checks.outputs.unit-checks }}
+#      needs-build: ${{ steps.selective-checks.outputs.needs-build }}
+#      needs-compile: ${{ steps.selective-checks.outputs.needs-compile }}
+#      needs-compose-tests: ${{ steps.selective-checks.outputs.needs-compose-tests }}
+#      needs-dependency-check: ${{ steps.selective-checks.outputs.needs-dependency-check }}
       needs-integration-tests: ${{ steps.selective-checks.outputs.needs-integration-tests }}
-      needs-kubernetes-tests: ${{ steps.selective-checks.outputs.needs-kubernetes-tests }}
+#      needs-kubernetes-tests: ${{ steps.selective-checks.outputs.needs-kubernetes-tests }}
     steps:
       - name: "Checkout ${{ github.ref }} ( ${{ github.sha }} )"
         uses: actions/checkout@v3
@@ -438,19 +438,20 @@ jobs:
       - basic
     runs-on: ubuntu-20.04
     timeout-minutes: 150
-    if: needs.build-info.outputs.needs-integration-tests == 'true'
+    if: always()
     strategy:
       matrix:
-        profile:
-          - client
-          - contract
-          - filesystem
-          - hdds
-          - om
-          - ozone
-          - scm
-          - shell
-          - flaky
+        profile: [ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 ]
+#        profile:
+#          - client
+#          - contract
+#          - filesystem
+#          - hdds
+#          - om
+#          - ozone
+#          - scm
+#          - shell
+#          - flaky
       fail-fast: false
     steps:
       - name: Checkout project
@@ -478,20 +479,23 @@ jobs:
           distribution: 'temurin'
           java-version: 8
       - name: Execute tests
-        continue-on-error: true
-        run: |
-          if [[ -e "${{ steps.download-ozone-repo.outputs.download-path }}" ]]; then
-            export OZONE_REPO_CACHED=true
-          fi
-
-          args=
-          if [[ "${{ matrix.profile }}" == "flaky" ]]; then
-            args="-Dsurefire.rerunFailingTestsCount=5 -Dsurefire.fork.timeout=3600"
-          fi
-
-          hadoop-ozone/dev-support/checks/integration.sh -P${{ matrix.profile }} ${args}
+#        continue-on-error: true
+        run: hadoop-ozone/dev-support/checks/integration.sh -Dtest=TestDeletedBlockLog
         env:
-          GRADLE_ENTERPRISE_ACCESS_KEY: ${{ secrets.GE_ACCESS_TOKEN }}
+          ITERATIONS: 50
+#        run: |
+#          if [[ -e "${{ steps.download-ozone-repo.outputs.download-path }}" ]]; then
+#            export OZONE_REPO_CACHED=true
+#          fi
+#
+#          args=
+#          if [[ "${{ matrix.profile }}" == "flaky" ]]; then
+#            args="-Dsurefire.rerunFailingTestsCount=5 -Dsurefire.fork.timeout=3600"
+#          fi
+#
+#          hadoop-ozone/dev-support/checks/integration.sh -P${{ matrix.profile }} ${args}
+#        env:
+#          GRADLE_ENTERPRISE_ACCESS_KEY: ${{ secrets.GE_ACCESS_TOKEN }}
       - name: Summary of failures
         run: hadoop-ozone/dev-support/checks/_summary.sh target/${{ github.job }}/summary.txt
         if: ${{ !cancelled() }}
