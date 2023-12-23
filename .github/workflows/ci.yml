@@ -480,9 +480,9 @@ jobs:
           java-version: 8
       - name: Execute tests
 #        continue-on-error: true
-        run: hadoop-ozone/dev-support/checks/integration.sh -Dtest=TestDeletedBlockLog
+        run: hadoop-ozone/dev-support/checks/integration.sh -Dtest=TestBlockDeletion
         env:
-          ITERATIONS: 50
+          ITERATIONS: 10
 #        run: |
 #          if [[ -e "${{ steps.download-ozone-repo.outputs.download-path }}" ]]; then
 #            export OZONE_REPO_CACHED=true
