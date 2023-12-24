@@ -207,6 +207,7 @@ public class TestBlockDeletion {
   @MethodSource("replicationConfigs")
 //  @Flaky("HDDS-9962")
   public void testBlockDeletion(ReplicationConfig repConfig) throws Exception {
+    LOG.warn("testBlockDeletion");
     String volumeName = UUID.randomUUID().toString();
     String bucketName = UUID.randomUUID().toString();
     GenericTestUtils.LogCapturer logCapturer = GenericTestUtils.LogCapturer
@@ -333,6 +334,8 @@ public class TestBlockDeletion {
 
   @Test
   public void testContainerStatisticsAfterDelete() throws Exception {
+    LOG.warn("testContainerStatisticsAfterDelete");
+
     ReplicationManager replicationManager = scm.getReplicationManager();
     boolean legacyEnabled = replicationManager.getConfig().isLegacyEnabled();
 
@@ -441,6 +444,7 @@ public class TestBlockDeletion {
 
   @Test
   public void testContainerStateAfterDNRestart() throws Exception {
+    LOG.warn("testContainerStateAfterDNRestart");
     ReplicationManager replicationManager = scm.getReplicationManager();
 
     String volumeName = UUID.randomUUID().toString();
@@ -572,6 +576,7 @@ public class TestBlockDeletion {
   @Test
   public void testContainerDeleteWithInvalidKeyCount()
       throws Exception {
+    LOG.warn("testContainerDeleteWithInvalidKeyCount");
     ReplicationManager replicationManager = scm.getReplicationManager();
     String volumeName = UUID.randomUUID().toString();
     String bucketName = UUID.randomUUID().toString();
@@ -773,6 +778,7 @@ public class TestBlockDeletion {
 
   @Test
   public void testBlockDeleteCommandParallelProcess() throws Exception {
+    LOG.warn("testBlockDeleteCommandParallelProcess");
     String volumeName = UUID.randomUUID().toString();
     String bucketName = UUID.randomUUID().toString();
 
