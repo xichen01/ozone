@@ -480,7 +480,7 @@ jobs:
           java-version: 8
       - name: Execute tests
 #        continue-on-error: true
-        run: hadoop-ozone/dev-support/checks/integration.sh -Dtest=TestBlockDeletion
+        run: hadoop-ozone/dev-support/checks/integration.sh -Dtest=TestBlockDeletion#testBlockDeletion
         env:
           ITERATIONS: 25
 #        run: |
