@@ -168,6 +168,7 @@ public class TestBlockDeletion {
         0,
         TimeUnit.MILLISECONDS);
     conf.setInt("hdds.datanode.block.delete.threads.max", 5);
+    conf.setInt("hdds.datanode.block.delete.queue.limit", 1024);
     ReplicationManager.ReplicationManagerConfiguration replicationConf = conf
         .getObject(ReplicationManager.ReplicationManagerConfiguration.class);
     replicationConf.setInterval(Duration.ofSeconds(300));
