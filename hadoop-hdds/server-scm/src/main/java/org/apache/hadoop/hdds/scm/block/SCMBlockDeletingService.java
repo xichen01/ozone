@@ -237,12 +237,13 @@ public class SCMBlockDeletingService extends BackgroundService
   public void notifyStatusChanged() {
     serviceLock.lock();
     try {
-      LOG.info("isLeaderReady {}, !scmContext.isInSafeMode{}, serviceStatus {}", scmContext.isLeaderReady(), scmContext.isInSafeMode(), serviceStatus);
-      if (scmContext.isLeaderReady() && !scmContext.isInSafeMode() &&
-          serviceStatus != ServiceStatus.RUNNING) {
-        LOG.info("notifyStatusChanged" + ":" + ServiceStatus.RUNNING);
-        safemodeExitMillis = clock.millis();
-        serviceStatus = ServiceStatus.RUNNING;
+      LOG.info("isLeaderReady {}, scmContext.isInSafeMode{}, serviceStatus {}", scmContext.isLeaderReady(), scmContext.isInSafeMode(), serviceStatus);
+      if (scmContext.isLeaderReady() && !scmContext.isInSafeMode()) {
+        if (serviceStatus != ServiceStatus.RUNNING) {
+          LOG.info("notifyStatusChanged" + ":" + ServiceStatus.RUNNING);
+          safemodeExitMillis = clock.millis();
+          serviceStatus = ServiceStatus.RUNNING;
+        }
       } else {
         serviceStatus = ServiceStatus.PAUSING;
       }
