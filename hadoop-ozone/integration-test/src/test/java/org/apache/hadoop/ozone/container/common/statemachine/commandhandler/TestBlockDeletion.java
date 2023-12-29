@@ -75,6 +75,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.Logger;
@@ -107,6 +108,7 @@ import static org.apache.hadoop.ozone
 /**
  * Tests for Block deletion.
  */
+@Timeout(value = 600, unit = TimeUnit.SECONDS)
 public class TestBlockDeletion {
 
   public static final Logger LOG =
@@ -168,7 +170,7 @@ public class TestBlockDeletion {
         0,
         TimeUnit.MILLISECONDS);
     conf.setInt("hdds.datanode.block.delete.threads.max", 5);
-    conf.setInt("hdds.datanode.block.delete.queue.limit", 1024);
+    conf.setInt("hdds.datanode.block.delete.queue.limit", 32);
     ReplicationManager.ReplicationManagerConfiguration replicationConf = conf
         .getObject(ReplicationManager.ReplicationManagerConfiguration.class);
     replicationConf.setInterval(Duration.ofSeconds(300));
