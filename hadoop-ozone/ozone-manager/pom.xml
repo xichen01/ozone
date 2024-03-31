@@ -231,6 +231,12 @@ https://maven.apache.org/xsd/maven-4.0.0.xsd">
       <artifactId>hdds-test-utils</artifactId>
       <scope>test</scope>
     </dependency>
+      <dependency>
+          <groupId>io.netty</groupId>
+          <artifactId>netty-transport-native-epoll</artifactId>
+          <version>${netty.version}</version>
+        <classifier>linux-x86_64</classifier>
+      </dependency>
   </dependencies>
   <build>
     <plugins>

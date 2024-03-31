@@ -20,6 +20,7 @@ package org.apache.hadoop.ozone.om.protocolPB;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.security.cert.X509Certificate;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -178,6 +179,15 @@ public class GrpcOmTransport implements OmTransport {
     retryPolicy = omFailoverProxyProvider.getRetryPolicy(maxFailovers);
     LOG.info("{}: started", CLIENT_NAME);
   }
+  private static InetAddress localHost;
+
+  static {
+    try {
+      localHost = InetAddress.getLocalHost();
+    } catch (UnknownHostException e) {
+      throw new RuntimeException(e);
+    }
+  }
 
   @Override
   public OMResponse submitRequest(OMRequest payload) throws IOException {
@@ -189,7 +199,7 @@ public class GrpcOmTransport implements OmTransport {
       tryOtherHost = false;
       expectedFailoverCount = syncFailoverCount.get();
       try {
-        InetAddress inetAddress = InetAddress.getLocalHost();
+        InetAddress inetAddress = localHost;
         Context.current()
             .withValue(GrpcClientConstants.CLIENT_IP_ADDRESS_CTX_KEY,
                 inetAddress.getHostAddress())

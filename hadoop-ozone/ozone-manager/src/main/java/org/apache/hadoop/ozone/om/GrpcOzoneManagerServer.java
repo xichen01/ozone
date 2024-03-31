@@ -23,8 +23,15 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-
+import io.netty.channel.epoll.Epoll;
+import io.netty.channel.epoll.EpollChannelOption;
+import io.netty.channel.epoll.EpollDomainSocketChannel;
+import io.netty.channel.epoll.EpollEventLoopGroup;
+import io.netty.channel.epoll.EpollServerDomainSocketChannel;
+import io.netty.channel.epoll.EpollServerSocketChannel;
+import io.netty.channel.epoll.EpollSocketChannel;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import io.netty.channel.epoll.EpollServerSocketChannel;
 import org.apache.hadoop.hdds.HddsUtils;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.security.SecurityConfig;
@@ -42,12 +49,17 @@ import org.apache.hadoop.ozone.security.OzoneDelegationTokenSecretManager;
 import io.grpc.netty.GrpcSslContexts;
 import io.grpc.netty.NettyServerBuilder;
 import io.netty.channel.EventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
-import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.SslProvider;
 import io.grpc.Server;
 import io.grpc.ServerInterceptors;
+import io.netty.channel.epoll.EpollChannelOption;
+import io.netty.channel.epoll.EpollMode;
+import io.netty.channel.ChannelOption;
+import io.netty.buffer.PooledByteBufAllocator;
+
+
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -111,6 +123,22 @@ public class GrpcOzoneManagerServer {
         caClient);
   }
 
+  private static boolean checkNettyEpollAvailable() {
+    if (!Epoll.isAvailable()) {
+      LOG.info("EPOLL is not available, will use NIO");
+      return false;
+    }
+    try {
+      EpollChannelOption.class.getField("EPOLL_MODE");
+      LOG.info("EPOLL_MODE is available");
+      return true;
+    } catch (Throwable e) {
+      LOG.warn("EPOLL_MODE is not supported in netty with version < 4.0.26.Final, will use NIO");
+      return false;
+    }
+  }
+
+
   public void init(OzoneManagerProtocolServerSideTranslatorPB omTranslator,
                    OzoneDelegationTokenSecretManager delegationTokenMgr,
                    OzoneConfiguration omServerConfig,
@@ -132,31 +160,39 @@ public class GrpcOzoneManagerServer {
         new ThreadFactoryBuilder().setDaemon(true)
             .setNameFormat(threadNamePrefix + "OmRpcReader-%d")
             .build());
-
+    boolean checkNettyEpollAvailable = checkNettyEpollAvailable();
+    System.out.println(checkNettyEpollAvailable);
     ThreadFactory bossFactory = new ThreadFactoryBuilder().setDaemon(true)
         .setNameFormat(threadNamePrefix + "OmRpcBoss-ELG-%d")
         .build();
-    bossEventLoopGroup = new NioEventLoopGroup(bossGroupSize, bossFactory);
+    bossEventLoopGroup = new EpollEventLoopGroup(bossGroupSize, bossFactory);
 
     ThreadFactory workerFactory = new ThreadFactoryBuilder().setDaemon(true)
         .setNameFormat(threadNamePrefix + "OmRpcWorker-ELG-%d")
         .build();
     workerEventLoopGroup =
-        new NioEventLoopGroup(workerGroupSize, workerFactory);
+        new EpollEventLoopGroup(workerGroupSize, workerFactory);
 
     NettyServerBuilder nettyServerBuilder = NettyServerBuilder.forPort(port)
         .maxInboundMessageSize(maxSize)
         .bossEventLoopGroup(bossEventLoopGroup)
         .workerEventLoopGroup(workerEventLoopGroup)
-        .channelType(NioServerSocketChannel.class)
+        .channelType(EpollServerSocketChannel.class)
         .executor(readExecutors)
+        .withChildOption(EpollChannelOption.EPOLL_MODE, EpollMode.LEVEL_TRIGGERED)
+        .withChildOption(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT)
+        .withChildOption(ChannelOption.WRITE_BUFFER_HIGH_WATER_MARK,
+            32768)
+        .withChildOption(ChannelOption.WRITE_BUFFER_LOW_WATER_MARK, 8196)
         .addService(ServerInterceptors.intercept(
             new OzoneManagerServiceGrpc(omTranslator,
                 delegationTokenMgr,
                 omServerConfig),
-            new ClientAddressServerInterceptor(),
-            new GrpcMetricsServerResponseInterceptor(omS3gGrpcMetrics),
-            new GrpcMetricsServerRequestInterceptor(omS3gGrpcMetrics)))
+            new ClientAddressServerInterceptor()))
+        .flowControlWindow(2097152)
+        .keepAliveTime(30, TimeUnit.SECONDS)
+        .keepAliveTimeout(30, TimeUnit.SECONDS)
+        .maxInboundMessageSize(4194304)
         .addTransportFilter(
             new GrpcMetricsServerTransportFilter(omS3gGrpcMetrics));
 

@@ -96,7 +96,7 @@ public class OzoneManagerServiceGrpc extends OzoneManagerServiceImplBase {
   }
 
   private static byte[] getClientId() {
-    return UUIDUtil.randomUUIDBytes();
+    return new byte[] {1, 2, 3};
   }
 
 }

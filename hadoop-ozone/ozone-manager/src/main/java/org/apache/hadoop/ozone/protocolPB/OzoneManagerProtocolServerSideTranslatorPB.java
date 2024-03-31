@@ -139,9 +139,7 @@ public class OzoneManagerProtocolServerSideTranslatorPB implements OzoneManagerP
       OMRequest request) throws ServiceException {
     OMRequest validatedRequest;
     try {
-      validatedRequest = captureLatencyNs(
-          perfMetrics.getValidateRequestLatencyNs(),
-          () -> requestValidations.validateRequest(request));
+      validatedRequest = request;
     } catch (Exception e) {
       if (e instanceof OMException) {
         return createErrorResponse(request, (OMException) e);
@@ -152,8 +150,7 @@ public class OzoneManagerProtocolServerSideTranslatorPB implements OzoneManagerP
     OMResponse response = dispatcher.processRequest(validatedRequest,
         this::processRequest, request.getCmdType(), request.getTraceID());
 
-    return captureLatencyNs(perfMetrics.getValidateResponseLatencyNs(),
-        () -> requestValidations.validateResponse(request, response));
+    return requestValidations.validateResponse(request, response);
   }
 
   @VisibleForTesting
