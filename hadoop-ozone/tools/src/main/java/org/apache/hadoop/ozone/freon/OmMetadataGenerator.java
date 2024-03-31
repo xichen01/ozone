@@ -92,6 +92,8 @@ public class OmMetadataGenerator extends BaseFreonGenerator
     EMPTY_RPC,
     INFO_BUCKET,
     INFO_VOLUME,
+    EMPTY_RPC_WRITE_RATIS,
+    EMPTY_RPC,
     MIXED,
   }
 
@@ -436,6 +438,12 @@ public class OmMetadataGenerator extends BaseFreonGenerator
       break;
     case INFO_VOLUME:
       getMetrics().timer(operation.name()).time(() -> ozoneManagerClient.getVolumeInfo(volumeName));
+      break;
+    case EMPTY_RPC:
+      getMetrics().timer(operation.name()).time(() -> ozoneManagerClient.echoRPCReq(new byte[] {}, 0, false));
+      break;
+    case EMPTY_RPC_WRITE_RATIS:
+      getMetrics().timer(operation.name()).time(() -> ozoneManagerClient.echoRPCReq(new byte[] {}, 0, true));
       break;
     default:
       throw new IllegalStateException("Unrecognized write command " +
