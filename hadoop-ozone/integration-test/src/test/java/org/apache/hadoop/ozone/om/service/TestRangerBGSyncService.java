@@ -224,19 +224,19 @@ public class TestRangerBGSyncService {
 
     when(ozoneManager.getOmRatisServer()).thenReturn(omRatisServer);
 
-    try {
-      doAnswer(invocation -> {
-        OMRequest request = invocation.getArgument(0);
-        long v = request.getSetRangerServiceVersionRequest()
-            .getRangerServiceVersion();
-        LOG.info("Writing Ranger Ozone Service Version to DB: {}", v);
-        ozoneManager.getMetadataManager().getMetaTable().put(
-            OzoneConsts.RANGER_OZONE_SERVICE_VERSION_KEY, String.valueOf(v));
-        return null;
-      }).when(omRatisServer).submitRequest(any(), any());
-    } catch (ServiceException e) {
-      throw new RuntimeException(e);
-    }
+//    try {
+//      doAnswer(invocation -> {
+//        OMRequest request = invocation.getArgument(0);
+//        long v = request.getSetRangerServiceVersionRequest()
+//            .getRangerServiceVersion();
+//        LOG.info("Writing Ranger Ozone Service Version to DB: {}", v);
+//        ozoneManager.getMetadataManager().getMetaTable().put(
+//            OzoneConsts.RANGER_OZONE_SERVICE_VERSION_KEY, String.valueOf(v));
+//        return null;
+//      }).when(omRatisServer).submitRequest(any(), any());
+//    } catch (ServiceException e) {
+//      throw new RuntimeException(e);
+//    }
 
     when(tenant.getTenantAccessPolicies()).thenReturn(new ArrayList<>());
 

@@ -147,6 +147,7 @@ enum Type {
   ListStatusLight = 129;
   GetSnapshotInfo = 130;
   RenameSnapshot = 131;
+  Requests = 10000;
 }
 
 enum SafeMode {
@@ -157,6 +158,8 @@ enum SafeMode {
 }
 
 message OMRequest {
+  optional int64 sequenceNumber = 10000;
+  repeated OMRequest requests = 10001;
   required Type cmdType = 1; // Type of the command
 
   // A string that identifies this command, we generate  Trace ID in Ozone
@@ -286,6 +289,8 @@ message OMRequest {
 }
 
 message OMResponse {
+  optional int64 sequenceNumber = 10000;
+  repeated OMResponse responses = 10001;
   required Type cmdType = 1; // Type of the command
 
   // A string that identifies this command, we generate  Trace ID in Ozone

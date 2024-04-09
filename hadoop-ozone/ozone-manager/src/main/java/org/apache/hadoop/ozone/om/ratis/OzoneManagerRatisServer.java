@@ -36,6 +36,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.TimeUnit;
@@ -64,6 +65,7 @@ import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.OMReque
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.OMResponse;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.Status;
 
+import org.apache.hadoop.util.UUIDUtil;
 import org.apache.ratis.conf.Parameters;
 import org.apache.ratis.conf.RaftProperties;
 import org.apache.ratis.grpc.GrpcConfigKeys;
@@ -254,13 +256,48 @@ public final class OzoneManagerRatisServer {
    * @return OMResponse - response returned to the client.
    * @throws ServiceException
    */
-  public OMResponse submitRequest(OMRequest omRequest) throws ServiceException {
+  public CompletableFuture<RaftClientReply> submitRequests(OMRequest omRequest) throws ServiceException {
+    // In prepare mode, only prepare and cancel requests are allowed to go
+    // through.
+    RaftClientRequest raftClientRequest = createRaftRequest(omRequest);
+    return submitRequestToRatisAsync(raftClientRequest);
+  }
+
+//  /**
+//   * Submit request to Ratis server.
+//   * @param omRequest
+//   * @return OMResponse - response returned to the client.
+//   * @throws ServiceException
+//   */
+//  public CompletableFuture<RaftClientReply> submitRequests(OMRequest omRequest) throws ServiceException {
+//    // In prepare mode, only prepare and cancel requests are allowed to go
+//    // through.
+//    RaftClientRequest raftClientRequest = createRaftRequest(omRequest);
+//    RaftClientReply raftClientReply = submitRequestToRatis(raftClientRequest);
+//    return createOmResponse(omRequest, raftClientReply);
+//  }
+
+  /**
+   * Submit request to Ratis server.
+   * @param omRequest
+   * @return OMResponse - response returned to the client.
+   * @throws ServiceException
+   */
+  public OMResponse submitRequest(OMRequest omRequest, OzoneManagerBatchWriter batchWriter) throws ServiceException {
     // In prepare mode, only prepare and cancel requests are allowed to go
     // through.
     if (ozoneManager.getPrepareState().requestAllowed(omRequest.getCmdType())) {
-      RaftClientRequest raftClientRequest = createRaftRequest(omRequest);
-      RaftClientReply raftClientReply = submitRequestToRatis(raftClientRequest);
-      return createOmResponse(omRequest, raftClientReply);
+//      RaftClientRequest raftClientRequest = createRaftRequest(omRequest);
+      CompletableFuture<OMResponse> future = batchWriter.appendEntry(omRequest);
+//      RaftClientReply raftClientReply = submitRequestToRatis(raftClientRequest);
+      try {
+        return future.get();
+      } catch (InterruptedException e) {
+        throw new RuntimeException(e);
+      } catch (ExecutionException e) {
+        throw new RuntimeException(e);
+      }
+//      return createOmResponse(omRequest, raftClientReply);
     } else {
       LOG.info("Rejecting write request on OM {} because it is in prepare " +
           "mode: {}", ozoneManager.getOMNodeId(),
@@ -278,18 +315,32 @@ public final class OzoneManagerRatisServer {
     }
   }
 
-  private OMResponse createOmResponse(OMRequest omRequest,
+  public OMResponse createOmResponse(OMRequest omRequest,
       RaftClientReply raftClientReply) throws ServiceException {
     return captureLatencyNs(
         perfMetrics.getCreateOmResponseLatencyNs(),
         () -> createOmResponseImpl(omRequest, raftClientReply));
   }
 
-  private RaftClientReply submitRequestToRatis(
+//  private OMResponses createOmResponses(OMRequests omRequests,
+//      RaftClientReply raftClientReply) throws ServiceException {
+//    return captureLatencyNs(
+//        perfMetrics.getCreateOmResponseLatencyNs(),
+//        () -> createOmResponsesImpl(omRequests, raftClientReply));
+//  }
+
+  public RaftClientReply submitRequestToRatis(
       RaftClientRequest raftClientRequest) throws ServiceException {
     return captureLatencyNs(
         perfMetrics.getSubmitToRatisLatencyNs(),
         () -> submitRequestToRatisImpl(raftClientRequest));
+  }
+
+  public CompletableFuture<RaftClientReply> submitRequestToRatisAsync(
+      RaftClientRequest raftClientRequest) throws ServiceException {
+    return captureLatencyNs(
+        perfMetrics.getSubmitToRatisLatencyNs(),
+        () -> submitRequestToRatisImplAsunc(raftClientRequest));
   }
 
   private RaftClientRequest createRaftRequest(OMRequest omRequest) {
@@ -297,6 +348,12 @@ public final class OzoneManagerRatisServer {
         perfMetrics.getCreateRatisRequestLatencyNs(),
         () -> createRaftRequestImpl(omRequest));
   }
+
+//  private RaftClientRequest createRaftRequests(OMRequests omRequests) {
+//    return captureLatencyNs(
+//        perfMetrics.getCreateRatisRequestLatencyNs(),
+//        () -> createRaftRequestsImpl(omRequests));
+//  }
 
   /**
    * API used internally from OzoneManager Server when requests needs to be
@@ -322,6 +379,15 @@ public final class OzoneManagerRatisServer {
       throw new ServiceException(ex.getMessage(), ex);
     } catch (InterruptedException ex) {
       Thread.currentThread().interrupt();
+      throw new ServiceException(ex.getMessage(), ex);
+    }
+  }
+
+  private CompletableFuture<RaftClientReply> submitRequestToRatisImplAsunc(
+      RaftClientRequest raftClientRequest) throws ServiceException {
+    try {
+      return server.submitClientRequestAsync(raftClientRequest);
+    } catch (IOException ex) {
       throw new ServiceException(ex.getMessage(), ex);
     }
   }
@@ -454,9 +520,11 @@ public final class OzoneManagerRatisServer {
       Preconditions.checkArgument(Server.getClientId() != DUMMY_CLIENT_ID);
       Preconditions.checkArgument(Server.getCallId() != INVALID_CALL_ID);
     }
+//    LOG.info("getClientId {}", Server.getClientId());
+//    LOG.info("getCallId {}", Server.getCallId());
     return RaftClientRequest.newBuilder()
         .setClientId(
-            ClientId.valueOf(UUID.nameUUIDFromBytes(Server.getClientId())))
+            ClientId.valueOf(UUID.nameUUIDFromBytes(UUIDUtil.randomUUIDBytes())))
         .setServerId(server.getId())
         .setGroupId(raftGroupId)
         .setCallId(Server.getCallId())
@@ -466,6 +534,30 @@ public final class OzoneManagerRatisServer {
         .setType(RaftClientRequest.writeRequestType())
         .build();
   }
+
+//  /**
+//   * Create Write RaftClient request from OMRequest.
+//   * @param omRequests
+//   * @return RaftClientRequest - Raft Client request which is submitted to
+//   * ratis server.
+//   */
+//  private RaftClientRequest createRaftRequestsImpl(OMRequests omRequests) {
+//    if (!ozoneManager.isTestSecureOmFlag()) {
+//      Preconditions.checkArgument(Server.getClientId() != DUMMY_CLIENT_ID);
+//      Preconditions.checkArgument(Server.getCallId() != INVALID_CALL_ID);
+//    }
+//    return RaftClientRequest.newBuilder()
+//        .setClientId(
+//            ClientId.valueOf(UUID.nameUUIDFromBytes(Server.getClientId())))
+//        .setServerId(server.getId())
+//        .setGroupId(raftGroupId)
+//        .setCallId(Server.getCallId())
+//        .setMessage(
+//            Message.valueOf(
+//                OMRatisHelper.convertRequestsToByteString(omRequests)))
+//        .setType(RaftClientRequest.writeRequestType())
+//        .build();
+//  }
 
   /**
    * Process the raftClientReply and return OMResponse.
@@ -536,6 +628,60 @@ public final class OzoneManagerRatisServer {
     // TODO: Still need to handle RaftRetry failure exception and
     //  NotReplicated exception.
   }
+
+
+//
+//  /**
+//   * Process the raftClientReply and return OMResponse.
+//   * @param omRequest
+//   * @param reply
+//   * @return OMResponse - response which is returned to client.
+//   * @throws ServiceException
+//   */
+//  private OMResponses createOmResponsesImpl(OMRequests omRequest,
+//      RaftClientReply reply) throws ServiceException {
+//    // NotLeader exception is thrown only when the raft server to which the
+//    // request is submitted is not the leader. This can happen first time
+//    // when client is submitting request to OM.
+//
+//    if (!reply.isSuccess()) {
+//      NotLeaderException notLeaderException = reply.getNotLeaderException();
+//      if (notLeaderException != null) {
+//        throw new ServiceException(
+//            OMNotLeaderException.convertToOMNotLeaderException(
+//                notLeaderException, getRaftPeerId()));
+//      }
+//
+//      LeaderNotReadyException leaderNotReadyException =
+//          reply.getLeaderNotReadyException();
+//      if (leaderNotReadyException != null) {
+//        throw new ServiceException(new OMLeaderNotReadyException(
+//            leaderNotReadyException.getMessage()));
+//      }
+//
+//      StateMachineException stateMachineException =
+//          reply.getStateMachineException();
+//      if (stateMachineException != null) {
+//        OMResponses.Builder omResponse = OMResponses.newBuilder()
+//        return omResponse.build();
+//      }
+//    }
+//
+//    try {
+//      return OMRatisHelper.getOMResponsesFromRaftClientReply(reply);
+//    } catch (IOException ex) {
+//      if (ex.getMessage() != null) {
+//        throw new ServiceException(ex.getMessage(), ex);
+//      } else {
+//        throw new ServiceException(ex);
+//      }
+//    }
+//
+//    // TODO: Still need to handle RaftRetry failure exception and
+//    //  NotReplicated exception.
+//  }
+//
+//
 
   /**
    * Convert exception to {@link OzoneManagerProtocolProtos.Status}.

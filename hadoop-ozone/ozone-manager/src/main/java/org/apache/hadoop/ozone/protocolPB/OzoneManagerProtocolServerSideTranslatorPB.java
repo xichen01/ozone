@@ -40,6 +40,8 @@ import org.apache.hadoop.ozone.om.OzoneManager;
 import org.apache.hadoop.ozone.om.exceptions.OMException;
 import org.apache.hadoop.ozone.om.exceptions.OMLeaderNotReadyException;
 import org.apache.hadoop.ozone.om.protocolPB.OzoneManagerProtocolPB;
+import org.apache.hadoop.ozone.om.ratis.OzoneManagerBatchWriter;
+import org.apache.hadoop.ozone.om.ratis.OzoneManagerBatchWriter.RaftJournalWriter;
 import org.apache.hadoop.ozone.om.ratis.OzoneManagerDoubleBuffer;
 import org.apache.hadoop.ozone.om.ratis.OzoneManagerRatisServer;
 import org.apache.hadoop.ozone.om.ratis.OzoneManagerRatisServer.RaftServerStatus;
@@ -89,7 +91,8 @@ public class OzoneManagerProtocolServerSideTranslatorPB implements OzoneManagerP
 
   private OMRequest lastRequestToSubmit;
 
-
+  private volatile OzoneManagerBatchWriter batchWriter;
+  private volatile boolean started = false;
   /**
    * Constructs an instance of the server handler.
    *
@@ -179,6 +182,14 @@ public class OzoneManagerProtocolServerSideTranslatorPB implements OzoneManagerP
       ServiceException {
     OMClientRequest omClientRequest = null;
     boolean s3Auth = false;
+    if (!started) {
+      synchronized (this) {
+        if (!started) {
+          this.batchWriter = new OzoneManagerBatchWriter(new RaftJournalWriter(omRatisServer));
+          started = true;
+        }
+      }
+    }
 
     try {
       if (request.hasS3Authentication()) {
@@ -249,7 +260,7 @@ public class OzoneManagerProtocolServerSideTranslatorPB implements OzoneManagerP
    */
   private OMResponse submitRequestToRatis(OMRequest request)
       throws ServiceException {
-    return omRatisServer.submitRequest(request);
+    return omRatisServer.submitRequest(request, batchWriter);
   }
 
   private OMResponse submitReadRequestToOM(OMRequest request)

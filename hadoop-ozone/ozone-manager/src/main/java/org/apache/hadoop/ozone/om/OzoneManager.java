@@ -1265,7 +1265,7 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
             reconfigureServerProtocol);
 
     return startRpcServer(configuration, omNodeRpcAddr, omService,
-        omInterService, omAdminService, reconfigureService, handlerCount);
+        omInterService, omAdminService, reconfigureService, 500);
   }
 
   /**

@@ -88,6 +88,8 @@ public class OmMetadataGenerator extends BaseFreonGenerator
     READ_KEY,
     LIST_KEYS,
     LIST_KEYS_LIGHT,
+    EMPTY_RPC_WRITE_RATIS,
+    EMPTY_RPC,
     INFO_BUCKET,
     INFO_VOLUME,
     MIXED,
@@ -421,6 +423,12 @@ public class OmMetadataGenerator extends BaseFreonGenerator
         }
         return null;
       });
+      break;
+    case EMPTY_RPC:
+      getMetrics().timer(operation.name()).time(() -> ozoneManagerClient.echoRPCReq(new byte[] {}, 0, false));
+      break;
+    case EMPTY_RPC_WRITE_RATIS:
+      getMetrics().timer(operation.name()).time(() -> ozoneManagerClient.echoRPCReq(new byte[] {}, 0, true));
       break;
     case INFO_BUCKET:
       getMetrics().timer(operation.name()).time(() -> ozoneManagerClient.getBucketInfo(volumeName, bucketName)

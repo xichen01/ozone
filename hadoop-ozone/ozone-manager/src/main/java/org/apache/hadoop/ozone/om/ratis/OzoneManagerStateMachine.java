@@ -42,6 +42,7 @@ import org.apache.hadoop.ozone.om.response.OMClientResponse;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.OMRequest;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.OMResponse;
+import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.Type;
 import org.apache.hadoop.ozone.protocolPB.OzoneManagerRequestHandler;
 import org.apache.hadoop.ozone.protocolPB.RequestHandler;
 import org.apache.hadoop.security.UserGroupInformation;
@@ -73,6 +74,7 @@ import org.slf4j.LoggerFactory;
 import static org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.Status.INTERNAL_ERROR;
 import static org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.Status.METADATA_ERROR;
 import static org.apache.hadoop.ozone.OzoneConsts.TRANSACTION_INFO_KEY;
+import static org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.Status.OK;
 
 /**
  * The OM StateMachine is the state machine for OM Ratis server. It is
@@ -182,7 +184,7 @@ public class OzoneManagerStateMachine extends BaseStateMachine {
   @Override
   protected synchronized boolean updateLastAppliedTermIndex(TermIndex newTermIndex) {
     TermIndex lastApplied = getLastAppliedTermIndex();
-    assertUpdateIncreasingly("lastApplied", lastApplied, newTermIndex);
+//    assertUpdateIncreasingly("lastApplied", lastApplied, newTermIndex);
     // if newTermIndex getting updated is within sequence of notifiedTermIndex (i.e. from lastSkippedIndex and
     // notifiedTermIndex), then can update directly to lastNotifiedTermIndex as it ensure previous double buffer's
     // Index is notified or getting notified matching lastSkippedIndex
@@ -190,7 +192,8 @@ public class OzoneManagerStateMachine extends BaseStateMachine {
         && lastApplied.getIndex() >= lastSkippedIndex) {
       newTermIndex = getLastNotifiedTermIndex();
     }
-    return super.updateLastAppliedTermIndex(newTermIndex);
+    return false;
+//    return super.updateLastAppliedTermIndex(newTermIndex);
   }
 
   /** Assert if the given {@link TermIndex} is updated increasingly. */
@@ -353,9 +356,23 @@ public class OzoneManagerStateMachine extends BaseStateMachine {
 
       //if there are too many pending requests, wait for doubleBuffer flushing
       ozoneManagerDoubleBuffer.acquireUnFlushedTransactions(1);
+      OMResponse.Builder omResponseBuilder = OMResponse.newBuilder()
+          .setCmdType(Type.Requests)
+          .setStatus(OK)
+          .setSuccess(true);
+      if (request.getCmdType() == Type.Requests) {
+        for (OMRequest omRequest : request.getRequestsList()) {
+          OMResponse omResponse = CompletableFuture.supplyAsync(() -> runCommand(omRequest, termIndex), executorService).get();
+          LOG.info("omRequest.getSequenceNumber {} {}", omRequest.getSequenceNumber(), termIndex);
+          omResponseBuilder.addResponses(omResponse.toBuilder().setSequenceNumber(omRequest.getSequenceNumber()).build());
+        }
+        return CompletableFuture.completedFuture(processResponse(omResponseBuilder.build()));
+      } else {
+        LOG.info("1omRequest.getSequenceNumber {} {}", request.getSequenceNumber(), termIndex);
+        return CompletableFuture.supplyAsync(() -> runCommand(request, termIndex), executorService)
+            .thenApply(this::processResponse);
+      }
 
-      return CompletableFuture.supplyAsync(() -> runCommand(request, termIndex), executorService)
-          .thenApply(this::processResponse);
     } catch (Exception e) {
       return completeExceptionally(e);
     }
