@@ -1,11 +1,9 @@
 package org.apache.hadoop.ozone.om.ratis;
 
 import com.google.common.util.concurrent.SettableFuture;
-import com.google.protobuf.ServiceException;
 import javafx.util.Pair;
 import net.jcip.annotations.ThreadSafe;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
-import org.apache.hadoop.ipc.ProtobufRpcEngine;
 import org.apache.hadoop.ipc.Server;
 import org.apache.hadoop.ipc.Server.Call;
 import org.apache.hadoop.ozone.ClientVersion;
@@ -24,6 +22,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
@@ -53,6 +53,9 @@ public final class OzoneManagerBatchWriter {
 
   private final OzoneManagerRatisServer ratisServer;
 
+  private ExecutorService executorService;  // Thread pool for handling futures
+
+
 
   /**
    * Represents the count of entries written to the journal writer.
@@ -81,6 +84,7 @@ public final class OzoneManagerBatchWriter {
   private Call call;
 
   public OzoneManagerBatchWriter(RaftJournalWriter journalWriter) {
+    this.executorService = Executors.newFixedThreadPool(10);
     this.journalWriter = journalWriter;
     mQueue = new ConcurrentLinkedQueue<>();
     journalWriterFutures = journalWriter.getFutures();
@@ -116,28 +120,27 @@ public final class OzoneManagerBatchWriter {
   private void doFutures() {
     LOG.info("doFutures start");
     while (!Thread.currentThread().isInterrupted()) {
-//      (CompletableFuture<RaftClientReply> journalWriterFuture : journalWriterFutures) {
-      CompletableFuture<RaftClientReply> journalWriterFuture = null;
       try {
-        journalWriterFuture = journalWriterFutures.take();
+        final CompletableFuture<RaftClientReply> journalWriterFuture = journalWriterFutures.take();
+        executorService.submit(() -> processFuture(journalWriterFuture));
       } catch (InterruptedException e) {
         throw new RuntimeException(e);
       }
-      try {
-        LOG.info("doFutures1 journalWriterFuture");
-        RaftClientReply reply = journalWriterFuture.get();
-//        LOG.info("doFutures2 journalWriterFuture");
-        OMResponse omResponse = ratisServer.createOmResponse(
-            OMRequest.newBuilder().setClientId("Client-123411115")
-                .setCmdType(Type.UnknownCommand).build(), reply);
-        for (OMResponse response : omResponse.getResponsesList()) {
-//            LOG.info("SequenceNumber {}", response.getSequenceNumber());
-          CompletableFuture<OMResponse> future = jResponseFutures.remove(response.getSequenceNumber());
-          future.complete(response);
-        }
-      } catch (Exception e) {
-        e.printStackTrace();
+    }
+  }
+
+  private void processFuture(CompletableFuture<RaftClientReply> future) {
+    try {
+      RaftClientReply reply = future.get();
+      OMResponse omResponse = ratisServer.createOmResponse(
+          OMRequest.newBuilder().setClientId("Client-123411115")
+              .setCmdType(Type.UnknownCommand).build(), reply);
+      for (OMResponse response : omResponse.getResponsesList()) {
+        CompletableFuture<OMResponse> responseFuture = jResponseFutures.remove(response.getSequenceNumber());
+        responseFuture.complete(response);
       }
+    } catch (Exception e) {
+      LOG.error("Error processing future", e);
     }
   }
 
