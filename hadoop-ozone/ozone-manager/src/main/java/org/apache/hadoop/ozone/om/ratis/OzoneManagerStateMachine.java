@@ -363,7 +363,7 @@ public class OzoneManagerStateMachine extends BaseStateMachine {
       if (request.getCmdType() == Type.Requests) {
         for (OMRequest omRequest : request.getRequestsList()) {
           OMResponse omResponse = CompletableFuture.supplyAsync(() -> runCommand(omRequest, termIndex), executorService).get();
-          LOG.info("omRequest.getSequenceNumber {} {}", omRequest.getSequenceNumber(), termIndex);
+//          LOG.info("omRequest.getSequenceNumber {} {}", omRequest.getSequenceNumber(), termIndex);
           omResponseBuilder.addResponses(omResponse.toBuilder().setSequenceNumber(omRequest.getSequenceNumber()).build());
         }
         return CompletableFuture.completedFuture(processResponse(omResponseBuilder.build()));

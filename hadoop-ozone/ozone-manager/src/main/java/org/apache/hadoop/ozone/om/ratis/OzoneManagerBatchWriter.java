@@ -1,7 +1,7 @@
 package org.apache.hadoop.ozone.om.ratis;
 
 import com.google.common.util.concurrent.SettableFuture;
-import javafx.util.Pair;
+import org.apache.commons.lang3.tuple.Pair;
 import net.jcip.annotations.ThreadSafe;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.ipc.Server;
@@ -112,7 +112,7 @@ public final class OzoneManagerBatchWriter {
 //    LOG.info("appendEntry getCallId {}", ProtobufRpcEngine.Server.getCallId());
     CompletableFuture<OMResponse> future = new CompletableFuture<>();
     mCounter.incrementAndGet();
-    mQueue.offer(new Pair<>(entry, future));
+    mQueue.offer(Pair.of(entry, future));
     mFlushSemaphore.release();
     return future;
   }
@@ -296,7 +296,7 @@ public final class OzoneManagerBatchWriter {
 //      LOG.info("write SequenceNumber {}", nextId);
       responseFutures.put(nextId, entry.getValue());
       if (oMRequestsBuilder.getRequestsCount() > maxBatchSize) {
-        LOG.info("max batch {}", maxBatchSize);
+//        LOG.info("max batch {}", maxBatchSize);
         flush();
       }
     }
@@ -317,7 +317,7 @@ public final class OzoneManagerBatchWriter {
               .setVersion(ClientVersion.CURRENT_VERSION)
               .setClientId(ClientId.randomId().toString());
           OMRequest omRequests = oMRequestsBuilder.build();
-          LOG.info("Submit requests count {}", omRequests.getRequestsCount());
+//          LOG.info("Submit requests count {}", omRequests.getRequestsCount());
           CompletableFuture<RaftClientReply> future = ratisServer.submitRequests(omRequests);
 //          LOG.info("Submit requests2 count {}", omRequests.getRequestsCount());
           futures.add(future);
