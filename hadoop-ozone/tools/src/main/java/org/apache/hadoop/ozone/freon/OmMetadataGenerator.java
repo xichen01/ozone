@@ -92,8 +92,6 @@ public class OmMetadataGenerator extends BaseFreonGenerator
     EMPTY_RPC,
     INFO_BUCKET,
     INFO_VOLUME,
-    EMPTY_RPC_WRITE_RATIS,
-    EMPTY_RPC,
     MIXED,
   }
 
@@ -162,11 +160,13 @@ public class OmMetadataGenerator extends BaseFreonGenerator
   private FreonReplicationOptions replication;
 
   private OzoneManagerProtocol ozoneManagerClient;
+  private ArrayList<OzoneManagerProtocol> ozoneManagerClients;
 
   private ThreadLocal<OmKeyArgs.Builder> omKeyArgsBuilder;
 
   private OzoneBucket bucket;
-
+  private ArrayList<OzoneBucket> buckets;
+  private int clientCnt = 5;
   private ContentGenerator contentGenerator;
   private final byte[] readBuffer = new byte[4096];
   private ReplicationConfig replicationConfig;
@@ -188,12 +188,31 @@ public class OmMetadataGenerator extends BaseFreonGenerator
     omKeyArgsBuilder = ThreadLocal.withInitial(this::createKeyArgsBuilder);
     OzoneConfiguration conf = createOzoneConfiguration();
     replicationConfig = replication.fromParamsOrConfig(conf);
+    ozoneManagerClients = new ArrayList<>(clientCnt);
+    buckets = new ArrayList<>(clientCnt);
 
-    try (OzoneClient rpcClient = createOzoneClient(omServiceID, conf)) {
+    try (OzoneClient rpcClient = createOzoneClient(omServiceID, conf);
+         OzoneClient rpcClient1 = createOzoneClient(omServiceID, conf);
+         OzoneClient rpcClient2 = createOzoneClient(omServiceID, conf);
+         OzoneClient rpcClient3 = createOzoneClient(omServiceID, conf);
+         OzoneClient rpcClient4 = createOzoneClient(omServiceID, conf)) {
       ensureVolumeAndBucketExist(rpcClient, volumeName, bucketName);
-      ozoneManagerClient = createOmClient(conf, omServiceID);
-      bucket = rpcClient.getObjectStore().getVolume(volumeName)
-          .getBucket(bucketName);
+      ozoneManagerClients.add(createOmClient(conf, omServiceID));
+      ozoneManagerClients.add(createOmClient(conf, omServiceID));
+      ozoneManagerClients.add(createOmClient(conf, omServiceID));
+      ozoneManagerClients.add(createOmClient(conf, omServiceID));
+      ozoneManagerClients.add(createOmClient(conf, omServiceID));
+
+      buckets.add(rpcClient.getObjectStore().getVolume(volumeName)
+          .getBucket(bucketName));
+      buckets.add(rpcClient1.getObjectStore().getVolume(volumeName)
+          .getBucket(bucketName));
+      buckets.add(rpcClient2.getObjectStore().getVolume(volumeName)
+          .getBucket(bucketName));
+      buckets.add(rpcClient3.getObjectStore().getVolume(volumeName)
+          .getBucket(bucketName));
+      buckets.add(rpcClient4.getObjectStore().getVolume(volumeName)
+          .getBucket(bucketName));
       runTests(this::applyOperation);
     } finally {
       if (ozoneManagerClient != null) {
@@ -326,6 +345,8 @@ public class OmMetadataGenerator extends BaseFreonGenerator
   }
 
   private void applyOperation(long counter) throws Exception {
+    OzoneManagerProtocol ozoneManagerClient = ozoneManagerClients.get((int)counter % clientCnt);
+    OzoneBucket bucket = buckets.get((int)counter % clientCnt);
     OmKeyArgs keyArgs;
     final long threadSeqId = getThreadSequenceId();
     String startKeyName;
@@ -438,12 +459,6 @@ public class OmMetadataGenerator extends BaseFreonGenerator
       break;
     case INFO_VOLUME:
       getMetrics().timer(operation.name()).time(() -> ozoneManagerClient.getVolumeInfo(volumeName));
-      break;
-    case EMPTY_RPC:
-      getMetrics().timer(operation.name()).time(() -> ozoneManagerClient.echoRPCReq(new byte[] {}, 0, false));
-      break;
-    case EMPTY_RPC_WRITE_RATIS:
-      getMetrics().timer(operation.name()).time(() -> ozoneManagerClient.echoRPCReq(new byte[] {}, 0, true));
       break;
     default:
       throw new IllegalStateException("Unrecognized write command " +
