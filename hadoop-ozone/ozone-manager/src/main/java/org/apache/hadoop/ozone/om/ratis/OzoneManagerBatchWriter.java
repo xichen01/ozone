@@ -54,6 +54,7 @@ public final class OzoneManagerBatchWriter {
   private ExecutorService executorService;  // Thread pool for handling futures
   private ExecutorService doflushsExecutor;  // Thread pool for handling futures
   private ExecutorService doFuturesExecutor;  // Thread pool for handling futures
+  private ConcurrentLinkedQueue<Pair<OMRequest, CompletableFuture<OMResponse>>> allQUeue;  // Thread pool for handling futures
 
   // TODO what is mJournalSinks??
   /**
@@ -70,17 +71,18 @@ public final class OzoneManagerBatchWriter {
   private int doflushsExecutorCnt;
 
   public OzoneManagerBatchWriter(OzoneManagerRatisServer ratisServer) {
-    this.executorService = Executors.newFixedThreadPool(10);
+    this.executorService = Executors.newFixedThreadPool(200);
     this.ratisServer = ratisServer;
-    doflushsExecutorCnt = 5;
+    doflushsExecutorCnt = 1;
     queues = new ArrayList<>();
     this.doflushsExecutor = Executors.newFixedThreadPool(doflushsExecutorCnt);
     this.doFuturesExecutor = Executors.newFixedThreadPool(doflushsExecutorCnt);
     call = Server.getCurCall().get();
+    ConcurrentLinkedQueue<Pair<OMRequest, CompletableFuture<OMResponse>>> queue = new ConcurrentLinkedQueue<>();
+    allQUeue = queue;
     for (int i = 0; i < doflushsExecutorCnt; i++) {
       RaftJournalWriter journalWriter = new RaftJournalWriter(ratisServer);
-      final ConcurrentLinkedQueue<Pair<OMRequest, CompletableFuture<OMResponse>>> queue = new ConcurrentLinkedQueue<>();
-      queues.add(queue);
+//      queues.add(queue);
       doflushsExecutor.submit(() -> doFlush(queue, journalWriter), "BatchWriterThread-%d");
       doFuturesExecutor.submit(() -> doFutures(journalWriter), "FuturesThread-%d");
     }
@@ -102,7 +104,8 @@ public final class OzoneManagerBatchWriter {
 //    LOG.info("appendEntry getClientId {}", ProtobufRpcEngine.Server.getClientId());
 //    LOG.info("appendEntry getCallId {}", ProtobufRpcEngine.Server.getCallId());
     CompletableFuture<OMResponse> future = new CompletableFuture<>();
-    queues.get((int)(mCounter.incrementAndGet() % doflushsExecutorCnt)).add(Pair.of(entry, future));
+//    queues.get((int)(mCounter.incrementAndGet() % doflushsExecutorCnt)).add(Pair.of(entry, future));
+    allQUeue.add(Pair.of(entry, future));
     mFlushSemaphore.release();
     return future;
   }

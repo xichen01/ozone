@@ -9,7 +9,7 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  * <p>
  * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,WITHOUT
+ * distributed under the License is distributed on an "AS IS" BASIS,WITHOUTa
  * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
  * License for the specific language governing permissions and limitations under
  * the License.
@@ -356,17 +356,10 @@ public class OzoneManagerStateMachine extends BaseStateMachine {
 
       //if there are too many pending requests, wait for doubleBuffer flushing
       ozoneManagerDoubleBuffer.acquireUnFlushedTransactions(1);
-      OMResponse.Builder omResponseBuilder = OMResponse.newBuilder()
-          .setCmdType(Type.Requests)
-          .setStatus(OK)
-          .setSuccess(true);
+
       if (request.getCmdType() == Type.Requests) {
-        for (OMRequest omRequest : request.getRequestsList()) {
-          OMResponse omResponse = CompletableFuture.supplyAsync(() -> runCommand(omRequest, termIndex), executorService).get();
-//          LOG.info("omRequest.getSequenceNumber {} {}", omRequest.getSequenceNumber(), termIndex);
-          omResponseBuilder.addResponses(omResponse.toBuilder().setSequenceNumber(omRequest.getSequenceNumber()).build());
-        }
-        return CompletableFuture.completedFuture(processResponse(omResponseBuilder.build()));
+        return CompletableFuture.supplyAsync(() ->
+            runCommandBatch(request, termIndex), executorService).thenApply(this::processResponse);
       } else {
         LOG.info("1omRequest.getSequenceNumber {} {}", request.getSequenceNumber(), termIndex);
         return CompletableFuture.supplyAsync(() -> runCommand(request, termIndex), executorService)
@@ -376,6 +369,19 @@ public class OzoneManagerStateMachine extends BaseStateMachine {
     } catch (Exception e) {
       return completeExceptionally(e);
     }
+  }
+
+  OMResponse runCommandBatch(OMRequest omRequest, TermIndex termIndex) {
+    OMResponse.Builder omResponseBuilder = OMResponse.newBuilder()
+        .setCmdType(Type.Requests)
+        .setStatus(OK)
+        .setSuccess(true);
+    for (OMRequest request : omRequest.getRequestsList()) {
+      OMResponse omResponse = runCommand(request, termIndex);
+      omResponseBuilder.addResponses(omResponse.toBuilder().setSequenceNumber(request.getSequenceNumber()).build());
+    }
+
+    return omResponseBuilder.build();
   }
 
   private Message processResponse(OMResponse omResponse) {
