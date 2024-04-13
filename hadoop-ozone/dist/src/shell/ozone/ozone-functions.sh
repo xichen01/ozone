@@ -2190,13 +2190,13 @@ function ozone_daemon_handler
       ozone_verify_piddir
       ozone_verify_logdir
       ozone_status_daemon "${daemon_pidfile}"
-      if [[ $? == 0  ]]; then
-        ozone_error "${daemonname} is running as process $(cat "${daemon_pidfile}").  Stop it first."
-        exit 1
-      else
+#      if [[ $? == 0  ]]; then
+#        ozone_error "${daemonname} is running as process $(cat "${daemon_pidfile}").  Stop it first."
+#        exit 1
+#      else
         # stale pid file, so just remove it and continue on
-        rm -f "${daemon_pidfile}" >/dev/null 2>&1
-      fi
+      rm -f "${daemon_pidfile}" >/dev/null 2>&1
+#      fi
       ##COMPAT  - differenticate between --daemon start and nothing
       # "nothing" shouldn't detach
       if [[ "$daemonmode" = "default" ]]; then
