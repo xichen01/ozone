@@ -185,7 +185,7 @@ public class OzoneManagerProtocolServerSideTranslatorPB implements OzoneManagerP
     if (!started) {
       synchronized (this) {
         if (!started) {
-          this.batchWriter = new OzoneManagerBatchWriter(new RaftJournalWriter(omRatisServer));
+          this.batchWriter = new OzoneManagerBatchWriter(omRatisServer);
           started = true;
         }
       }

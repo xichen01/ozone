@@ -17,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -46,55 +47,45 @@ public final class OzoneManagerBatchWriter {
 
   private final Set<FlushTicket> mTicketSet = new ConcurrentHashSet<>();
 
-  private final RaftJournalWriter journalWriter;
-
   private final long mFlushBatchTimeNs;
-  private final LinkedBlockingQueue<CompletableFuture<RaftClientReply>> journalWriterFutures;
 
   private final OzoneManagerRatisServer ratisServer;
 
   private ExecutorService executorService;  // Thread pool for handling futures
-
-
-
-  /**
-   * Represents the count of entries written to the journal writer.
-   * This counter is only accessed by the dedicated journal thread.
-   * Invariant: {@code mWriteCounter >= mFlushCounter}
-   */
-  private long mWriteCounter;
-  private final ConcurrentHashMap<Long, CompletableFuture<OMResponse>>
-      jResponseFutures;
-  private final ConcurrentLinkedQueue<Pair<OMRequest, CompletableFuture<OMResponse>>> mQueue;
+  private ExecutorService doflushsExecutor;  // Thread pool for handling futures
+  private ExecutorService doFuturesExecutor;  // Thread pool for handling futures
 
   // TODO what is mJournalSinks??
   /**
    * Dedicated thread for writing and flushing entries in journal queue.
    * It goes over the {@code mTicketList} after every flush session and releases waiters.
    */
-  private Thread mFlushThread = new Thread(this::doFlush,
-      "SingleOzoneManagerBatchWriterThread");
-  private Thread mFutureThread = new Thread(this::doFutures,
-      "SingleOzoneManagerdoFuturesThread");
-
+  private ArrayList<ConcurrentLinkedQueue<Pair<OMRequest, CompletableFuture<OMResponse>>>> queues;
   /**
    * Control flag that is used to instruct flush thread to exit.
    */
   private volatile boolean mStopFlushing = false;
   private Call call;
 
-  public OzoneManagerBatchWriter(RaftJournalWriter journalWriter) {
+  private int doflushsExecutorCnt;
+
+  public OzoneManagerBatchWriter(OzoneManagerRatisServer ratisServer) {
     this.executorService = Executors.newFixedThreadPool(10);
-    this.journalWriter = journalWriter;
-    mQueue = new ConcurrentLinkedQueue<>();
-    journalWriterFutures = journalWriter.getFutures();
-    jResponseFutures = journalWriter.getResponseFutures();
-    ratisServer = journalWriter.getRatisServer();
+    this.ratisServer = ratisServer;
+    doflushsExecutorCnt = 5;
+    queues = new ArrayList<>();
+    this.doflushsExecutor = Executors.newFixedThreadPool(doflushsExecutorCnt);
+    this.doFuturesExecutor = Executors.newFixedThreadPool(doflushsExecutorCnt);
     call = Server.getCurCall().get();
+    for (int i = 0; i < doflushsExecutorCnt; i++) {
+      RaftJournalWriter journalWriter = new RaftJournalWriter(ratisServer);
+      final ConcurrentLinkedQueue<Pair<OMRequest, CompletableFuture<OMResponse>>> queue = new ConcurrentLinkedQueue<>();
+      queues.add(queue);
+      doflushsExecutor.submit(() -> doFlush(queue, journalWriter), "BatchWriterThread-%d");
+      doFuturesExecutor.submit(() -> doFutures(journalWriter), "FuturesThread-%d");
+    }
     mCounter = new AtomicLong(0);
     mFlushCounter = new AtomicLong(0);
-    mFlushThread.start();
-    mFutureThread.start();
     mFlushBatchTimeNs =
         Long.parseLong(conf.get(MASTER_JOURNAL_FLUSH_BATCH_TIME_US, "100000")) *
             1000;
@@ -111,32 +102,31 @@ public final class OzoneManagerBatchWriter {
 //    LOG.info("appendEntry getClientId {}", ProtobufRpcEngine.Server.getClientId());
 //    LOG.info("appendEntry getCallId {}", ProtobufRpcEngine.Server.getCallId());
     CompletableFuture<OMResponse> future = new CompletableFuture<>();
-    mCounter.incrementAndGet();
-    mQueue.offer(Pair.of(entry, future));
+    queues.get((int)(mCounter.incrementAndGet() % doflushsExecutorCnt)).add(Pair.of(entry, future));
     mFlushSemaphore.release();
     return future;
   }
 
-  private void doFutures() {
-    LOG.info("doFutures start");
+  private void doFutures(RaftJournalWriter journalWriter) {
+    LOG.info("doFutures start {}", Thread.currentThread());
     while (!Thread.currentThread().isInterrupted()) {
       try {
-        final CompletableFuture<RaftClientReply> journalWriterFuture = journalWriterFutures.take();
-        executorService.submit(() -> processFuture(journalWriterFuture));
+        final CompletableFuture<RaftClientReply> journalWriterFuture = journalWriter.takeFuture();
+        executorService.submit(() -> processFuture(journalWriterFuture, journalWriter));
       } catch (InterruptedException e) {
         throw new RuntimeException(e);
       }
     }
   }
 
-  private void processFuture(CompletableFuture<RaftClientReply> future) {
+  private void processFuture(CompletableFuture<RaftClientReply> future, RaftJournalWriter journalWriter) {
     try {
       RaftClientReply reply = future.get();
       OMResponse omResponse = ratisServer.createOmResponse(
           OMRequest.newBuilder().setClientId("Client-123411115")
               .setCmdType(Type.UnknownCommand).build(), reply);
       for (OMResponse response : omResponse.getResponsesList()) {
-        CompletableFuture<OMResponse> responseFuture = jResponseFutures.remove(response.getSequenceNumber());
+        CompletableFuture<OMResponse> responseFuture = journalWriter.getFuture(response.getSequenceNumber());
         responseFuture.complete(response);
       }
     } catch (Exception e) {
@@ -144,11 +134,12 @@ public final class OzoneManagerBatchWriter {
     }
   }
 
-  private void doFlush() {
+  private void doFlush(ConcurrentLinkedQueue<Pair<OMRequest, CompletableFuture<OMResponse>>> queue,
+      RaftJournalWriter journalWriter) {
     Server.getCurCall().set(call);
-    LOG.info("doFlush start");
+    LOG.info("doFlush start {}", Thread.currentThread());
     while (!mStopFlushing) {
-      while (mQueue.isEmpty() &&
+      while (queue.isEmpty() &&
           !mStopFlushing) { // TODO, return immediately when the mQueue be inserted a request
         try {
           // Wait for permit up to batch timeout.
@@ -167,10 +158,11 @@ public final class OzoneManagerBatchWriter {
       try {
         long startTime = System.nanoTime();
         // Write pending entries to journal.
-        while (!mQueue.isEmpty()) {
+//        while (!queue.isEmpty()) {
+        while (true) {
           // Get, but do not remove, the head entry.
           Pair<OMRequest, CompletableFuture<OMResponse>> entry =
-              mQueue.peek(); // TODO requestAllowed
+              queue.peek(); // TODO requestAllowed
           if (entry == null) {
             // No more entries in the queue. Break write session.
 //            LOG.info("entry == null");
@@ -178,8 +170,7 @@ public final class OzoneManagerBatchWriter {
           }
           journalWriter.write(entry);
           // Remove the head entry, after the entry was successfully written.
-          mQueue.poll();
-          mWriteCounter++;
+          queue.poll();
 
 //          if (((System.nanoTime() - startTime) >= mFlushBatchTimeNs) &&
 //              !mStopFlushing) {
@@ -190,7 +181,7 @@ public final class OzoneManagerBatchWriter {
 //          }
         }
 //        LOG.info("doflush enfore");
-        journalWriter.flush();
+//        journalWriter.flush();
       } catch (IOException e) {
 
       }
@@ -218,17 +209,15 @@ public final class OzoneManagerBatchWriter {
     // Give a permit for flush thread to run, in case it was blocked on permit.
     mFlushSemaphore.release();
 
-    try {
-      mFlushThread.join();
-      mFutureThread.join();
-    } catch (InterruptedException ie) {
-      Thread.currentThread().interrupt();
-    } finally {
-      mFlushThread = null;
-      mFutureThread = null;
-      // Try to reacquire the permit.
-      mFlushSemaphore.tryAcquire();
-    }
+//    try {
+//
+//    } catch (InterruptedException ie) {
+//      Thread.currentThread().interrupt();
+//    } finally {
+//
+//      // Try to reacquire the permit.
+//      mFlushSemaphore.tryAcquire();
+//    }
   }
 
   /**
@@ -249,15 +238,16 @@ public final class OzoneManagerBatchWriter {
 
     private OMRequest.Builder oMRequestsBuilder;
 
-    public ConcurrentHashMap<Long, CompletableFuture<OMResponse>> getResponseFutures() {
-      return responseFutures;
+    public CompletableFuture<OMResponse> getFuture(long index) {
+      return responseFutures.remove(index);
     }
 
     private final ConcurrentHashMap<Long, CompletableFuture<OMResponse>>
         responseFutures = new ConcurrentHashMap<>();
 
-    public LinkedBlockingQueue<CompletableFuture<RaftClientReply>> getFutures() {
-      return futures;
+    public CompletableFuture<RaftClientReply> takeFuture()
+        throws InterruptedException {
+      return futures.take();
     }
 
     private final LinkedBlockingQueue<CompletableFuture<RaftClientReply>> futures = new LinkedBlockingQueue<>();
@@ -276,11 +266,11 @@ public final class OzoneManagerBatchWriter {
     public RaftJournalWriter(OzoneManagerRatisServer ratisServer) {
       this.ratisServer = ratisServer;
       this.maxBatchSize =
-          Long.parseLong(conf.get(JOURNAL_ENTRY_COUNT_MAX, "50"));
+          Long.parseLong(conf.get(JOURNAL_ENTRY_COUNT_MAX, "5"));
     }
 
 
-    public void write(Pair<OMRequest, CompletableFuture<OMResponse>> entry) throws IOException {
+    public void write(Pair<OMRequest, CompletableFuture<OMResponse>> pair) throws IOException {
 //      LOG.info("write entry {}", entry.getKey().getCmdType());
       if (mClosed) {
         throw new IOException("Writer has been closed");
@@ -290,11 +280,11 @@ public final class OzoneManagerBatchWriter {
         oMRequestsBuilder = OMRequest.newBuilder().setClientId("Client-12345");
       }
       long nextId = mNextSequenceNumberToWrite.getAndIncrement();
-      oMRequestsBuilder.addRequests(entry.getKey().toBuilder()
+      oMRequestsBuilder.addRequests(pair.getKey().toBuilder()
           .setSequenceNumber(nextId)
           .build());
 //      LOG.info("write SequenceNumber {}", nextId);
-      responseFutures.put(nextId, entry.getValue());
+      responseFutures.put(nextId, pair.getValue());
       if (oMRequestsBuilder.getRequestsCount() > maxBatchSize) {
 //        LOG.info("max batch {}", maxBatchSize);
         flush();
@@ -306,20 +296,14 @@ public final class OzoneManagerBatchWriter {
         throw new IOException("Writer has been closed");
       }
       if (oMRequestsBuilder != null) {
-//        LOG.info("flush");
         long flushSN = mNextSequenceNumberToWrite.get() - 1;
         try {
-          // It is ok to submit the same entries multiple times because we de-duplicate by sequence
-          // number when applying them. This could happen if submit fails and we re-submit the same
-          // entry on retry.
           mLastSubmittedSequenceNumber.set(flushSN);
           oMRequestsBuilder.setCmdType(Type.Requests)
               .setVersion(ClientVersion.CURRENT_VERSION)
               .setClientId(ClientId.randomId().toString());
           OMRequest omRequests = oMRequestsBuilder.build();
-//          LOG.info("Submit requests count {}", omRequests.getRequestsCount());
           CompletableFuture<RaftClientReply> future = ratisServer.submitRequests(omRequests);
-//          LOG.info("Submit requests2 count {}", omRequests.getRequestsCount());
           futures.add(future);
           mLastCommittedSequenceNumber.set(flushSN);
         } catch (Exception e) {
