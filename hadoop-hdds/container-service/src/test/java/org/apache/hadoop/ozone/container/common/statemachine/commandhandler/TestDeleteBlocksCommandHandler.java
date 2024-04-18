@@ -318,18 +318,25 @@ public class TestDeleteBlocksCommandHandler {
     handler = new DeleteBlocksCommandHandler(
         container, configuration, dnConf, "");
 
-    // Check if the command status is as expected: PENDING when queue is not full, FAILED when queue is full
-    for (int i = 0; i < blockDeleteQueueLimit + 2; i++) {
-      DeleteBlocksCommand deleteBlocksCommand = new DeleteBlocksCommand(emptyList());
-      context.addCommand(deleteBlocksCommand);
-      handler.handle(deleteBlocksCommand, container, context, mock(SCMConnectionManager.class));
-      CommandStatus cmdStatus = context.getCmdStatus(deleteBlocksCommand.getId());
-      if (i < blockDeleteQueueLimit) {
-        assertEquals(cmdStatus.getStatus(), Status.PENDING);
-      } else {
-        assertEquals(cmdStatus.getStatus(), Status.FAILED);
-        assertEquals(cmdStatus.getProtoBufMessage().getBlockDeletionAck().getResultsCount(), 0);
+    // Pause the DeleteBlockWorker thread to prevent the Blocks inserted into the queue from being taken away.
+    // As a result, an exception cannot be thrown after the number of Blocks exceeds the queue size.
+    handler.setPauseDeleteCmdWorker(true);
+    try {
+      // Check if the command status is as expected: PENDING when queue is not full, FAILED when queue is full
+      for (int i = 0; i < blockDeleteQueueLimit + 2; i++) {
+        DeleteBlocksCommand deleteBlocksCommand = new DeleteBlocksCommand(emptyList());
+        context.addCommand(deleteBlocksCommand);
+        handler.handle(deleteBlocksCommand, container, context, mock(SCMConnectionManager.class));
+        CommandStatus cmdStatus = context.getCmdStatus(deleteBlocksCommand.getId());
+        if (i < blockDeleteQueueLimit) {
+          assertEquals(cmdStatus.getStatus(), Status.PENDING);
+        } else {
+          assertEquals(cmdStatus.getStatus(), Status.FAILED);
+          assertEquals(cmdStatus.getProtoBufMessage().getBlockDeletionAck().getResultsCount(), 0);
+        }
       }
+    } finally {
+      handler.setPauseDeleteCmdWorker(false);
     }
   }
 

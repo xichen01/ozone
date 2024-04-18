@@ -99,6 +99,7 @@ public class DeleteBlocksCommandHandler implements CommandHandler {
   private final BlockDeletingServiceMetrics blockDeleteMetrics;
   private final long tryLockTimeoutMs;
   private final Map<String, SchemaHandler> schemaHandlers;
+  private final DeleteCmdWorker deleteCmdWorker;
 
   public DeleteBlocksCommandHandler(OzoneContainer container,
       ConfigurationSource conf, DatanodeConfiguration dnConf,
@@ -122,7 +123,8 @@ public class DeleteBlocksCommandHandler implements CommandHandler {
     this.deleteCommandQueues =
         new LinkedBlockingQueue<>(dnConf.getBlockDeleteQueueLimit());
     long interval = dnConf.getBlockDeleteCommandWorkerInterval().toMillis();
-    handlerThread = new Daemon(new DeleteCmdWorker(interval));
+    deleteCmdWorker = new DeleteCmdWorker(interval);
+    handlerThread = new Daemon(deleteCmdWorker);
     handlerThread.start();
   }
 
@@ -174,6 +176,11 @@ public class DeleteBlocksCommandHandler implements CommandHandler {
   @Override
   public int getThreadPoolActivePoolSize() {
     return ((ThreadPoolExecutor)executor).getActiveCount();
+  }
+
+  @VisibleForTesting
+  public void setPauseDeleteCmdWorker(boolean pause) {
+    deleteCmdWorker.setPause(pause);
   }
 
   /**
@@ -233,6 +240,7 @@ public class DeleteBlocksCommandHandler implements CommandHandler {
   public final class DeleteCmdWorker implements Runnable {
 
     private long intervalInMs;
+    private boolean pause = false;
 
     public DeleteCmdWorker(long interval) {
       this.intervalInMs = interval;
@@ -243,10 +251,15 @@ public class DeleteBlocksCommandHandler implements CommandHandler {
       return this.intervalInMs;
     }
 
+    @VisibleForTesting
+    private void setPause(boolean pause) {
+      this.pause = pause;
+    }
+
     @Override
     public void run() {
       while (true) {
-        while (!deleteCommandQueues.isEmpty()) {
+        while (!pause && !deleteCommandQueues.isEmpty()) {
           DeleteCmdInfo cmd = deleteCommandQueues.poll();
           try {
             processCmd(cmd);
