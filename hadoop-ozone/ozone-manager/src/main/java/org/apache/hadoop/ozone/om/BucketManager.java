@@ -17,6 +17,7 @@
 package org.apache.hadoop.ozone.om;
 
 import org.apache.hadoop.ozone.om.helpers.OmBucketInfo;
+import org.apache.hadoop.ozone.om.helpers.OmBucketInfoView;
 
 import java.io.IOException;
 import java.util.List;
@@ -32,6 +33,14 @@ public interface BucketManager extends IOzoneAcl {
    * @param bucketName - Name of the Bucket.
    */
   OmBucketInfo getBucketInfo(String volumeName, String bucketName)
+      throws IOException;
+
+  /**
+   * Returns Bucket Information.
+   * @param volumeName - Name of the Volume.
+   * @param bucketName - Name of the Bucket.
+   */
+  OmBucketInfoView getBucketInfoView(String volumeName, String bucketName)
       throws IOException;
 
   /**

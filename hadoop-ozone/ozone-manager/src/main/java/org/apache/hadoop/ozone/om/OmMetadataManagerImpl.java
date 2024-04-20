@@ -65,6 +65,7 @@ import org.apache.hadoop.ozone.om.exceptions.OMException;
 import org.apache.hadoop.ozone.om.exceptions.OMException.ResultCodes;
 import org.apache.hadoop.ozone.om.helpers.ListKeysResult;
 import org.apache.hadoop.ozone.om.helpers.OmBucketInfo;
+import org.apache.hadoop.ozone.om.helpers.OmBucketInfoView;
 import org.apache.hadoop.ozone.om.helpers.OmDBAccessIdInfo;
 import org.apache.hadoop.ozone.om.helpers.OmDBUserPrincipalInfo;
 import org.apache.hadoop.ozone.om.helpers.OmDirectoryInfo;
@@ -448,6 +449,11 @@ public class OmMetadataManagerImpl implements OMMetadataManager,
 
   @Override
   public Table<String, OmBucketInfo> getBucketTable() {
+    return bucketTable;
+  }
+
+  @Override
+  public Table<String, OmBucketInfoView> getBucketTableView() {
     return bucketTable;
   }
 

@@ -24,6 +24,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.apache.hadoop.ozone.OzoneAcl;
 import org.apache.hadoop.ozone.om.exceptions.OMException;
 import org.apache.hadoop.ozone.om.helpers.OmBucketInfo;
+import org.apache.hadoop.ozone.om.helpers.OmBucketInfoView;
 import org.apache.hadoop.ozone.om.helpers.OzoneAclUtil;
 import org.apache.hadoop.ozone.security.acl.IAccessAuthorizer.ACLType;
 import org.apache.hadoop.ozone.security.acl.OzoneObj;
@@ -78,6 +79,38 @@ public class BucketManagerImpl implements BucketManager {
         bucketName);
     try {
       return OzoneManagerUtils.getBucketInfo(metadataManager,
+          volumeName, bucketName);
+    } catch (IOException ex) {
+      if (!(ex instanceof OMException)) {
+        LOG.error("Exception while getting bucket info for bucket: {}",
+            bucketName, ex);
+      }
+      throw ex;
+    } finally {
+      metadataManager.getLock().releaseReadLock(BUCKET_LOCK, volumeName,
+          bucketName);
+    }
+  }
+
+  /**
+   * Retrieve bucket info.
+   * This method does not follow the bucket link and returns only
+   * this bucket properties.
+   *
+   * @param volumeName - Name of the Volume.
+   * @param bucketName - Name of the Bucket.
+   * @return Bucket Information.
+   * @throws IOException
+   */
+  @Override
+  public OmBucketInfoView getBucketInfoView(String volumeName, String bucketName)
+      throws IOException {
+    Preconditions.checkNotNull(volumeName);
+    Preconditions.checkNotNull(bucketName);
+    metadataManager.getLock().acquireReadLock(BUCKET_LOCK, volumeName,
+        bucketName);
+    try {
+      return OzoneManagerUtils.getBucketInfoView(metadataManager,
           volumeName, bucketName);
     } catch (IOException ex) {
       if (!(ex instanceof OMException)) {

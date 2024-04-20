@@ -22,6 +22,7 @@ import org.apache.hadoop.ozone.OzoneConsts;
 import org.apache.hadoop.ozone.om.exceptions.OMException;
 import org.apache.hadoop.ozone.om.helpers.BucketLayout;
 import org.apache.hadoop.ozone.om.helpers.OmBucketInfo;
+import org.apache.hadoop.ozone.om.helpers.OmBucketInfoView;
 import org.apache.hadoop.ozone.security.OzoneTokenIdentifier;
 import org.apache.hadoop.security.token.Token;
 import org.slf4j.Logger;
@@ -74,6 +75,18 @@ public final class OzoneManagerUtils {
     return bucketInfo;
   }
 
+  public static OmBucketInfoView getBucketInfoView(OMMetadataManager metaMgr,
+      String volName,
+      String buckName)
+      throws IOException {
+    String buckKey = metaMgr.getBucketKey(volName, buckName);
+    OmBucketInfoView bucketInfoView = metaMgr.getBucketTableView().getView(buckKey);
+    if (bucketInfoView == null) {
+      reportNotFound(metaMgr, volName, buckName);
+    }
+    return bucketInfoView;
+  }
+
   private static void reportNotFound(OMMetadataManager metaMgr,
                                      String volName,
                                      String buckName)
@@ -116,7 +129,7 @@ public final class OzoneManagerUtils {
    * @return bucket info
    * @throws IOException
    */
-  public static OmBucketInfo getResolvedBucketInfo(
+  public static OmBucketInfoView getResolvedBucketInfo(
       OMMetadataManager metadataManager,
       String volName,
       String buckName)
@@ -137,15 +150,15 @@ public final class OzoneManagerUtils {
    * @throws IOException if the bucket does not exist, if it is a link and
    * there is a loop or the link is pointing to a missing bucket.
    */
-  private static OmBucketInfo resolveBucketInfoLink(
+  private static OmBucketInfoView resolveBucketInfoLink(
       OMMetadataManager metadataManager,
       String volName,
       String buckName,
       Set<Pair<String, String>> visited)
       throws IOException {
 
-    OmBucketInfo buckInfo =
-        getBucketInfo(metadataManager, volName, buckName);
+    OmBucketInfoView buckInfo =
+        getBucketInfoView(metadataManager, volName, buckName);
 
     // If this is a link bucket, we fetch the BucketLayout from the
     // source bucket.

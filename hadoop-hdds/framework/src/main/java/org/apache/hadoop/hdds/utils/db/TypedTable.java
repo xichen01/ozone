@@ -222,14 +222,25 @@ public class TypedTable<KEY, VALUE> implements Table<KEY, VALUE> {
    * @throws IOException when {@link #getFromTable(Object)} throw an exception.
    */
   @Override
+  public VALUE getView(KEY key) throws IOException {
+    return getInternal(key, true);
+  }
+  @Override
   public VALUE get(KEY key) throws IOException {
+    return getInternal(key, false);
+  }
+
+  private VALUE getInternal(KEY key, boolean readOnly) throws IOException {
     // Here the metadata lock will guarantee that cache is not updated for same
     // key during get key.
 
     CacheResult<VALUE> cacheResult =
         cache.lookup(new CacheKey<>(key));
-
     if (cacheResult.getCacheStatus() == EXISTS) {
+      VALUE value = cacheResult.getValue().getCacheValue();
+      if (readOnly && value instanceof ViewProvider) {
+        return ((ViewProvider<VALUE>)value).getReadOnlyView();
+      }
       return valueCodec.copyObject(cacheResult.getValue().getCacheValue());
     } else if (cacheResult.getCacheStatus() == NOT_EXIST) {
       return null;

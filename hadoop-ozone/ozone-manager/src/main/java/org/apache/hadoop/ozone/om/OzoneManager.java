@@ -90,6 +90,7 @@ import org.apache.hadoop.hdds.utils.db.Table;
 import org.apache.hadoop.hdds.utils.db.Table.KeyValue;
 import org.apache.hadoop.hdds.utils.db.TableIterator;
 import org.apache.hadoop.ozone.OzoneManagerVersion;
+import org.apache.hadoop.ozone.om.helpers.OmBucketInfoView;
 import org.apache.hadoop.ozone.om.helpers.SnapshotDiffJob;
 import org.apache.hadoop.ozone.om.lock.OMLockDetails;
 import org.apache.hadoop.ozone.om.ratis_snapshot.OmRatisSnapshotProvider;
@@ -4278,7 +4279,7 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
   public ResolvedBucket resolveBucketLink(Pair<String, String> requested,
       OMClientRequest omClientRequest)
       throws IOException {
-    OmBucketInfo resolved;
+    OmBucketInfoView resolved;
     if (isAclEnabled) {
       resolved = resolveBucketLink(requested, new HashSet<>(),
               omClientRequest.createUGIForApi(),
@@ -4296,7 +4297,7 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
   public ResolvedBucket resolveBucketLink(Pair<String, String> requested,
                                           boolean allowDanglingBuckets)
       throws IOException {
-    OmBucketInfo resolved;
+    OmBucketInfoView resolved;
     if (isAclEnabled) {
       UserGroupInformation ugi = getRemoteUser();
       if (getS3Auth() != null) {
@@ -4328,7 +4329,7 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
    * @throws IOException (most likely OMException) if ACL check fails, bucket is
    *   not found, loop is detected in the links, etc.
    */
-  private OmBucketInfo resolveBucketLink(
+  private OmBucketInfoView resolveBucketLink(
       Pair<String, String> volumeAndBucket,
       Set<Pair<String, String>> visited,
       UserGroupInformation userGroupInformation,
@@ -4338,9 +4339,9 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
 
     String volumeName = volumeAndBucket.getLeft();
     String bucketName = volumeAndBucket.getRight();
-    OmBucketInfo info;
+    OmBucketInfoView info;
     try {
-      info = bucketManager.getBucketInfo(volumeName, bucketName);
+      info = bucketManager.getBucketInfoView(volumeName, bucketName);
     } catch (OMException e) {
       LOG.warn("Bucket {} not found in volume {}", bucketName, volumeName);
       if (allowDanglingBuckets) {

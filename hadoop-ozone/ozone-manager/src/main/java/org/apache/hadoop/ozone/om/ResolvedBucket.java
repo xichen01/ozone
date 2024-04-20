@@ -20,7 +20,7 @@ package org.apache.hadoop.ozone.om;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.hadoop.ozone.OzoneConsts;
 import org.apache.hadoop.ozone.om.helpers.BucketLayout;
-import org.apache.hadoop.ozone.om.helpers.OmBucketInfo;
+import org.apache.hadoop.ozone.om.helpers.OmBucketInfoView;
 import org.apache.hadoop.ozone.om.helpers.OmKeyArgs;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.KeyArgs;
 import org.apache.hadoop.ozone.security.acl.OzoneObj;
@@ -46,7 +46,7 @@ public class ResolvedBucket {
   private final BucketLayout bucketLayout;
 
   public ResolvedBucket(String requestedVolume, String requestedBucket,
-      OmBucketInfo resolved) {
+      OmBucketInfoView resolved) {
     this.requestedVolume = requestedVolume;
     this.requestedBucket = requestedBucket;
     if (resolved != null) {

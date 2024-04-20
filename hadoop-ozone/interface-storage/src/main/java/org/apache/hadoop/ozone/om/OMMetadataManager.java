@@ -32,6 +32,7 @@ import org.apache.hadoop.hdds.utils.db.cache.CacheValue;
 import org.apache.hadoop.ozone.common.BlockGroup;
 import org.apache.hadoop.ozone.om.helpers.ListKeysResult;
 import org.apache.hadoop.ozone.om.helpers.OmBucketInfo;
+import org.apache.hadoop.ozone.om.helpers.OmBucketInfoView;
 import org.apache.hadoop.ozone.om.helpers.OmDBAccessIdInfo;
 import org.apache.hadoop.ozone.om.helpers.OmDBUserPrincipalInfo;
 import org.apache.hadoop.ozone.om.helpers.OmDirectoryInfo;
@@ -348,6 +349,13 @@ public interface OMMetadataManager extends DBStoreHAManager {
    * @return BucketTable.
    */
   Table<String, OmBucketInfo> getBucketTable();
+
+  /**
+   * Returns the BucketTable.
+   *
+   * @return BucketTable.
+   */
+  Table<String, OmBucketInfoView> getBucketTableView();
 
   /**
    * Returns the KeyTable.

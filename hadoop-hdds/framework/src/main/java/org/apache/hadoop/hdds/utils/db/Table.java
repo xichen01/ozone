@@ -84,6 +84,18 @@ public interface Table<KEY, VALUE> extends AutoCloseable {
    */
   VALUE get(KEY key) throws IOException;
 
+  /**
+   * Returns the value mapped to the given key in byte array or returns null
+   * if the key is not found.
+   *
+   * @param key metadata key
+   * @return value in byte array or null if the key is not found.
+   * @throws IOException on Failure
+   */
+  default VALUE getView(KEY key) throws IOException {
+    return get(key);
+  }
+
 
   /**
    * Skip checking cache and get the value mapped to the given key in byte

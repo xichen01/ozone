@@ -37,7 +37,7 @@ import org.apache.hadoop.ozone.om.OmMetadataManagerImpl;
 import org.apache.hadoop.ozone.om.OzoneManagerUtils;
 import org.apache.hadoop.ozone.om.exceptions.OMException;
 import org.apache.hadoop.ozone.om.helpers.BucketLayout;
-import org.apache.hadoop.ozone.om.helpers.OmBucketInfo;
+import org.apache.hadoop.ozone.om.helpers.OmBucketInfoView;
 import org.apache.hadoop.ozone.om.helpers.WithParentObjectId;
 import org.apache.hadoop.ozone.om.helpers.OmDirectoryInfo;
 import org.kohsuke.MetaInfServices;
@@ -147,7 +147,7 @@ public class PrefixParser implements Callable<Void>, SubcommandWithParent {
 
     parserStats[Types.VOLUME.ordinal()]++;
     // First get the info about the bucket
-    OmBucketInfo info;
+    OmBucketInfoView info;
     try {
       info = OzoneManagerUtils
           .getResolvedBucketInfo(metadataManager, vol, buck);
