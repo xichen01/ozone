@@ -245,7 +245,11 @@ public class TypedTable<KEY, VALUE> implements Table<KEY, VALUE> {
     } else if (cacheResult.getCacheStatus() == NOT_EXIST) {
       return null;
     } else {
-      return getFromTable(key);
+      VALUE value = getFromTable(key);
+      if (readOnly && value instanceof ViewProvider) {
+        return ((ViewProvider<VALUE>)value).getReadOnlyView();
+      }
+      return value;
     }
   }
 
