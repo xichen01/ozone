@@ -23,6 +23,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.collect.ImmutableSet;
@@ -64,6 +65,7 @@ import static org.apache.hadoop.ozone.ClientVersion.VERSION_HANDLES_UNKNOWN_DN_P
 @InterfaceStability.Evolving
 public class DatanodeDetails extends NodeImpl implements
     Comparable<DatanodeDetails> {
+  private static final ConcurrentHashMap<UUID, String> UUID_STRING_CACHE = new ConcurrentHashMap<>();
 
   private static final Logger LOG =
       LoggerFactory.getLogger(DatanodeDetails.class);
@@ -100,7 +102,7 @@ public class DatanodeDetails extends NodeImpl implements
   private DatanodeDetails(Builder b) {
     super(b.hostName, b.networkLocation, NetConstants.NODE_COST_DEFAULT);
     uuid = b.id;
-    uuidString = uuid.toString();
+    uuidString = UUID_STRING_CACHE.computeIfAbsent(uuid, UUID::toString);
     threadNamePrefix = HddsUtils.threadNamePrefix(uuidString);
     ipAddress = b.ipAddress;
     hostName = b.hostName;
@@ -127,7 +129,7 @@ public class DatanodeDetails extends NodeImpl implements
         datanodeDetails.getParent(), datanodeDetails.getLevel(),
         datanodeDetails.getCost());
     this.uuid = datanodeDetails.uuid;
-    this.uuidString = uuid.toString();
+    this.uuidString = UUID_STRING_CACHE.computeIfAbsent(uuid, UUID::toString);
     threadNamePrefix = HddsUtils.threadNamePrefix(uuidString);
     this.ipAddress = datanodeDetails.ipAddress;
     this.hostName = datanodeDetails.hostName;
