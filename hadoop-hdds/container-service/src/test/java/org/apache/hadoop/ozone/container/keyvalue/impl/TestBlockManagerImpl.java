@@ -22,6 +22,7 @@ import org.apache.hadoop.conf.StorageUnit;
 import org.apache.hadoop.hdds.client.BlockID;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.datanode.proto.ContainerProtos;
+import org.apache.hadoop.hdds.protocol.datanode.proto.ContainerProtos.MissingBlock;
 import org.apache.hadoop.ozone.OzoneConsts;
 import org.apache.hadoop.ozone.container.common.helpers.BlockData;
 import org.apache.hadoop.ozone.container.common.helpers.ChunkInfo;
@@ -40,11 +41,14 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.anyList;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.mock;
@@ -221,5 +225,49 @@ public class TestBlockManagerImpl {
         keyValueContainer, 1, 10);
     assertNotNull(listBlockData);
     assertEquals(10, listBlockData.size());
+  }
+
+  @ContainerTestVersionInfo.ContainerTest
+  public void testHeadBlocks(ContainerTestVersionInfo versionInfo)
+      throws Exception {
+    initTest(versionInfo);
+    Set<Long> localIds = new HashSet<>();
+    for (long i = 1; i <= 10; i++) {
+      localIds.add(i);
+    }
+    for (long i = 1; i <= 10; i++) {
+      Set<MissingBlock> missingBlocks = blockManager.headBlocks(
+          keyValueContainer, localIds);
+      for (int j = 1; j <= 10; j++) {
+        // Only a block put to DB, the chunk file did not be created
+        // So all the Blocks are missing
+        assertEquals(10, missingBlocks.size());
+        if (j >= i) {
+          assertTrue(missingBlocks.contains(MissingBlock.newBuilder()
+              .setLocalID(j)
+              .setOnDB(false)
+              .setOnDisk(false)
+              .build()));
+        } else {
+          assertTrue(missingBlocks.contains(MissingBlock.newBuilder()
+              .setLocalID(j)
+              .setOnDB(true)
+              .setOnDisk(false)
+              .build()));
+        }
+      }
+      // Only put block to DB
+      putBlock(i);
+    }
+  }
+
+  private void putBlock(long localId) throws Exception {
+    BlockID id = new BlockID(1L, localId);
+    BlockData data = new BlockData(id);
+    List<ContainerProtos.ChunkInfo> chunkList = new ArrayList<>();
+    ChunkInfo info = new ChunkInfo(String.format("%d.data.%d", id.getLocalID(), 0), 0, 1024);
+    chunkList.add(info.getProtoBufMessage());
+    data.setChunks(chunkList);
+    blockManager.putBlock(keyValueContainer, data);
   }
 }
