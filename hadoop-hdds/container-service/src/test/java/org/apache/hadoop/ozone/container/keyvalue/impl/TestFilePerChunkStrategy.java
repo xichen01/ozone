@@ -23,11 +23,15 @@ import org.apache.hadoop.ozone.OzoneConsts;
 import org.apache.hadoop.ozone.common.ChunkBuffer;
 import org.apache.hadoop.ozone.container.common.helpers.ChunkInfo;
 import org.apache.hadoop.ozone.container.common.impl.ContainerLayoutVersion;
+import org.apache.hadoop.ozone.container.common.volume.HddsVolume;
+import org.apache.hadoop.ozone.container.common.volume.VolumeIOStats;
 import org.apache.hadoop.ozone.container.keyvalue.ContainerLayoutTestInfo;
 import org.apache.hadoop.ozone.container.keyvalue.KeyValueContainer;
 import org.apache.hadoop.ozone.container.keyvalue.helpers.ChunkUtils;
 import org.apache.hadoop.ozone.container.keyvalue.interfaces.ChunkManager;
+import org.apache.hadoop.util.PerformanceMetrics;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 import java.io.File;
 
@@ -36,6 +40,7 @@ import static org.apache.hadoop.ozone.container.common.ContainerTestUtils.WRITE_
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 
 /**
  * Test for FilePerChunkStrategy.
@@ -110,9 +115,14 @@ public class TestFilePerChunkStrategy extends CommonChunkManagerTestCases {
         offset, chunkInfo.getLen());
     File file = ContainerLayoutVersion.FILE_PER_CHUNK.getChunkFile(
         container.getContainerData(), blockID, chunkInfo.getChunkName());
+    HddsVolume vol1 = Mockito.mock(HddsVolume.class);
+    VolumeIOStats volumeIOStats = Mockito.mock(VolumeIOStats.class);
+    Mockito.when(volumeIOStats.getMetadataOpLatencyMs(any())).thenReturn(Mockito.mock(
+        PerformanceMetrics.class));
+    Mockito.when(vol1.getVolumeIOStats()).thenReturn(volumeIOStats);
     ChunkUtils.writeData(file,
         ChunkBuffer.wrap(getData()), offset, chunkInfo.getLen(),
-        null, true);
+        vol1, true);
     checkChunkFileCount(1);
     assertTrue(file.exists());
     assertEquals(offset + chunkInfo.getLen(), file.length());

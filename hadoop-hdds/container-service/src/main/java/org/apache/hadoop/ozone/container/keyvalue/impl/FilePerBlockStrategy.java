@@ -32,6 +32,7 @@ import org.apache.hadoop.ozone.container.common.helpers.BlockData;
 import org.apache.hadoop.ozone.container.common.helpers.ChunkInfo;
 import org.apache.hadoop.ozone.container.common.helpers.ContainerMetrics;
 import org.apache.hadoop.ozone.container.common.transport.server.ratis.DispatcherContext;
+import org.apache.hadoop.ozone.container.common.volume.VolumeIOStats;
 import org.apache.hadoop.ozone.container.common.volume.VolumeSet;
 import org.apache.hadoop.ozone.container.keyvalue.KeyValueContainer;
 import org.apache.hadoop.ozone.container.keyvalue.KeyValueContainerData;
@@ -59,9 +60,12 @@ import static org.apache.hadoop.hdds.protocol.datanode.proto.ContainerProtos.Res
 import static org.apache.hadoop.ozone.container.common.impl.ContainerLayoutVersion.FILE_PER_BLOCK;
 import static org.apache.hadoop.ozone.container.common.transport.server.ratis.DispatcherContext.WriteChunkStage.COMMIT_DATA;
 import static org.apache.hadoop.ozone.container.common.utils.StorageVolumeUtil.onFailure;
+import static org.apache.hadoop.ozone.container.common.volume.VolumeIOStats.Operation.DELETE;
 import static org.apache.hadoop.ozone.container.keyvalue.helpers.ChunkUtils.limitReadSize;
 import static org.apache.hadoop.ozone.container.keyvalue.helpers.ChunkUtils.validateChunkForOverwrite;
 import static org.apache.hadoop.ozone.container.keyvalue.helpers.ChunkUtils.verifyChunkFileExists;
+import static org.apache.hadoop.util.MetricUtil.captureLatencyMs;
+import static org.apache.hadoop.util.MetricUtil.captureNoExceptionLatencyMs;
 
 /**
  * This class is for performing chunk related operations.
@@ -146,7 +150,7 @@ public class FilePerBlockStrategy implements ChunkManager {
     FileChannel channel = null;
     boolean overwrite;
     try {
-      channel = files.getChannel(chunkFile, doSyncWrite);
+      channel = files.getChannel(chunkFile, doSyncWrite, volume);
       overwrite = validateChunkForOverwrite(channel, info);
     } catch (IOException e) {
       onFailure(volume);
@@ -231,7 +235,7 @@ public class FilePerBlockStrategy implements ChunkManager {
     Preconditions.checkNotNull(blockID, "Block ID cannot be null.");
 
     final File file = getChunkFile(container, blockID);
-
+    VolumeIOStats volumeIOStats = getVolumeIOStats(container);
     // if the chunk file does not exist, it might have already been deleted.
     // The call might be because of reapply of transactions on datanode
     // restart.
@@ -246,8 +250,14 @@ public class FilePerBlockStrategy implements ChunkManager {
       checkFullDelete(info, file);
     }
 
-    FileUtil.fullyDelete(file);
+    captureNoExceptionLatencyMs(
+        volumeIOStats.getMetadataOpLatencyMs(DELETE),
+        () -> FileUtil.fullyDelete(file));
     LOG.info("Deleted block file: {}", file);
+  }
+
+  private VolumeIOStats getVolumeIOStats(Container container) {
+    return container.getContainerData().getVolume().getVolumeIOStats();
   }
 
   private static File getChunkFile(Container container, BlockID blockID) throws StorageContainerException {
@@ -276,11 +286,12 @@ public class FilePerBlockStrategy implements ChunkManager {
         .removalListener(ON_REMOVE)
         .build();
 
-    public FileChannel getChannel(File file, boolean sync)
+    public FileChannel getChannel(File file, boolean sync, HddsVolume volume)
         throws StorageContainerException {
       try {
-        return files.get(file.getPath(),
-            () -> open(file, sync)).getChannel();
+        return files.get(file.getPath(), () -> captureLatencyMs(
+            volume.getVolumeIOStats().getMetadataOpLatencyMs(VolumeIOStats.Operation.OPEN),
+            () -> open(file, sync))).getChannel();
       } catch (ExecutionException e) {
         if (e.getCause() instanceof IOException) {
           throw new UncheckedIOException((IOException) e.getCause());

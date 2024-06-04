@@ -19,7 +19,6 @@ package org.apache.hadoop.util;
 
 import org.apache.hadoop.metrics2.lib.MetricsRegistry;
 import org.apache.hadoop.metrics2.lib.MutableQuantiles;
-import org.apache.hadoop.metrics2.lib.MutableRate;
 import org.apache.ratis.util.function.CheckedRunnable;
 import org.apache.ratis.util.function.CheckedSupplier;
 
@@ -28,6 +27,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
@@ -38,24 +38,56 @@ public final class MetricUtil {
   }
 
   public static <T, E extends Exception> T captureLatencyNs(
-      MutableRate metric,
+      PerformanceMetrics metric,
       CheckedSupplier<T, E> block) throws E {
-    long start = Time.monotonicNowNanos();
-    try {
-      return block.get();
-    } finally {
-      metric.add(Time.monotonicNowNanos() - start);
-    }
+    return captureLatency(metric, Time::monotonicNowNanos, block);
   }
 
   public static <E extends IOException> void captureLatencyNs(
-      MutableRate metric,
-      CheckedRunnable<E> block) throws IOException {
-    long start = Time.monotonicNowNanos();
-    try {
+      PerformanceMetrics metric,
+      CheckedRunnable<E> block) throws E {
+    captureLatency(metric, Time::monotonicNowNanos, () -> {
       block.run();
+      return null;
+    });
+  }
+
+  public static <T, E extends IOException> T captureLatencyMs(
+      PerformanceMetrics metric,
+      CheckedSupplier<T, E> block) throws E {
+    return captureLatency(metric, Time::monotonicNow, block);
+  }
+
+  public static <E extends IOException> void captureLatencyMs(
+      PerformanceMetrics metric,
+      CheckedRunnable<E> block) throws E {
+    captureLatency(metric, Time::monotonicNow, () -> {
+      block.run();
+      return null;
+    });
+  }
+
+  public static <T, E extends Exception> T captureLatency(
+      PerformanceMetrics metric,
+      Supplier<Long> timeSupplier,
+      CheckedSupplier<T, E> block) throws E {
+    long start = timeSupplier.get();
+    try {
+      return block.get();
     } finally {
-      metric.add(Time.monotonicNowNanos() - start);
+      long end = timeSupplier.get();
+      metric.add(end - start);
+    }
+  }
+
+  public static <T> T captureNoExceptionLatencyMs(
+      PerformanceMetrics metric,
+      Supplier<T> block) {
+    long start = Time.monotonicNow();
+    try {
+      return block.get();
+    } finally {
+      metric.add(Time.monotonicNow() - start);
     }
   }
 

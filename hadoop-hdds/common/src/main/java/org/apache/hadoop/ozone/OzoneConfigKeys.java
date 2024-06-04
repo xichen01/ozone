@@ -676,6 +676,9 @@ public final class OzoneConfigKeys {
   public static final String OZONE_XCEIVER_CLIENT_METRICS_PERCENTILES_INTERVALS_SECONDS_KEY =
       "ozone.xceiver.client.metrics.percentiles.intervals.seconds";
 
+  public static final String OZONE_OM_PERFORMANCE_METRICS_PERCENTILES_INTERVALS_SECONDS_KEY =
+      "ozone.om.performance.metrics.percentiles.intervals.seconds";
+
   public static final String
       OZONE_OM_NETWORK_TOPOLOGY_REFRESH_DURATION =
       "ozone.om.network.topology.refresh.duration";

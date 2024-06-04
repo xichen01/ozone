@@ -44,10 +44,14 @@ import org.apache.commons.io.FileUtils;
 import org.apache.hadoop.ozone.container.metadata.DatanodeStore;
 import org.apache.hadoop.ozone.container.metadata.DatanodeStoreSchemaOneImpl;
 import org.apache.hadoop.ozone.container.metadata.DatanodeStoreSchemaTwoImpl;
+import org.apache.hadoop.util.PerformanceMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static org.apache.hadoop.ozone.OzoneConsts.SCHEMA_V1;
+
+import static org.apache.hadoop.ozone.container.common.volume.VolumeIOStats.Operation.OPEN;
+import static org.apache.hadoop.util.MetricUtil.captureLatencyMs;
 
 /**
  * Class which defines utility methods for KeyValueContainer.
@@ -79,18 +83,19 @@ public final class KeyValueContainerUtil {
    */
   public static void createContainerMetaData(
       File containerMetaDataPath, File chunksPath, File dbFile,
-      String schemaVersion, ConfigurationSource conf) throws IOException {
+      String schemaVersion, ConfigurationSource conf, HddsVolume volume)
+      throws IOException {
     Preconditions.checkNotNull(containerMetaDataPath);
     Preconditions.checkNotNull(conf);
-
-    if (!containerMetaDataPath.mkdirs()) {
+    PerformanceMetrics openMetric = volume.getVolumeIOStats().getMetadataOpLatencyMs(OPEN);
+    if (captureLatencyMs(openMetric, () -> !containerMetaDataPath.mkdirs())) {
       LOG.error("Unable to create directory for metadata storage. Path: {}",
           containerMetaDataPath);
       throw new IOException("Unable to create directory for metadata storage." +
           " Path: " + containerMetaDataPath);
     }
 
-    if (!chunksPath.mkdirs()) {
+    if (captureLatencyMs(openMetric, () -> !chunksPath.mkdirs())) {
       LOG.error("Unable to create chunks directory Container {}",
           chunksPath);
       //clean up container metadata path and metadata db
@@ -159,6 +164,16 @@ public final class KeyValueContainerUtil {
       // Close the DB connection and remove the DB handler from cache
       BlockUtils.removeDB(containerData, conf);
     }
+//    VolumeIOStats volumeIOStats = containerData.getVolume().getVolumeIOStats();
+//    AggregatedMetrics deleteMetric = volumeIOStats.getMetadataOpLatencyMs(DELETE);
+//    // Delete the Container MetaData path.
+//    captureLatencyMs(deleteMetric, () -> FileUtils.deleteDirectory(containerMetaDataPath));
+//
+//    //Delete the Container Chunks Path.
+//    captureLatencyMs(deleteMetric, () -> FileUtils.deleteDirectory(chunksPath));
+//
+//    //Delete Container directory
+//    captureLatencyMs(deleteMetric, () -> FileUtils.deleteDirectory(containerMetaDataPath.getParentFile()));
   }
 
   /**

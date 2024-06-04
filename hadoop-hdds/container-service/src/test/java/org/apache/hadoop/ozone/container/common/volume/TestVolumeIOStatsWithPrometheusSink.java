@@ -17,6 +17,7 @@
  */
 package org.apache.hadoop.ozone.container.common.volume;
 
+import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.server.http.PrometheusMetricsSink;
 import org.apache.hadoop.metrics2.MetricsSystem;
 import org.apache.hadoop.metrics2.lib.DefaultMetricsSystem;
@@ -56,9 +57,9 @@ public class TestVolumeIOStatsWithPrometheusSink {
   public void testMultipleVolumeIOMetricsExist() throws IOException {
     //GIVEN
     VolumeIOStats volumeIOStats1 = new VolumeIOStats("VolumeIOStat1",
-        "vol1/dir");
+        "vol1/dir", new OzoneConfiguration());
     VolumeIOStats volumeIOStat2 = new VolumeIOStats("VolumeIOStat2",
-        "vol2/dir");
+        "vol2/dir", new OzoneConfiguration());
 
     //WHEN
     String writtenMetrics = publishMetricsAndGetOutput();

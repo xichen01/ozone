@@ -16,24 +16,38 @@
  */
 package org.apache.hadoop.ozone.om;
 
+import org.apache.hadoop.hdds.conf.OzoneConfiguration;
+import org.apache.hadoop.metrics2.MetricsCollector;
+import org.apache.hadoop.metrics2.MetricsRecordBuilder;
+import org.apache.hadoop.metrics2.MetricsSource;
 import org.apache.hadoop.metrics2.MetricsSystem;
 import org.apache.hadoop.metrics2.annotation.Metric;
 import org.apache.hadoop.metrics2.lib.DefaultMetricsSystem;
-import org.apache.hadoop.metrics2.lib.MutableRate;
+import org.apache.hadoop.metrics2.lib.MetricsRegistry;
+import org.apache.hadoop.util.PerformanceMetrics;
+
+import static org.apache.hadoop.ozone.OzoneConfigKeys.OZONE_OM_PERFORMANCE_METRICS_PERCENTILES_INTERVALS_SECONDS_KEY;
 
 /**
  * Including OM performance related metrics.
  */
-public class OMPerformanceMetrics {
+public class OMPerformanceMetrics implements MetricsSource {
   private static final String SOURCE_NAME =
       OMPerformanceMetrics.class.getSimpleName();
+  private static MetricsRegistry registry;
 
-  public static OMPerformanceMetrics register() {
+  public static OMPerformanceMetrics register(OzoneConfiguration conf) {
     MetricsSystem ms = DefaultMetricsSystem.instance();
+    registry = new MetricsRegistry(SOURCE_NAME);
+    int[] intervals = conf.getInts(
+        OZONE_OM_PERFORMANCE_METRICS_PERCENTILES_INTERVALS_SECONDS_KEY);
+    OMPerformanceMetrics omPerformanceMetrics = new OMPerformanceMetrics();
+    PerformanceMetrics.initializeMetrics(
+        omPerformanceMetrics, registry, "Ops", "Time", intervals);
     return ms.register(SOURCE_NAME,
-            "OzoneManager Request Performance",
-            new OMPerformanceMetrics());
+        "OzoneManager Request Performance", omPerformanceMetrics);
   }
+
 
   public static void unregister() {
     MetricsSystem ms = DefaultMetricsSystem.instance();
@@ -41,102 +55,102 @@ public class OMPerformanceMetrics {
   }
 
   @Metric(about = "Overall lookupKey in nanoseconds")
-  private MutableRate lookupLatencyNs;
+  private PerformanceMetrics lookupLatencyNs;
 
   @Metric(about = "Read key info from meta in nanoseconds")
-  private MutableRate lookupReadKeyInfoLatencyNs;
+  private PerformanceMetrics lookupReadKeyInfoLatencyNs;
 
   @Metric(about = "Block token generation latency in nanoseconds")
-  private MutableRate lookupGenerateBlockTokenLatencyNs;
+  private PerformanceMetrics lookupGenerateBlockTokenLatencyNs;
 
   @Metric(about = "Refresh location nanoseconds")
-  private MutableRate lookupRefreshLocationLatencyNs;
+  private PerformanceMetrics lookupRefreshLocationLatencyNs;
 
   @Metric(about = "ACLs check nanoseconds")
-  private MutableRate lookupAclCheckLatencyNs;
+  private PerformanceMetrics lookupAclCheckLatencyNs;
 
   @Metric(about = "resolveBucketLink latency nanoseconds")
-  private MutableRate lookupResolveBucketLatencyNs;
+  private PerformanceMetrics lookupResolveBucketLatencyNs;
 
 
   @Metric(about = "Overall getKeyInfo in nanoseconds")
-  private MutableRate getKeyInfoLatencyNs;
+  private PerformanceMetrics getKeyInfoLatencyNs;
 
   @Metric(about = "Read key info from db in getKeyInfo")
-  private MutableRate getKeyInfoReadKeyInfoLatencyNs;
+  private PerformanceMetrics getKeyInfoReadKeyInfoLatencyNs;
 
   @Metric(about = "Block token generation latency in getKeyInfo")
-  private MutableRate getKeyInfoGenerateBlockTokenLatencyNs;
+  private PerformanceMetrics getKeyInfoGenerateBlockTokenLatencyNs;
 
   @Metric(about = "Refresh location latency in getKeyInfo")
-  private MutableRate getKeyInfoRefreshLocationLatencyNs;
+  private PerformanceMetrics getKeyInfoRefreshLocationLatencyNs;
 
   @Metric(about = "ACLs check in getKeyInfo")
-  private MutableRate getKeyInfoAclCheckLatencyNs;
+  private PerformanceMetrics getKeyInfoAclCheckLatencyNs;
 
   @Metric(about = "Sort datanodes latency in getKeyInfo")
-  private MutableRate getKeyInfoSortDatanodesLatencyNs;
+  private PerformanceMetrics getKeyInfoSortDatanodesLatencyNs;
 
   @Metric(about = "resolveBucketLink latency in getKeyInfo")
-  private MutableRate getKeyInfoResolveBucketLatencyNs;
+  private PerformanceMetrics getKeyInfoResolveBucketLatencyNs;
 
   @Metric(about = "s3VolumeInfo latency nanoseconds")
-  private MutableRate s3VolumeContextLatencyNs;
+  private PerformanceMetrics s3VolumeContextLatencyNs;
 
   @Metric(about = "Client requests forcing container info cache refresh")
-  private MutableRate forceContainerCacheRefresh;
+  private PerformanceMetrics forceContainerCacheRefresh;
 
   @Metric(about = "checkAccess latency in nanoseconds")
-  private MutableRate checkAccessLatencyNs;
+  private PerformanceMetrics checkAccessLatencyNs;
 
   @Metric(about = "listKeys latency in nanoseconds")
-  private MutableRate listKeysLatencyNs;
+  private PerformanceMetrics listKeysLatencyNs;
 
   @Metric(about = "Validate request latency in nano seconds")
-  private MutableRate validateRequestLatencyNs;
+  private PerformanceMetrics validateRequestLatencyNs;
 
   @Metric(about = "Validate response latency in nano seconds")
-  private MutableRate validateResponseLatencyNs;
+  private PerformanceMetrics validateResponseLatencyNs;
 
   @Metric(about = "PreExecute latency in nano seconds")
-  private MutableRate preExecuteLatencyNs;
+  private PerformanceMetrics preExecuteLatencyNs;
 
   @Metric(about = "Ratis latency in nano seconds")
-  private MutableRate submitToRatisLatencyNs;
+  private PerformanceMetrics submitToRatisLatencyNs;
 
   @Metric(about = "Convert om request to ratis request nano seconds")
-  private MutableRate createRatisRequestLatencyNs;
+  private PerformanceMetrics createRatisRequestLatencyNs;
 
   @Metric(about = "Convert ratis response to om response nano seconds")
-  private MutableRate createOmResponseLatencyNs;
+  private PerformanceMetrics createOmResponseLatencyNs;
 
   @Metric(about = "Ratis local command execution latency in nano seconds")
-  private MutableRate validateAndUpdateCacheLatencyNs;
+  private PerformanceMetrics validateAndUpdateCacheLatencyNs;
 
   @Metric(about = "ACLs check latency in listKeys")
-  private MutableRate listKeysAclCheckLatencyNs;
+  private PerformanceMetrics listKeysAclCheckLatencyNs;
 
   @Metric(about = "resolveBucketLink latency in listKeys")
-  private MutableRate listKeysResolveBucketLatencyNs;
+  private PerformanceMetrics listKeysResolveBucketLatencyNs;
 
   public void addLookupLatency(long latencyInNs) {
     lookupLatencyNs.add(latencyInNs);
   }
 
-  MutableRate getLookupRefreshLocationLatencyNs() {
+  PerformanceMetrics getLookupRefreshLocationLatencyNs() {
     return lookupRefreshLocationLatencyNs;
   }
 
 
-  MutableRate getLookupGenerateBlockTokenLatencyNs() {
+  PerformanceMetrics getLookupGenerateBlockTokenLatencyNs() {
     return lookupGenerateBlockTokenLatencyNs;
   }
 
-  MutableRate getLookupReadKeyInfoLatencyNs() {
+  PerformanceMetrics getLookupReadKeyInfoLatencyNs() {
     return lookupReadKeyInfoLatencyNs;
   }
 
-  MutableRate getLookupAclCheckLatencyNs() {
+  PerformanceMetrics getLookupAclCheckLatencyNs() {
     return lookupAclCheckLatencyNs;
   }
 
@@ -144,7 +158,7 @@ public class OMPerformanceMetrics {
     s3VolumeContextLatencyNs.add(latencyInNs);
   }
 
-  MutableRate getLookupResolveBucketLatencyNs() {
+  PerformanceMetrics getLookupResolveBucketLatencyNs() {
     return lookupResolveBucketLatencyNs;
   }
 
@@ -152,27 +166,27 @@ public class OMPerformanceMetrics {
     getKeyInfoLatencyNs.add(value);
   }
 
-  MutableRate getGetKeyInfoAclCheckLatencyNs() {
+  PerformanceMetrics getGetKeyInfoAclCheckLatencyNs() {
     return getKeyInfoAclCheckLatencyNs;
   }
 
-  MutableRate getGetKeyInfoGenerateBlockTokenLatencyNs() {
+  PerformanceMetrics getGetKeyInfoGenerateBlockTokenLatencyNs() {
     return getKeyInfoGenerateBlockTokenLatencyNs;
   }
 
-  MutableRate getGetKeyInfoReadKeyInfoLatencyNs() {
+  PerformanceMetrics getGetKeyInfoReadKeyInfoLatencyNs() {
     return getKeyInfoReadKeyInfoLatencyNs;
   }
 
-  MutableRate getGetKeyInfoRefreshLocationLatencyNs() {
+  PerformanceMetrics getGetKeyInfoRefreshLocationLatencyNs() {
     return getKeyInfoRefreshLocationLatencyNs;
   }
 
-  MutableRate getGetKeyInfoResolveBucketLatencyNs() {
+  PerformanceMetrics getGetKeyInfoResolveBucketLatencyNs() {
     return getKeyInfoResolveBucketLatencyNs;
   }
 
-  MutableRate getGetKeyInfoSortDatanodesLatencyNs() {
+  PerformanceMetrics getGetKeyInfoSortDatanodesLatencyNs() {
     return getKeyInfoSortDatanodesLatencyNs;
   }
 
@@ -188,39 +202,69 @@ public class OMPerformanceMetrics {
     listKeysLatencyNs.add(latencyInNs);
   }
 
-  public MutableRate getValidateRequestLatencyNs() {
+  public PerformanceMetrics getValidateRequestLatencyNs() {
     return validateRequestLatencyNs;
   }
 
-  public MutableRate getValidateResponseLatencyNs() {
+  public PerformanceMetrics getValidateResponseLatencyNs() {
     return validateResponseLatencyNs;
   }
 
-  public MutableRate getPreExecuteLatencyNs() {
+  public PerformanceMetrics getPreExecuteLatencyNs() {
     return preExecuteLatencyNs;
   }
 
-  public MutableRate getSubmitToRatisLatencyNs() {
+  public PerformanceMetrics getSubmitToRatisLatencyNs() {
     return submitToRatisLatencyNs;
   }
 
-  public MutableRate getCreateRatisRequestLatencyNs() {
+  public PerformanceMetrics getCreateRatisRequestLatencyNs() {
     return createRatisRequestLatencyNs;
   }
 
-  public MutableRate getCreateOmResponseLatencyNs() {
+  public PerformanceMetrics getCreateOmResponseLatencyNs() {
     return createOmResponseLatencyNs;
   }
 
-  public MutableRate getValidateAndUpdateCacheLatencyNs() {
+  public PerformanceMetrics getValidateAndUpdateCacheLatencyNs() {
     return validateAndUpdateCacheLatencyNs;
   }
 
-  MutableRate getListKeysAclCheckLatencyNs() {
+  PerformanceMetrics getListKeysAclCheckLatencyNs() {
     return listKeysAclCheckLatencyNs;
   }
 
-  MutableRate getListKeysResolveBucketLatencyNs() {
+  PerformanceMetrics getListKeysResolveBucketLatencyNs() {
     return listKeysResolveBucketLatencyNs;
+  }
+
+  @Override
+  public void getMetrics(MetricsCollector collector, boolean all) {
+    MetricsRecordBuilder recordBuilder = collector.addRecord(SOURCE_NAME);
+    lookupLatencyNs.snapshot(recordBuilder, all);
+    lookupReadKeyInfoLatencyNs.snapshot(recordBuilder, all);
+    lookupGenerateBlockTokenLatencyNs.snapshot(recordBuilder, all);
+    lookupRefreshLocationLatencyNs.snapshot(recordBuilder, all);
+    lookupAclCheckLatencyNs.snapshot(recordBuilder, all);
+    lookupResolveBucketLatencyNs.snapshot(recordBuilder, all);
+    getKeyInfoLatencyNs.snapshot(recordBuilder, all);
+    getKeyInfoReadKeyInfoLatencyNs.snapshot(recordBuilder, all);
+    getKeyInfoGenerateBlockTokenLatencyNs.snapshot(recordBuilder, all);
+    getKeyInfoRefreshLocationLatencyNs.snapshot(recordBuilder, all);
+    getKeyInfoAclCheckLatencyNs.snapshot(recordBuilder, all);
+    getKeyInfoResolveBucketLatencyNs.snapshot(recordBuilder, all);
+    s3VolumeContextLatencyNs.snapshot(recordBuilder, all);
+    forceContainerCacheRefresh.snapshot(recordBuilder, all);
+    checkAccessLatencyNs.snapshot(recordBuilder, all);
+    listKeysLatencyNs.snapshot(recordBuilder, all);
+    validateRequestLatencyNs.snapshot(recordBuilder, all);
+    validateResponseLatencyNs.snapshot(recordBuilder, all);
+    preExecuteLatencyNs.snapshot(recordBuilder, all);
+    submitToRatisLatencyNs.snapshot(recordBuilder, all);
+    createRatisRequestLatencyNs.snapshot(recordBuilder, all);
+    createOmResponseLatencyNs.snapshot(recordBuilder, all);
+    validateAndUpdateCacheLatencyNs.snapshot(recordBuilder, all);
+    listKeysAclCheckLatencyNs.snapshot(recordBuilder, all);
+    listKeysResolveBucketLatencyNs.snapshot(recordBuilder, all);
   }
 }

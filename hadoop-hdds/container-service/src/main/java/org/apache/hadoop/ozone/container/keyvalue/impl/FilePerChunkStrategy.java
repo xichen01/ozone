@@ -53,7 +53,9 @@ import java.util.List;
 
 import static org.apache.hadoop.hdds.protocol.datanode.proto.ContainerProtos.Result.UNSUPPORTED_REQUEST;
 import static org.apache.hadoop.ozone.container.common.impl.ContainerLayoutVersion.FILE_PER_CHUNK;
+import static org.apache.hadoop.ozone.container.common.volume.VolumeIOStats.Operation.OPEN;
 import static org.apache.hadoop.ozone.container.keyvalue.helpers.ChunkUtils.limitReadSize;
+import static org.apache.hadoop.util.MetricUtil.captureNoExceptionLatencyMs;
 
 /**
  * This class is for performing chunk related operations.
@@ -314,7 +316,11 @@ public class FilePerChunkStrategy implements ChunkManager {
         // file length is offset + real chunk length; see HDDS-3644
         || info.getLen() + info.getOffset() == chunkFileSize;
     if (allowed) {
-      FileUtil.fullyDelete(chunkFile);
+      HddsVolume hddsVolume = container.getContainerData().getVolume();
+      captureNoExceptionLatencyMs(
+          hddsVolume.getVolumeIOStats().getMetadataOpLatencyMs(OPEN),
+          () -> FileUtil.fullyDelete(chunkFile));
+
       LOG.info("Deleted chunk file {} (size {}) for chunk {}",
           chunkFile, chunkFileSize, info);
     } else {

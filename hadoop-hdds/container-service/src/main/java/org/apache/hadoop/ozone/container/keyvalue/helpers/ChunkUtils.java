@@ -64,6 +64,8 @@ import static org.apache.hadoop.hdds.protocol.datanode.proto.ContainerProtos.Res
 import static org.apache.hadoop.hdds.protocol.datanode.proto.ContainerProtos.Result.UNABLE_TO_FIND_CHUNK;
 import static org.apache.hadoop.hdds.protocol.datanode.proto.ContainerProtos.Result.UNSUPPORTED_REQUEST;
 import static org.apache.hadoop.ozone.container.common.utils.StorageVolumeUtil.onFailure;
+import static org.apache.hadoop.ozone.container.common.volume.VolumeIOStats.Operation.OPEN;
+import static org.apache.hadoop.util.MetricUtil.captureLatencyMs;
 
 import org.apache.ratis.util.function.CheckedFunction;
 import org.slf4j.Logger;
@@ -111,7 +113,7 @@ public final class ChunkUtils {
       throws StorageContainerException {
 
     writeData(data, file.getName(), offset, len, volume,
-        d -> writeDataToFile(file, d, offset, sync));
+        d -> writeDataToFile(file, d, offset, sync, volume));
   }
 
   public static void writeData(FileChannel file, String filename,
@@ -154,14 +156,15 @@ public final class ChunkUtils {
   }
 
   private static long writeDataToFile(File file, ChunkBuffer data,
-      long offset, boolean sync) {
+      long offset, boolean sync, HddsVolume volume) {
     final Path path = file.toPath();
     try {
       return processFileExclusively(path, () -> {
         FileChannel channel = null;
         try {
-          channel = open(path, WRITE_OPTIONS, NO_ATTRIBUTES);
-
+          channel = captureLatencyMs(
+            volume.getVolumeIOStats().getMetadataOpLatencyMs(OPEN),
+            () -> open(path, WRITE_OPTIONS, NO_ATTRIBUTES));
           try (FileLock ignored = channel.lock()) {
             return writeDataToChannel(channel, data, offset);
           }
@@ -213,7 +216,9 @@ public final class ChunkUtils {
 
     try {
       bytesRead = processFileExclusively(path, () -> {
-        try (FileChannel channel = open(path, READ_OPTIONS, NO_ATTRIBUTES);
+        try (FileChannel channel = captureLatencyMs(
+            volume.getVolumeIOStats().getMetadataOpLatencyMs(OPEN),
+            () -> open(path, READ_OPTIONS, NO_ATTRIBUTES));
              FileLock ignored = channel.lock(offset, len, true)) {
           return readMethod.apply(channel);
         } catch (IOException e) {

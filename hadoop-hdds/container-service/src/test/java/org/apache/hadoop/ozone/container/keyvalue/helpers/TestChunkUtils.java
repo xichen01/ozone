@@ -40,11 +40,17 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.hadoop.hdds.scm.container.common.helpers.StorageContainerException;
 import org.apache.hadoop.ozone.common.ChunkBuffer;
 import org.apache.hadoop.ozone.container.common.helpers.ChunkInfo;
+import org.apache.hadoop.ozone.container.common.volume.HddsVolume;
+import org.apache.hadoop.ozone.container.common.volume.VolumeIOStats;
+import org.apache.hadoop.util.PerformanceMetrics;
 import org.apache.ozone.test.GenericTestUtils;
 
 import org.apache.commons.io.FileUtils;
 import org.junit.jupiter.api.Test;
+import static org.mockito.ArgumentMatchers.any;
+
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.Mockito;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -88,7 +94,12 @@ class TestChunkUtils {
     int len = data.limit();
     int offset = 0;
     File file = tempFile.toFile();
-    ChunkUtils.writeData(file, data, offset, len, null, true);
+    HddsVolume vol1 = Mockito.mock(HddsVolume.class);
+    VolumeIOStats volumeIOStats = Mockito.mock(VolumeIOStats.class);
+    Mockito.when(volumeIOStats.getMetadataOpLatencyMs(any())).thenReturn(Mockito.mock(
+        PerformanceMetrics.class));
+    Mockito.when(vol1.getVolumeIOStats()).thenReturn(volumeIOStats);
+    ChunkUtils.writeData(file, data, offset, len, vol1, true);
     int threads = 10;
     ExecutorService executor = new ThreadPoolExecutor(threads, threads,
         0, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
@@ -216,6 +227,11 @@ class TestChunkUtils {
     File nonExistentFile = new File("nosuchfile");
 
     // when
+    HddsVolume vol1 = Mockito.mock(HddsVolume.class);
+    VolumeIOStats volumeIOStats = Mockito.mock(VolumeIOStats.class);
+    Mockito.when(volumeIOStats.getMetadataOpLatencyMs(any())).thenReturn(Mockito.mock(
+        PerformanceMetrics.class));
+    Mockito.when(vol1.getVolumeIOStats()).thenReturn(volumeIOStats);
     StorageContainerException e = assertThrows(
         StorageContainerException.class,
         () -> readData(nonExistentFile, offset, len));

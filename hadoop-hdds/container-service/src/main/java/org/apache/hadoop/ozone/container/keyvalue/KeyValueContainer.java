@@ -196,7 +196,7 @@ public class KeyValueContainer implements Container<KeyValueContainerData> {
           File dbFile = getContainerDBFile();
 
           createContainerMetaData(containerMetaDataPath, chunksPath, dbFile,
-              containerData.getSchemaVersion(), config);
+              containerData.getSchemaVersion(), config, containerData.getVolume());
 
           //Set containerData for the KeyValueContainer.
           containerData.setChunksPath(chunksPath.getPath());
@@ -251,9 +251,9 @@ public class KeyValueContainer implements Container<KeyValueContainerData> {
   @VisibleForTesting
   protected void createContainerMetaData(File containerMetaDataPath,
       File chunksPath, File dbFile, String schemaVersion,
-      ConfigurationSource configuration) throws IOException {
+      ConfigurationSource configuration, HddsVolume volume) throws IOException {
     KeyValueContainerUtil.createContainerMetaData(containerMetaDataPath,
-        chunksPath, dbFile, schemaVersion, configuration);
+        chunksPath, dbFile, schemaVersion, configuration, volume);
   }
 
   /**

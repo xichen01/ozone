@@ -670,7 +670,7 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
         OMMultiTenantManager.checkAndEnableMultiTenancy(this, conf);
 
     metrics = OMMetrics.create();
-    perfMetrics = OMPerformanceMetrics.register();
+    perfMetrics = OMPerformanceMetrics.register(conf);
     // Get admin list
     omStarterUser = UserGroupInformation.getCurrentUser().getShortUserName();
     omAdmins = OzoneAdmins.getOzoneAdmins(omStarterUser, conf);

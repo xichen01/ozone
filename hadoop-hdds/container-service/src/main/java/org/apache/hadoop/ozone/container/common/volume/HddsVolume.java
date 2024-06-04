@@ -119,7 +119,7 @@ public class HddsVolume extends StorageVolume {
     if (!b.getFailedVolume() && getVolumeInfo().isPresent()) {
       this.setState(VolumeState.NOT_INITIALIZED);
       this.volumeIOStats = new VolumeIOStats(b.getVolumeRootStr(),
-          this.getStorageDir().toString());
+          this.getStorageDir().toString(), getConf());
       this.volumeInfoMetrics =
           new VolumeInfoMetrics(b.getVolumeRootStr(), this);
 

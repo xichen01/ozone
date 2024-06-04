@@ -34,8 +34,10 @@ import org.apache.hadoop.ozone.container.common.impl.ContainerSet;
 import org.apache.hadoop.ozone.container.common.interfaces.BlockIterator;
 import org.apache.hadoop.ozone.container.common.interfaces.ContainerDispatcher;
 import org.apache.hadoop.ozone.container.common.interfaces.DBHandle;
+import org.apache.hadoop.ozone.container.common.volume.HddsVolume;
 import org.apache.hadoop.ozone.container.common.volume.MutableVolumeSet;
 import org.apache.hadoop.ozone.container.common.volume.StorageVolume;
+import org.apache.hadoop.ozone.container.common.volume.VolumeIOStats;
 import org.apache.hadoop.ozone.container.common.volume.VolumeSet;
 import org.apache.hadoop.ozone.container.keyvalue.ContainerTestVersionInfo;
 import org.apache.hadoop.ozone.container.keyvalue.KeyValueContainer;
@@ -46,11 +48,13 @@ import org.apache.hadoop.ozone.container.keyvalue.helpers.KeyValueContainerUtil;
 import org.apache.hadoop.ozone.container.metadata.DatanodeStore;
 import org.apache.hadoop.ozone.container.metadata.SchemaOneDeletedBlocksTable;
 import org.apache.hadoop.ozone.container.ozoneimpl.OzoneContainer;
+import org.apache.hadoop.util.PerformanceMetrics;
 import org.apache.ozone.test.GenericTestUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.mockito.Mockito;
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.File;
@@ -573,6 +577,12 @@ public class TestSchemaOneBackwardsCompatibility {
   private ContainerSet makeContainerSet() throws Exception {
     ContainerSet containerSet = new ContainerSet(1000);
     KeyValueContainer container = new KeyValueContainer(newKvData(), conf);
+    HddsVolume vol1 = Mockito.mock(HddsVolume.class);
+    VolumeIOStats volumeIOStats = Mockito.mock(VolumeIOStats.class);
+    Mockito.when(volumeIOStats.getMetadataOpLatencyMs(any())).thenReturn(Mockito.mock(
+        PerformanceMetrics.class));
+    Mockito.when(vol1.getVolumeIOStats()).thenReturn(volumeIOStats);
+    container.getContainerData().setVolume(vol1);
     containerSet.addContainer(container);
 
     return containerSet;

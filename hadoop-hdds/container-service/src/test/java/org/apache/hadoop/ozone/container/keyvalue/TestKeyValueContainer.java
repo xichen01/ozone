@@ -243,14 +243,14 @@ public class TestKeyValueContainer {
       @Override
       protected void createContainerMetaData(File containerMetaDataPath,
           File chunksPath, File dbFile, String schemaVers,
-          ConfigurationSource configuration) throws IOException {
+          ConfigurationSource configuration, HddsVolume volume) throws IOException {
         if (callCount.get() == 0) {
           callCount.incrementAndGet();
           throw new IOException("Injected failure");
         } else {
           callCount.incrementAndGet();
           super.createContainerMetaData(containerMetaDataPath, chunksPath,
-              dbFile, schemaVers, configuration);
+              dbFile, schemaVers, configuration, volume);
         }
       }
     };
