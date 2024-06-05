@@ -81,7 +81,7 @@ class TestChunkUtils {
   static ChunkBuffer readData(File file, long off, long len)
       throws StorageContainerException {
     LOG.info("off={}, len={}", off, len);
-    return ChunkUtils.readData(len, BUFFER_CAPACITY, file, off, null,
+    return ChunkUtils.readData(len, BUFFER_CAPACITY, file, off, getHddsVolume(),
         MAPPED_BUFFER_THRESHOLD);
   }
 
@@ -94,12 +94,7 @@ class TestChunkUtils {
     int len = data.limit();
     int offset = 0;
     File file = tempFile.toFile();
-    HddsVolume vol1 = Mockito.mock(HddsVolume.class);
-    VolumeIOStats volumeIOStats = Mockito.mock(VolumeIOStats.class);
-    Mockito.when(volumeIOStats.getMetadataOpLatencyMs(any())).thenReturn(Mockito.mock(
-        PerformanceMetrics.class));
-    Mockito.when(vol1.getVolumeIOStats()).thenReturn(volumeIOStats);
-    ChunkUtils.writeData(file, data, offset, len, vol1, true);
+    ChunkUtils.writeData(file, data, offset, len, getHddsVolume(), true);
     int threads = 10;
     ExecutorService executor = new ThreadPoolExecutor(threads, threads,
         0, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
@@ -181,7 +176,7 @@ class TestChunkUtils {
     File file = tempFile.toFile();
     int len = data.limit();
     int offset = 0;
-    ChunkUtils.writeData(file, data, offset, len, null, true);
+    ChunkUtils.writeData(file, data, offset, len, getHddsVolume(), true);
 
     final ChunkBuffer chunk = readData(file, offset, len);
     // There should be only one element in readBuffers
@@ -315,5 +310,14 @@ class TestChunkUtils {
       RANDOM.nextBytes(array);
       assertEquals(ByteBuffer.wrap(array, 0, b.remaining()), b);
     }
+  }
+
+  static HddsVolume getHddsVolume() {
+    HddsVolume vol = Mockito.mock(HddsVolume.class);
+    VolumeIOStats volumeIOStats = Mockito.mock(VolumeIOStats.class);
+    Mockito.when(volumeIOStats.getMetadataOpLatencyMs(any())).thenReturn(Mockito.mock(
+        PerformanceMetrics.class));
+    Mockito.when(vol.getVolumeIOStats()).thenReturn(volumeIOStats);
+    return vol;
   }
 }

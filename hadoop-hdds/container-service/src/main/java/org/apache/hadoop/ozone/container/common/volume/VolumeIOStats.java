@@ -35,7 +35,7 @@ import org.apache.hadoop.util.PerformanceMetricsInitializer;
 import java.util.EnumMap;
 import java.util.Map;
 
-import static org.apache.hadoop.hdds.HddsConfigKeys.HDDS_VOLUME_METADATA_OP_METRICS_PERCENTILES_INTERVALS_SECOND_KEY;
+import static org.apache.hadoop.hdds.HddsConfigKeys.HDDS_VOLUME_METADATA_OP_METRICS_PERCENTILES_INTERVALS_SECONDS_KEY;
 
 /**
  * This class is used to track Volume IO stats for each HDDS Volume.
@@ -77,7 +77,7 @@ public class VolumeIOStats implements MetricsSource {
   public VolumeIOStats(String identifier, String storageDirectory, ConfigurationSource conf) {
     this.identifier = identifier;
     this.storageDirectory = storageDirectory;
-    int[] intervals = conf.getInts(HDDS_VOLUME_METADATA_OP_METRICS_PERCENTILES_INTERVALS_SECOND_KEY);
+    int[] intervals = conf.getInts(HDDS_VOLUME_METADATA_OP_METRICS_PERCENTILES_INTERVALS_SECONDS_KEY);
     for (Operation op : Operation.values()) {
       metadataOpLatencyMs.put(op, PerformanceMetricsInitializer.getMetrics(
           new MetricsRegistry(op.name()),

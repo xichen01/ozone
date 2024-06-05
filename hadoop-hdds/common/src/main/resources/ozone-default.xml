@@ -204,10 +204,17 @@
     </description>
   </property>
   <property>
-    <name>hdds.volume.metadata.op.metrics.percentiles.intervals.second.key</name>
+    <name>hdds.volume.metadata.op.metrics.percentiles.intervals.seconds</name>
     <value/>
     <tag>OZONE, CONTAINER, VOLUME, PERFORMANCE</tag>
-    <description>Specifies the interval in seconds for the rollover of volume metadata operation
+    <description>Specifies the interval in seconds for the rollover of Datanode Volume metadata operation
+      MutableQuantiles metrics. Setting this interval equal to the metrics sampling time ensures
+      more detailed metrics.
+    </description>
+    <name>ozone.om.performance.metrics.percentiles.intervals.seconds</name>
+    <value/>
+    <tag>OZONE, OM, PERFORMANCE</tag>
+    <description>Specifies the interval in seconds for the rollover of om metadata operation
       MutableQuantiles metrics. Setting this interval equal to the metrics sampling time ensures
       more detailed metrics.
     </description>

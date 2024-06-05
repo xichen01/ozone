@@ -406,6 +406,6 @@ public final class HddsConfigKeys {
   public static final String HDDS_DATANODE_SLOW_OP_WARNING_THRESHOLD_DEFAULT =
       "500ms";
 
-  public static final String HDDS_VOLUME_METADATA_OP_METRICS_PERCENTILES_INTERVALS_SECOND_KEY =
-      "hdds.volume.metadata.op.metrics.percentiles.intervals.second.key";
+  public static final String HDDS_VOLUME_METADATA_OP_METRICS_PERCENTILES_INTERVALS_SECONDS_KEY =
+      "hdds.volume.metadata.op.metrics.percentiles.intervals.seconds";
 }
