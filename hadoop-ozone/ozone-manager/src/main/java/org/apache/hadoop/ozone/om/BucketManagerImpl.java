@@ -96,11 +96,12 @@ public class BucketManagerImpl implements BucketManager {
                                         String startBucket,
                                         String bucketPrefix,
                                         int maxNumOfBuckets,
-                                        boolean hasSnapshot)
+                                        boolean hasSnapshot,
+                                        String userName)
       throws IOException {
     Preconditions.checkNotNull(volumeName);
     return metadataManager.listBuckets(
-        volumeName, startBucket, bucketPrefix, maxNumOfBuckets, hasSnapshot);
+        volumeName, startBucket, bucketPrefix, maxNumOfBuckets, hasSnapshot, userName);
 
   }
 

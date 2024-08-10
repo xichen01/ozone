@@ -82,6 +82,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.doReturn;
@@ -285,7 +286,7 @@ public class TestOmMetrics {
     // inject exception to test for Failure Metrics on the read path
     doThrow(exception).when(mockBm).getBucketInfo(any(), any());
     doThrow(exception).when(mockBm).listBuckets(any(), any(),
-        any(), anyInt(), eq(false));
+        any(), anyInt(), eq(false), anyString());
 
     HddsWhiteboxTestUtils.setInternalState(
         ozoneManager, "bucketManager", mockBm);
@@ -806,7 +807,7 @@ public class TestOmMetrics {
     }
 
     try {
-      ozoneManager.listBuckets(info.getVolumeName(), null, null, 0, false);
+      ozoneManager.listBuckets(info.getVolumeName(), null, null, 0, false, null);
     } catch (IOException ignored) {
     }
 

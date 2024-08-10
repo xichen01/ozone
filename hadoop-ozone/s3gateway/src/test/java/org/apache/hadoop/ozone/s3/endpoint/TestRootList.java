@@ -25,8 +25,13 @@ import org.apache.hadoop.ozone.client.OzoneClientStub;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
+import org.apache.hadoop.ozone.om.protocol.S3Auth;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
+import java.util.UUID;
 
 /**
  * This class test HeadBucket functionality.
@@ -35,6 +40,7 @@ public class TestRootList {
 
   private OzoneClient clientStub;
   private RootEndpoint rootEndpoint;
+  private String accessID = UUID.randomUUID().toString();;
 
   @BeforeEach
   public void setup() throws Exception {
@@ -45,8 +51,7 @@ public class TestRootList {
     // Create HeadBucket and setClient to OzoneClientStub
     rootEndpoint = new RootEndpoint();
     rootEndpoint.setClient(clientStub);
-
-
+    rootEndpoint.setS3Auth(new S3Auth("mockSign", "mockSignature", accessID, accessID));
   }
 
   @Test
@@ -63,6 +68,9 @@ public class TestRootList {
     }
     response = (ListBucketResponse) rootEndpoint.get().getEntity();
     assertEquals(10, response.getBucketsNum());
+    assertNotNull(response.getOwner());
+    assertEquals(accessID, response.getOwner().getId());
+    assertEquals(accessID, response.getOwner().getDisplayName());
   }
 
 }

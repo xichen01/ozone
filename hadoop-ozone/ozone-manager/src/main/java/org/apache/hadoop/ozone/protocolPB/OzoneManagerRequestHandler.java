@@ -706,7 +706,8 @@ public class OzoneManagerRequestHandler implements RequestHandler {
         request.getStartKey(),
         request.getPrefix(),
         request.getCount(),
-        request.getHasSnapshot());
+        request.getHasSnapshot(),
+        request.getUserName());
     for (OmBucketInfo bucket : buckets) {
       resp.addBucketInfo(bucket.getProtobuf());
     }

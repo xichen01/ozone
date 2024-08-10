@@ -987,6 +987,8 @@ message ListBucketsRequest {
     optional string prefix = 3;
     optional int32 count = 4;
     optional bool hasSnapshot = 5;
+    // Optional field to specify the username for filtering buckets.
+    optional string userName = 6;
 }
 
 message ListBucketsResponse {

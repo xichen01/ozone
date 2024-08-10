@@ -2776,12 +2776,13 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
   @Override
   public List<OmBucketInfo> listBuckets(String volumeName, String startKey,
                                         String prefix, int maxNumOfBuckets,
-                                        boolean hasSnapshot)
+                                        boolean hasSnapshot, String userName)
       throws IOException {
     boolean auditSuccess = true;
     Map<String, String> auditMap = buildAuditMap(volumeName);
     auditMap.put(OzoneConsts.START_KEY, startKey);
     auditMap.put(OzoneConsts.PREFIX, prefix);
+    auditMap.put(OzoneConsts.USERNAME, userName);
     auditMap.put(OzoneConsts.MAX_NUM_OF_BUCKETS,
         String.valueOf(maxNumOfBuckets));
     auditMap.put(OzoneConsts.HAS_SNAPSHOT, String.valueOf(hasSnapshot));
@@ -2794,7 +2795,7 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
       }
       metrics.incNumBucketLists();
       return bucketManager.listBuckets(volumeName,
-          startKey, prefix, maxNumOfBuckets, hasSnapshot);
+          startKey, prefix, maxNumOfBuckets, hasSnapshot, userName);
     } catch (IOException ex) {
       metrics.incNumBucketListFails();
       auditSuccess = false;

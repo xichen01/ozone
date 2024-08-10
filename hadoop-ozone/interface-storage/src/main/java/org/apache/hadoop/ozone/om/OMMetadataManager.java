@@ -183,22 +183,24 @@ public interface OMMetadataManager extends DBStoreHAManager {
    * Returns a list of buckets represented by {@link OmBucketInfo} in the given
    * volume.
    *
-   * @param volumeName the name of the volume. This argument is required, this
-   * method returns buckets in this given volume.
-   * @param startBucket the start bucket name. Only the buckets whose name is
-   * after this value will be included in the result. This key is excluded from
-   * the result.
-   * @param bucketPrefix bucket name prefix. Only the buckets whose name has
-   * this prefix will be included in the result.
+   * @param volumeName      the name of the volume. This argument is required, this
+   *                        method returns buckets in this given volume.
+   * @param startBucket     the start bucket name. Only the buckets whose name is
+   *                        after this value will be included in the result. This key is excluded from
+   *                        the result.
+   * @param bucketPrefix    bucket name prefix. Only the buckets whose name has
+   *                        this prefix will be included in the result.
    * @param maxNumOfBuckets the maximum number of buckets to return. It ensures
    * the size of the result will not exceed this limit.
    * @param hasSnapshot set the flag to list buckets which have snapshot.
+   * @param userName        If specified, the result will only include buckets where the
+   *    *                   bucket owner matches this username
    * @return a list of buckets.
    * @throws IOException
    */
   List<OmBucketInfo> listBuckets(String volumeName, String startBucket,
                                  String bucketPrefix, int maxNumOfBuckets,
-                                 boolean hasSnapshot)
+                                 boolean hasSnapshot, String userName)
       throws IOException;
 
   /**
@@ -516,7 +518,7 @@ public interface OMMetadataManager extends DBStoreHAManager {
   }
 
   /**
-   * Given ozone path key, component id, return the corresponding 
+   * Given ozone path key, component id, return the corresponding
    * DB path key for delete table.
    *
    * @param objectId - object Id

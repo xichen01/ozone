@@ -58,7 +58,7 @@ public class RootEndpoint extends EndpointBase {
 
       Iterator<? extends OzoneBucket> bucketIterator;
       try {
-        bucketIterator = listS3Buckets(null);
+        bucketIterator = listS3Buckets(null, null, getS3AuthAccessID());
       } catch (Exception e) {
         getMetrics().updateListS3BucketsFailureStats(startNanos);
         throw e;
@@ -71,6 +71,11 @@ public class RootEndpoint extends EndpointBase {
         bucketMetadata.setCreationDate(next.getCreationTime());
         response.addBucket(bucketMetadata);
       }
+      // Respond owner information even if the response bucket is empty
+      String ownerName = getS3AuthAccessID();
+      // Use ownerName to fill displayName
+      String displayName = ownerName;
+      response.setOwner(new S3Owner(ownerName, displayName));
 
       getMetrics().updateListS3BucketsSuccessStats(startNanos);
       return Response.ok(response).build();

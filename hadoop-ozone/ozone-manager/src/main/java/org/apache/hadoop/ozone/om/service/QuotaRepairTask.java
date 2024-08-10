@@ -163,7 +163,7 @@ public class QuotaRepairTask {
   private void getAllBuckets(String volumeName, long volumeId)
       throws IOException {
     List<OmBucketInfo> bucketList = metadataManager.listBuckets(
-        volumeName, null, null, Integer.MAX_VALUE, false);
+        volumeName, null, null, Integer.MAX_VALUE, false, null);
     for (OmBucketInfo bucketInfo : bucketList) {
       bucketInfo.incrUsedNamespace(-bucketInfo.getUsedNamespace());
       bucketInfo.incrUsedBytes(-bucketInfo.getUsedBytes());

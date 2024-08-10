@@ -250,7 +250,7 @@ public class TestOmMetadataManager {
     // List all buckets which have prefix ozoneBucket
     List<OmBucketInfo> omBucketInfoList =
         omMetadataManager.listBuckets(volumeName1,
-            null, prefixBucketNameWithOzoneOwner, 100, false);
+            null, prefixBucketNameWithOzoneOwner, 100, false, null);
 
     // Cause adding a exact name in prefixBucketNameWithOzoneOwner
     // and another 49 buckets, so if we list buckets with --prefix
@@ -267,7 +267,7 @@ public class TestOmMetadataManager {
     omBucketInfoList =
         omMetadataManager.listBuckets(volumeName1,
             startBucket, prefixBucketNameWithOzoneOwner,
-            100, false);
+            100, false, null);
 
     assertEquals(volumeABucketsPrefixWithOzoneOwner.tailSet(
         startBucket).size() - 1, omBucketInfoList.size());
@@ -276,7 +276,7 @@ public class TestOmMetadataManager {
     omBucketInfoList =
         omMetadataManager.listBuckets(volumeName1,
             startBucket, prefixBucketNameWithOzoneOwner,
-            100, false);
+            100, false, null);
 
     assertEquals(volumeABucketsPrefixWithOzoneOwner.tailSet(
         startBucket).size() - 1, omBucketInfoList.size());
@@ -290,7 +290,7 @@ public class TestOmMetadataManager {
 
 
     omBucketInfoList = omMetadataManager.listBuckets(volumeName2,
-        null, prefixBucketNameWithHadoopOwner, 100, false);
+        null, prefixBucketNameWithHadoopOwner, 100, false, null);
 
     // Cause adding a exact name in prefixBucketNameWithOzoneOwner
     // and another 49 buckets, so if we list buckets with --prefix
@@ -309,7 +309,7 @@ public class TestOmMetadataManager {
     for (int i = 0; i < 5; i++) {
 
       omBucketInfoList = omMetadataManager.listBuckets(volumeName2,
-          startBucket, prefixBucketNameWithHadoopOwner, 10, false);
+          startBucket, prefixBucketNameWithHadoopOwner, 10, false, null);
 
       assertEquals(omBucketInfoList.size(), 10);
 
@@ -326,17 +326,56 @@ public class TestOmMetadataManager {
     // As now we have iterated all 50 buckets, calling next time should
     // return empty list.
     omBucketInfoList = omMetadataManager.listBuckets(volumeName2,
-        startBucket, prefixBucketNameWithHadoopOwner, 10, false);
+        startBucket, prefixBucketNameWithHadoopOwner, 10, false, null);
 
     assertEquals(omBucketInfoList.size(), 0);
 
   }
 
+  @Test
+  public void testListBucketsByUser() throws Exception {
+    String volumeName = UUID.randomUUID().toString();
+    String user1 = UUID.randomUUID().toString();
+    String user2 = UUID.randomUUID().toString();
+    String user3 = UUID.randomUUID().toString();
+    String user1BucketName = UUID.randomUUID().toString();
+    String user2BucketName = UUID.randomUUID().toString();
+    String user3BucketName = UUID.randomUUID().toString();
+
+    // Create Volume and bucket
+    OMRequestTestUtils.addVolumeToDB(volumeName, omMetadataManager);
+    addBucketsToCache(volumeName, user1BucketName, user1);
+    addBucketsToCache(volumeName, user2BucketName, user2);
+    addBucketsToCache(volumeName, user3BucketName, user3);
+
+    // Check all buckets
+    List<OmBucketInfo> omBucketInfoList = omMetadataManager.listBuckets(
+        volumeName, null, null, 3, false, null);
+    assertEquals(3, omBucketInfoList.size());
+
+    // Check buckets by individual users
+    verifyBucketsByUser(volumeName, user1, 1);
+    verifyBucketsByUser(volumeName, user2, 1);
+    verifyBucketsByUser(volumeName, user3, 1);
+  }
+
+  private void verifyBucketsByUser(String volumeName, String userName, int expectedCount) throws Exception {
+    List<OmBucketInfo> omBucketInfoList = omMetadataManager.listBuckets(
+        volumeName, null, null, 3, false, userName);
+    assertEquals(expectedCount, omBucketInfoList.size());
+    assertTrue(omBucketInfoList.stream().allMatch(bucket -> bucket.getOwner().equals(userName)));
+  }
+
   private void addBucketsToCache(String volumeName, String bucketName) {
+    addBucketsToCache(volumeName, bucketName, null);
+  }
+
+  private void addBucketsToCache(String volumeName, String bucketName, String owner) {
 
     OmBucketInfo omBucketInfo = OmBucketInfo.newBuilder()
         .setVolumeName(volumeName)
         .setBucketName(bucketName)
+        .setOwner(owner)
         .setStorageType(StorageType.DISK)
         .setIsVersionEnabled(false)
         .build();

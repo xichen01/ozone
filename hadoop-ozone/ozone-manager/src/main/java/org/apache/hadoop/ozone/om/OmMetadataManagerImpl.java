@@ -1076,7 +1076,7 @@ public class OmMetadataManagerImpl implements OMMetadataManager,
                                         final String startBucket,
                                         final String bucketPrefix,
                                         final int maxNumOfBuckets,
-                                        boolean hasSnapshot)
+                                        boolean hasSnapshot, String userName)
       throws IOException {
     List<OmBucketInfo> result = new ArrayList<>();
     if (Strings.isNullOrEmpty(volumeName)) {
@@ -1114,12 +1114,11 @@ public class OmMetadataManagerImpl implements OMMetadataManager,
     }
     int currentCount = 0;
 
-
     // For Bucket it is full cache, so we can just iterate in-memory table
     // cache.
     Iterator<Map.Entry<CacheKey<String>, CacheValue<OmBucketInfo>>> iterator =
         bucketTable.cacheIterator();
-
+    boolean filterByUserName = !Strings.isNullOrEmpty(userName);
 
     while (currentCount < maxNumOfBuckets && iterator.hasNext()) {
       Map.Entry<CacheKey<String>, CacheValue<OmBucketInfo>> entry =
@@ -1127,7 +1126,6 @@ public class OmMetadataManagerImpl implements OMMetadataManager,
 
       String key = entry.getKey().getCacheKey();
       OmBucketInfo omBucketInfo = entry.getValue().getCacheValue();
-      // Making sure that entry in cache is not for delete bucket request.
 
       if (omBucketInfo != null) {
         if (key.equals(startKey) && skipStartKey) {
@@ -1139,16 +1137,22 @@ public class OmMetadataManagerImpl implements OMMetadataManager,
         if (key.startsWith(seekPrefix) && key.compareTo(startKey) >= 0) {
           if (!hasSnapshot) {
             // Snapshot filter off
-            result.add(omBucketInfo);
-            currentCount++;
+            // Check if userName is specified and matches the bucket owner
+            if (!filterByUserName || omBucketInfo.getOwner().equals(userName)) {
+              result.add(omBucketInfo);
+              currentCount++;
+            }
           } else if (
               Objects.nonNull(
                   snapshotChainManager.getLatestPathSnapshotId(volumeName +
                       OM_KEY_PREFIX + omBucketInfo.getBucketName()))) {
             // Snapshot filter on.
             // Add to result list only when the bucket has at least one snapshot
-            result.add(omBucketInfo);
-            currentCount++;
+            // Check if userName is specified and matches the bucket owner
+            if (!filterByUserName || omBucketInfo.getOwner().equals(userName)) {
+              result.add(omBucketInfo);
+              currentCount++;
+            }
           }
         }
       }

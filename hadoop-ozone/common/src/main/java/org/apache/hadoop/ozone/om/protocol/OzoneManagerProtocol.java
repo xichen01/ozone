@@ -408,12 +408,15 @@ public interface OzoneManagerProtocol
    *   the size of the result will not exceed this limit.
    * @param hasSnapshot
    * flag to list bucket which have snapshots.
+   * @param userName
+   *   If specified,the result will only include buckets where the bucket owner matches
+   *   this username
    * @return a list of buckets.
    * @throws IOException
    */
   List<OmBucketInfo> listBuckets(String volumeName,
                                  String startBucketName, String bucketPrefix,
-                                 int maxNumOfBuckets, boolean hasSnapshot)
+                                 int maxNumOfBuckets, boolean hasSnapshot, String userName)
       throws IOException;
 
   /**

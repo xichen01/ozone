@@ -52,12 +52,15 @@ public interface BucketManager extends IOzoneAcl {
    *   the size of the result will not exceed this limit.
    * @param hasSnapshot
    *   Set the flag to list buckets which have snapshots.
+   * @param userName
+   *   If specified, the result will only include buckets where the
+   *   bucket owner matches this username
    * @return a list of buckets.
    * @throws IOException
    */
   List<OmBucketInfo> listBuckets(String volumeName, String startBucket,
                                  String bucketPrefix, int maxNumOfBuckets,
-                                 boolean hasSnapshot)
+                                 boolean hasSnapshot, String userName)
       throws IOException;
 
 }

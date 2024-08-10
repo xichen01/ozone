@@ -646,13 +646,16 @@ public final class OzoneManagerProtocolClientSideTranslatorPB
   @Override
   public List<OmBucketInfo> listBuckets(String volumeName,
                                         String startKey, String prefix,
-                                        int count, boolean hasSnapshot)
+                                        int count, boolean hasSnapshot, String userName)
       throws IOException {
     List<OmBucketInfo> buckets = new ArrayList<>();
     ListBucketsRequest.Builder reqBuilder = ListBucketsRequest.newBuilder();
     reqBuilder.setVolumeName(volumeName);
     reqBuilder.setCount(count);
     reqBuilder.setHasSnapshot(hasSnapshot);
+    if (!Strings.isNullOrEmpty(userName)) {
+      reqBuilder.setUserName(userName);
+    }
     if (startKey != null) {
       reqBuilder.setStartKey(startKey);
     }

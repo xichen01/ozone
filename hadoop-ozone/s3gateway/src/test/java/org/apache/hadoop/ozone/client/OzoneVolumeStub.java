@@ -161,10 +161,16 @@ public final class OzoneVolumeStub extends OzoneVolume {
       String prevBucket) {
     return buckets.values()
         .stream()
-        .filter(bucket -> bucket.getName().compareTo(prevBucket) > 0)
-        .filter(bucket -> bucket.getName().startsWith(bucketPrefix))
+        .filter(bucket -> prevBucket == null || bucket.getName().compareTo(prevBucket) > 0)
+        .filter(bucket -> bucketPrefix == null || bucket.getName().startsWith(bucketPrefix))
         .collect(Collectors.toList())
         .iterator();
+  }
+
+  @Override
+  public Iterator<? extends OzoneBucket> listBuckets(String bucketPrefix,
+      String prevBucket, boolean hasSnapshot, String userName) {
+    return listBuckets(bucketPrefix, prevBucket);
   }
 
   @Override

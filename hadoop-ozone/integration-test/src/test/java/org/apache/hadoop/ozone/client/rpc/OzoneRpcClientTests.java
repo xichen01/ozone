@@ -4573,7 +4573,7 @@ abstract class OzoneRpcClientTests extends OzoneTestBase {
                                  boolean hasSnapshot,
                                  int expectedBucketCount) {
     Iterator<? extends OzoneBucket> bucketIterator =
-        volume.listBuckets(bucketPrefix, preBucket, hasSnapshot);
+        volume.listBuckets(bucketPrefix, preBucket, hasSnapshot, null);
     int bucketCount = 0;
     while (bucketIterator.hasNext()) {
       assertTrue(

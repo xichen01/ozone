@@ -315,12 +315,14 @@ public interface ClientProtocol {
    * @param prevBucket    Starting point of the list, this bucket is excluded
    * @param maxListResult Max number of buckets to return.
    * @param hasSnapshot   flag to list the buckets which have snapshot.
+   * @param userName      If specified, the result will only include buckets where the
+   *                      bucket owner matches this username
    * @return {@code List<OzoneBucket>}
    * @throws IOException
    */
   List<OzoneBucket> listBuckets(String volumeName, String bucketPrefix,
                                 String prevBucket, int maxListResult,
-                                boolean hasSnapshot)
+                                boolean hasSnapshot, String userName)
       throws IOException;
 
   /**

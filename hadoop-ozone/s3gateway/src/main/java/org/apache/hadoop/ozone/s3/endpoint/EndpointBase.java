@@ -143,6 +143,10 @@ public abstract class EndpointBase implements Auditor {
     init();
   }
 
+  protected String getS3AuthAccessID() {
+    return s3Auth.getAccessID();
+  }
+
   public abstract void init();
 
   protected OzoneBucket getBucket(String bucketName)
@@ -250,11 +254,13 @@ public abstract class EndpointBase implements Auditor {
    *
    * @param prefix Bucket prefix to match
    * @param previousBucket Buckets are listed after this bucket
+   * @param userName  If specified, the result will only include buckets where the
+   *                   bucket owner matches this username
    * @return {@code Iterator<OzoneBucket>}
    */
   protected Iterator<? extends OzoneBucket> listS3Buckets(String prefix,
-      String previousBucket) throws IOException, OS3Exception {
-    return iterateBuckets(volume -> volume.listBuckets(prefix, previousBucket));
+      String previousBucket, String userName) throws IOException, OS3Exception {
+    return iterateBuckets(volume -> volume.listBuckets(prefix, previousBucket, false, userName));
   }
 
   private Iterator<? extends OzoneBucket> iterateBuckets(
@@ -474,6 +480,11 @@ public abstract class EndpointBase implements Auditor {
   @VisibleForTesting
   public void setClient(OzoneClient ozoneClient) {
     this.client = ozoneClient;
+  }
+
+  @VisibleForTesting
+  public void setS3Auth(S3Auth s3Auth) {
+    this.s3Auth = s3Auth;
   }
 
   public OzoneClient getClient() {

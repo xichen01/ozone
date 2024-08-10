@@ -365,7 +365,7 @@ public class OzoneVolume extends WithMetadata {
    */
   public Iterator<? extends OzoneBucket> listBuckets(String bucketPrefix,
       String prevBucket) {
-    return listBuckets(bucketPrefix, prevBucket, false);
+    return listBuckets(bucketPrefix, prevBucket, false, null);
   }
 
   /**
@@ -379,12 +379,14 @@ public class OzoneVolume extends WithMetadata {
    * @param bucketPrefix Bucket prefix to match
    * @param prevBucket   Buckets are listed after this bucket
    * @param hasSnapshot  Set the flag to list the buckets which have snapshot
+   * @param userName     If specified, the result will only include buckets where the
+   *                     bucket owner matches this username
    * @return {@code Iterator<OzoneBucket>}
    */
   public Iterator<? extends OzoneBucket> listBuckets(String bucketPrefix,
                                                      String prevBucket,
-                                                     boolean hasSnapshot) {
-    return new BucketIterator(bucketPrefix, prevBucket, hasSnapshot);
+                                                     boolean hasSnapshot, String userName) {
+    return new BucketIterator(bucketPrefix, prevBucket, hasSnapshot, userName);
   }
 
   /**
@@ -501,6 +503,7 @@ public class OzoneVolume extends WithMetadata {
 
     private Iterator<OzoneBucket> currentIterator;
     private OzoneBucket currentValue;
+    private String userName;
 
     private boolean hasSnapshot;
 
@@ -514,10 +517,11 @@ public class OzoneVolume extends WithMetadata {
      * @param hasSnapshot
      */
     BucketIterator(String bucketPrefix, String prevBucket,
-                   boolean hasSnapshot) {
+                   boolean hasSnapshot, String userName) {
       this.bucketPrefix = bucketPrefix;
       this.currentValue = null;
       this.hasSnapshot = hasSnapshot;
+      this.userName = userName;
       this.currentIterator = getNextListOfBuckets(prevBucket).iterator();
     }
 
@@ -547,7 +551,7 @@ public class OzoneVolume extends WithMetadata {
     private List<OzoneBucket> getNextListOfBuckets(String prevBucket) {
       try {
         return proxy.listBuckets(name, bucketPrefix, prevBucket,
-            listCacheSize, hasSnapshot);
+            listCacheSize, hasSnapshot, userName);
       } catch (IOException e) {
         throw new RuntimeException(e);
       }
