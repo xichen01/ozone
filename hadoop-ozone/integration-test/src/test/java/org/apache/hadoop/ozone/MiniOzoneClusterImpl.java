@@ -28,7 +28,10 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.Iterator;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -117,6 +120,11 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
   private OzoneConfiguration conf;
   private final SCMConfigurator scmConfigurator;
   private StorageContainerManager scm;
+
+  public void setOM(OzoneManager ozone) {
+    this.ozoneManager = ozone;
+  }
+
   private OzoneManager ozoneManager;
   private final List<HddsDatanodeService> hddsDatanodes;
   private ReconServer reconServer;
@@ -424,10 +432,12 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
   @Override
   public void stop() {
     LOG.info("Stopping the Mini Ozone Cluster");
-    stopOM(ozoneManager);
-    stopDatanodes(hddsDatanodes);
-    stopSCM(scm);
-    stopRecon(reconServer);
+    CompletableFuture<Void> stopOMFuture = CompletableFuture.runAsync(() -> stopOM(ozoneManager));
+    CompletableFuture<Void> stopDatanodesFuture = CompletableFuture.runAsync(() -> stopDatanodes(hddsDatanodes));
+    CompletableFuture<Void> stopSCMFuture = CompletableFuture.runAsync(() -> stopSCM(scm));
+    CompletableFuture<Void> stopReconFuture = CompletableFuture.runAsync(() -> stopRecon(reconServer));
+    // Wait for all tasks to complete before exiting
+    CompletableFuture.allOf(stopOMFuture, stopDatanodesFuture, stopSCMFuture, stopReconFuture).join();
   }
 
   private void startHddsDatanode(HddsDatanodeService datanode) {
@@ -545,24 +555,54 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
       ReconServer reconServer = null;
       List<HddsDatanodeService> hddsDatanodes = Collections.emptyList();
       try {
-        scm = createAndStartSingleSCM();
-        om = createAndStartSingleOM();
+        scm = createSCM();
+        configureScmDatanodeAddress(singletonList(scm));
+        final StorageContainerManager scm1 = scm;
+        CompletableFuture<Void> scmFuture = CompletableFuture.supplyAsync(() -> {
+          try {
+            scm1.start();
+            return null;
+          } catch (Exception e) {
+            throw new CompletionException(e);
+          }
+        });
+        CompletableFuture<OzoneManager> omFuture = CompletableFuture.supplyAsync(() -> {
+          try {
+            return createAndStartSingleOM();
+          } catch (Exception e) {
+            throw new CompletionException(e);
+          }
+        });
         reconServer = createRecon();
         hddsDatanodes = createHddsDatanodes();
 
         MiniOzoneClusterImpl cluster = new MiniOzoneClusterImpl(conf,
-            scmConfigurator, om, scm,
+            scmConfigurator, null, scm,
             hddsDatanodes, reconServer);
 
         cluster.setCAClient(certClient);
         cluster.setSecretKeyClient(secretKeyClient);
         if (startDataNodes) {
-          cluster.startHddsDatanodes();
+          CompletableFuture<Void> dnFuture = CompletableFuture.supplyAsync(() -> {
+            try {
+              cluster.startHddsDatanodes();
+              return null;
+            } catch (Exception e) {
+              throw new CompletionException(e);
+            }
+          });
+          dnFuture.get();
         }
-
+        scmFuture.get();
+        om = omFuture.get();
+        cluster.setOM(om);
         prepareForNextBuild();
         return cluster;
       } catch (Exception ex) {
+        Throwable cause = ex;
+        if (ex instanceof ExecutionException) {
+          cause = ex.getCause();
+        }
         stopOM(om);
         if (includeRecon) {
           stopRecon(reconServer);
@@ -573,13 +613,13 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
         stopSCM(scm);
         removeConfiguration();
 
-        if (ex instanceof IOException) {
-          throw (IOException) ex;
+        if (cause instanceof IOException) {
+          throw (IOException) cause;
         }
-        if (ex instanceof RuntimeException) {
-          throw (RuntimeException) ex;
+        if (cause instanceof RuntimeException) {
+          throw (RuntimeException) cause;
         }
-        throw new IOException("Unable to build MiniOzoneCluster. ", ex);
+        throw new IOException("Unable to build MiniOzoneCluster. ", cause);
       }
     }
 

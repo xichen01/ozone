@@ -50,6 +50,9 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
@@ -70,8 +73,16 @@ public class MiniOzoneHAClusterImpl extends MiniOzoneClusterImpl {
   public static final Logger LOG =
       LoggerFactory.getLogger(MiniOzoneHAClusterImpl.class);
 
-  private final OMHAService omhaService;
-  private final SCMHAService scmhaService;
+  public void setOmhaService(OMHAService omhaService) {
+    this.omhaService = omhaService;
+  }
+
+  public void setScmhaService(SCMHAService scmhaService) {
+    this.scmhaService = scmhaService;
+  }
+
+  private OMHAService omhaService;
+  private SCMHAService scmhaService;
 
   private final String clusterMetaPath;
 
@@ -283,18 +294,43 @@ public class MiniOzoneHAClusterImpl extends MiniOzoneClusterImpl {
 
   @Override
   public void stop() {
+    List<CompletableFuture<Void>> oms = new ArrayList<>();
     for (OzoneManager ozoneManager : this.omhaService.getServices()) {
-      if (ozoneManager != null) {
-        LOG.info("Stopping the OzoneManager {}", ozoneManager.getOMNodeId());
-        stopOM(ozoneManager);
+      oms.add(CompletableFuture.runAsync(() -> {
+        if (ozoneManager != null) {
+          LOG.info("Stopping the OzoneManager {}", ozoneManager.getOMNodeId());
+          stopOM(ozoneManager);
+        }
+      }));
+    }
+
+    List<CompletableFuture<Void>> smcs = new ArrayList<>();
+    for (StorageContainerManager scm : this.scmhaService.getServices()) {
+      if (scm != null) {
+        smcs.add(CompletableFuture.runAsync(() -> {
+          LOG.info("Stopping the StorageContainerManager {}", scm.getScmId());
+          scm.stop();
+          scm.join();
+        }));
       }
     }
 
-    for (StorageContainerManager scm : this.scmhaService.getServices()) {
-      if (scm != null) {
-        LOG.info("Stopping the StorageContainerManager {}", scm.getScmId());
-        scm.stop();
-        scm.join();
+    for (CompletableFuture<Void> om : oms) {
+      try {
+        om.get();
+      } catch (InterruptedException e) {
+        throw new RuntimeException(e);
+      } catch (ExecutionException e) {
+        throw new RuntimeException(e);
+      }
+    }
+    for (CompletableFuture<Void> smc : smcs) {
+      try {
+        smc.get();
+      } catch (InterruptedException e) {
+        throw new RuntimeException(e);
+      } catch (ExecutionException e) {
+        throw new RuntimeException(e);
       }
     }
     super.stop();
@@ -422,23 +458,43 @@ public class MiniOzoneHAClusterImpl extends MiniOzoneClusterImpl {
       ReconServer reconServer;
       try {
         scmService = createSCMService();
-        omService = createOMService();
+        CompletableFuture<OMHAService> omFuture = CompletableFuture.supplyAsync(() -> {
+          try {
+            return createOMService();
+          } catch (Exception e) {
+            throw new CompletionException(e);
+          }
+        });
         reconServer = createRecon();
-      } catch (AuthenticationException ex) {
+        final List<HddsDatanodeService> hddsDatanodes = createHddsDatanodes();
+
+        MiniOzoneHAClusterImpl cluster = new MiniOzoneHAClusterImpl(conf,
+                scmConfigurator, null, scmService, hddsDatanodes, path,
+                reconServer);
+
+        if (startDataNodes) {
+          CompletableFuture<Void> dnFuture = CompletableFuture.supplyAsync(() -> {
+            try {
+              cluster.startHddsDatanodes();
+              return null;
+            } catch (Exception e) {
+              throw new CompletionException(e);
+            }
+          });
+          dnFuture.get();
+        }
+        for (CompletableFuture<Void> scm : scmService.scms) {
+          scm.get();
+        }
+        omService = omFuture.get();
+        cluster.setOmhaService(omService);
+
+        prepareForNextBuild();
+        return cluster;
+      } catch (AuthenticationException | InterruptedException | ExecutionException ex) {
         throw new IOException("Unable to build MiniOzoneCluster. ", ex);
       }
 
-      final List<HddsDatanodeService> hddsDatanodes = createHddsDatanodes();
-
-      MiniOzoneHAClusterImpl cluster = new MiniOzoneHAClusterImpl(conf,
-          scmConfigurator, omService, scmService, hddsDatanodes, path,
-          reconServer);
-
-      if (startDataNodes) {
-        cluster.startHddsDatanodes();
-      }
-      prepareForNextBuild();
-      return cluster;
     }
 
     protected int numberOfOzoneManagers() {
@@ -546,13 +602,13 @@ public class MiniOzoneHAClusterImpl extends MiniOzoneClusterImpl {
         throws IOException, AuthenticationException {
       if (scmServiceId == null) {
         StorageContainerManager scm = createAndStartSingleSCM();
-        return new SCMHAService(singletonList(scm), null, null);
+        return new SCMHAService(singletonList(scm), null, null, new ArrayList<>());
       }
 
       List<StorageContainerManager> scmList = Lists.newArrayList();
 
       int retryCount = 0;
-
+      List<CompletableFuture<Void>> scms = new ArrayList<>();
       while (true) {
         try {
           initSCMHAConfig();
@@ -585,7 +641,14 @@ public class MiniOzoneHAClusterImpl extends MiniOzoneClusterImpl {
             scmList.add(scm);
 
             if (i <= numOfActiveSCMs) {
-              scm.start();
+              scms.add(CompletableFuture.supplyAsync(() -> {
+                try {
+                  scm.start();
+                  return null;
+                } catch (Exception e) {
+                  throw new CompletionException(e);
+                }
+              }));
               activeSCMs.add(scm);
               LOG.info("Started SCM RPC server at {}",
                   scm.getClientRpcAddress());
@@ -603,6 +666,7 @@ public class MiniOzoneHAClusterImpl extends MiniOzoneClusterImpl {
             LOG.info("Stopping StorageContainerManager server at {}",
                 scm.getClientRpcAddress());
           }
+          scms.clear();
           scmList.clear();
           ++retryCount;
           LOG.info("MiniOzoneHACluster port conflicts, retried {} times",
@@ -612,7 +676,7 @@ public class MiniOzoneHAClusterImpl extends MiniOzoneClusterImpl {
 
       configureScmDatanodeAddress(activeSCMs);
 
-      return new SCMHAService(activeSCMs, inactiveSCMs, scmServiceId);
+      return new SCMHAService(activeSCMs, inactiveSCMs, scmServiceId, scms);
     }
 
     /**
@@ -1007,11 +1071,18 @@ public class MiniOzoneHAClusterImpl extends MiniOzoneClusterImpl {
 
   static class SCMHAService extends
       MiniOzoneHAService<StorageContainerManager> {
+
+    public List<CompletableFuture<Void>> getScms() {
+      return scms;
+    }
+
+    private List<CompletableFuture<Void>> scms;
     SCMHAService(List<StorageContainerManager> activeList,
         List<StorageContainerManager> inactiveList,
-        String serviceId) {
+        String serviceId, List<CompletableFuture<Void>> scms) {
       super("SCM", activeList, inactiveList, serviceId,
           StorageContainerManager::getSCMNodeId);
+      this.scms = scms;
     }
   }
 
