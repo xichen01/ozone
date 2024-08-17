@@ -50,6 +50,8 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
@@ -70,8 +72,16 @@ public class MiniOzoneHAClusterImpl extends MiniOzoneClusterImpl {
   public static final Logger LOG =
       LoggerFactory.getLogger(MiniOzoneHAClusterImpl.class);
 
-  private final OMHAService omhaService;
-  private final SCMHAService scmhaService;
+  public void setOmhaService(OMHAService omhaService) {
+    this.omhaService = omhaService;
+  }
+
+  public void setScmhaService(SCMHAService scmhaService) {
+    this.scmhaService = scmhaService;
+  }
+
+  private OMHAService omhaService;
+  private SCMHAService scmhaService;
 
   private final String clusterMetaPath;
 
@@ -420,23 +430,63 @@ public class MiniOzoneHAClusterImpl extends MiniOzoneClusterImpl {
       SCMHAService scmService;
       OMHAService omService;
       ReconServer reconServer;
-      try {
-        scmService = createSCMService();
-        omService = createOMService();
-        reconServer = createRecon();
-      } catch (AuthenticationException ex) {
-        throw new IOException("Unable to build MiniOzoneCluster. ", ex);
-      }
+      CompletableFuture<SCMHAService> scmFuture =
+            CompletableFuture.supplyAsync(() -> {
+              try {
+                return createSCMService();
+              } catch (AuthenticationException e) {
+                throw new RuntimeException(e);
+              } catch (IOException e) {
+                throw new RuntimeException(e);
+              }
+            });
+      CompletableFuture<OMHAService> omFuture =
+            CompletableFuture.supplyAsync(() -> {
+              try {
+                return createOMService();
+              } catch (AuthenticationException e) {
+                throw new RuntimeException(e);
+              } catch (IOException e) {
+                throw new RuntimeException(e);
+              }
+            });
+      reconServer = createRecon();
 
       final List<HddsDatanodeService> hddsDatanodes = createHddsDatanodes();
 
       MiniOzoneHAClusterImpl cluster = new MiniOzoneHAClusterImpl(conf,
-          scmConfigurator, omService, scmService, hddsDatanodes, path,
+          scmConfigurator, null, null, hddsDatanodes, path,
           reconServer);
 
       if (startDataNodes) {
-        cluster.startHddsDatanodes();
+        CompletableFuture<Void> dnFuture =
+                CompletableFuture.supplyAsync(() -> {
+                  try {
+                    cluster.startHddsDatanodes();
+                    return null;
+                  } catch (Exception e) {
+                    throw new RuntimeException(e);
+                  }
+                });
+        try {
+          dnFuture.get();
+        } catch (InterruptedException e) {
+          throw new RuntimeException(e);
+        } catch (ExecutionException e) {
+          throw new RuntimeException(e);
+        }
       }
+      try {
+        scmService = scmFuture.get();
+        omService = omFuture.get();
+        cluster.setOmhaService(omService);
+        cluster.setScmhaService(scmService);
+      } catch (InterruptedException e) {
+        throw new RuntimeException(e);
+      } catch (ExecutionException e) {
+        throw new RuntimeException(e);
+      }
+
       prepareForNextBuild();
       return cluster;
     }
