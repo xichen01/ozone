@@ -29,7 +29,9 @@ import java.util.List;
 import java.util.Set;
 import java.util.Iterator;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -540,25 +542,21 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
         scm = createSCM();
         configureScmDatanodeAddress(singletonList(scm));
         final StorageContainerManager scm1 = scm;
-        CompletableFuture<Void> scmFuture =
-                CompletableFuture.supplyAsync(() -> {
-                  try {
-                    scm1.start();
-                    return null;
-                  } catch (IOException e) {
-                    throw new RuntimeException(e);
-                  }
-                });
-        CompletableFuture<OzoneManager> omFuture =
-                CompletableFuture.supplyAsync(() -> {
-                  try {
-                    return createAndStartSingleOM();
-                  } catch (AuthenticationException e) {
-                    throw new RuntimeException(e);
-                  } catch (IOException e) {
-                    throw new RuntimeException(e);
-                  }
-                });
+        CompletableFuture<Void> scmFuture = CompletableFuture.supplyAsync(() -> {
+          try {
+            scm1.start();
+            return null;
+          } catch (Exception e) {
+            throw new CompletionException(e);
+          }
+        });
+        CompletableFuture<OzoneManager> omFuture = CompletableFuture.supplyAsync(() -> {
+          try {
+            return createAndStartSingleOM();
+          } catch (Exception e) {
+            throw new CompletionException(e);
+          }
+        });
         reconServer = createRecon();
         hddsDatanodes = createHddsDatanodes();
 
@@ -569,15 +567,14 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
         cluster.setCAClient(certClient);
         cluster.setSecretKeyClient(secretKeyClient);
         if (startDataNodes) {
-          CompletableFuture<Void> dnFuture =
-                  CompletableFuture.supplyAsync(() -> {
-                    try {
-                      cluster.startHddsDatanodes();
-                      return null;
-                    } catch (Exception e) {
-                      throw new RuntimeException(e);
-                    }
-                  });
+          CompletableFuture<Void> dnFuture = CompletableFuture.supplyAsync(() -> {
+            try {
+              cluster.startHddsDatanodes();
+              return null;
+            } catch (Exception e) {
+              throw new CompletionException(e);
+            }
+          });
           dnFuture.get();
         }
         scmFuture.get();
@@ -586,6 +583,10 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
         prepareForNextBuild();
         return cluster;
       } catch (Exception ex) {
+        Throwable cause = ex;
+        if (ex instanceof ExecutionException) {
+          cause = ex.getCause();
+        }
         stopOM(om);
         if (includeRecon) {
           stopRecon(reconServer);
@@ -596,13 +597,13 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
         stopSCM(scm);
         removeConfiguration();
 
-        if (ex instanceof IOException) {
-          throw (IOException) ex;
+        if (cause instanceof IOException) {
+          throw (IOException) cause;
         }
-        if (ex instanceof RuntimeException) {
-          throw (RuntimeException) ex;
+        if (cause instanceof RuntimeException) {
+          throw (RuntimeException) cause;
         }
-        throw new IOException("Unable to build MiniOzoneCluster. ", ex);
+        throw new IOException("Unable to build MiniOzoneCluster. ", cause);
       }
     }
 
