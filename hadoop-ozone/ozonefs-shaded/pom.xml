@@ -198,6 +198,15 @@
                     ${shaded.prefix}.okhttp3
                   </shadedPattern>
                 </relocation>
+                <relocation>
+                  <pattern>com.google.protobuf</pattern>
+                  <shadedPattern>
+                    org.apache.hadoop.shaded.com.google.protobuf
+                  </shadedPattern>
+                  <includes>
+                    <include>com.google.protobuf.*</include>
+                  </includes>
+                </relocation>
               </relocations>
             </configuration>
           </execution>
