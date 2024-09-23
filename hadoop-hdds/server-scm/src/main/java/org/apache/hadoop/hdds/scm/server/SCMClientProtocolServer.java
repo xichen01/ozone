@@ -52,6 +52,7 @@ import java.util.stream.Stream;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.hadoop.fs.CommonConfigurationKeysPublic;
 import org.apache.hadoop.hdds.client.ReplicationConfig;
+import org.apache.hadoop.hdds.client.StorageTier;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.conf.ReconfigurationHandler;
 import org.apache.hadoop.hdds.protocol.DatanodeDetails;
@@ -498,18 +499,18 @@ public class SCMClientProtocolServer implements
       ReplicationConfig repConfig,
       Boolean suppressed) throws IOException {
     boolean auditSuccess = true;
-    Map<String, String> auditMap = buildAuditMap(startContainerID, count, state, factor, 
+    Map<String, String> auditMap = buildAuditMap(startContainerID, count, state, factor,
         replicationType, repConfig, suppressed);
 
     try {
       Stream<ContainerInfo> containerStream =
           buildContainerStream(factor, replicationType, repConfig, getBaseContainerStream(state));
-      
+
       // Filter by suppressed flag only if explicitly specified
       if (suppressed != null) {
         containerStream = containerStream.filter(info -> info.isSuppressed() == suppressed);
       }
-      
+
       List<ContainerInfo> containerInfos =
           containerStream.filter(info -> info.containerID().getId() >= startContainerID)
               .sorted().collect(Collectors.toList());
@@ -685,7 +686,7 @@ public class SCMClientProtocolServer implements
             .setNodeID(node.toProto(clientVersion))
             .addNodeStates(ns.getHealth())
             .addNodeOperationalStates(ns.getOperationalState());
-        
+
         if (datanodeInfo != null) {
           nodeBuilder.setTotalVolumeCount(datanodeInfo.getStorageReports().size());
           nodeBuilder.setHealthyVolumeCount(datanodeInfo.getHealthyVolumeCount());
@@ -859,9 +860,9 @@ public class SCMClientProtocolServer implements
       auditMap.put("nodePool", String.join(", ", nodeIpAddresses));
     }
     try {
-      getScm().checkAdminAccess(getRemoteUser(), false);
+      // TODO: Support Allocate Pipeline Command
       Pipeline result = scm.getPipelineManager().createPipeline(
-          ReplicationConfig.fromProtoTypeAndFactor(type, factor));
+          ReplicationConfig.fromProtoTypeAndFactor(type, factor), StorageTier.getDefaultTier());
       AUDIT.logWriteSuccess(buildAuditMessageForSuccess(
           SCMAction.CREATE_PIPELINE, auditMap));
       return result;

@@ -30,6 +30,7 @@ import javax.management.ObjectName;
 import org.apache.hadoop.hdds.client.BlockID;
 import org.apache.hadoop.hdds.client.ContainerBlockID;
 import org.apache.hadoop.hdds.client.ReplicationConfig;
+import org.apache.hadoop.hdds.client.StorageTier;
 import org.apache.hadoop.hdds.conf.ConfigurationSource;
 import org.apache.hadoop.hdds.conf.StorageUnit;
 import org.apache.hadoop.hdds.scm.ScmConfig;
@@ -160,8 +161,22 @@ public class BlockManagerImpl implements BlockManager, BlockmanagerMXBean {
           INVALID_BLOCK_SIZE);
     }
 
+    // TODO: Implement pass storageTier(StoragePolicy) from API
+    StorageTier storageTier = null;
+    if (storageTier == null) {
+      // For the old version client, it will not have a "default StoragePolicy", so its
+      // StorageTier will be null, we use the "default StorageTier" to write data for them.
+      // The value of the "default StorageTier" can be set for configuration, the default value
+      // of the "default StorageTier" is StorageTier.DISK.
+      //
+      // By default, if the Datanode Volume StorageType is not explicitly configured,
+      // it will be of type StorageType.DISK and therefore belong to a StorageTier.DISK tier,
+      // so for old clients, the write process will not be changed if the Datanode Volume
+      // configuration is not changed.
+      storageTier = StorageTier.getDefaultTier();
+    }
     ContainerInfo containerInfo = writableContainerFactory.getContainer(
-        size, replicationConfig, owner, excludeList);
+        size, replicationConfig, owner, excludeList, storageTier);
 
     if (containerInfo != null) {
       return newBlock(containerInfo);

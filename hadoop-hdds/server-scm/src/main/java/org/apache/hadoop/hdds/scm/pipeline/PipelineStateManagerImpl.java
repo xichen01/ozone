@@ -24,7 +24,9 @@ import java.util.NavigableSet;
 import java.util.Objects;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.stream.Collectors;
 import org.apache.hadoop.hdds.client.ReplicationConfig;
+import org.apache.hadoop.hdds.client.StorageTier;
 import org.apache.hadoop.hdds.protocol.DatanodeDetails;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos;
 import org.apache.hadoop.hdds.scm.container.ContainerID;
@@ -157,6 +159,20 @@ public final class PipelineStateManagerImpl implements PipelineStateManager {
 
   @Override
   public List<Pipeline> getPipelines(
+      ReplicationConfig replicationConfig, StorageTier storageTier) {
+    Objects.requireNonNull(storageTier, "Pipeline storageTier cannot be null");
+    lock.readLock().lock();
+    try {
+      return pipelineStateMap.getPipelines(replicationConfig).stream()
+          .filter(pipeline -> pipeline.getSupportedStorageTier().equals(storageTier))
+          .collect(Collectors.toList());
+    } finally {
+      lock.readLock().unlock();
+    }
+  }
+
+  @Override
+  public List<Pipeline> getPipelines(
       ReplicationConfig replicationConfig,
       Pipeline.PipelineState state) {
     lock.readLock().lock();
@@ -170,12 +186,24 @@ public final class PipelineStateManagerImpl implements PipelineStateManager {
   @Override
   public List<Pipeline> getPipelines(
       ReplicationConfig replicationConfig,
+      Pipeline.PipelineState state, StorageTier storageTier) {
+    lock.readLock().lock();
+    try {
+      return pipelineStateMap.getPipelines(replicationConfig, state, storageTier);
+    } finally {
+      lock.readLock().unlock();
+    }
+  }
+
+  @Override
+  public List<Pipeline> getPipelines(
+      ReplicationConfig replicationConfig,
       Pipeline.PipelineState state, Collection<DatanodeDetails> excludeDns,
-      Collection<PipelineID> excludePipelines) {
+      Collection<PipelineID> excludePipelines, StorageTier storageTier) {
     lock.readLock().lock();
     try {
       return pipelineStateMap
-          .getPipelines(replicationConfig, state, excludeDns, excludePipelines);
+          .getPipelines(replicationConfig, state, excludeDns, excludePipelines, storageTier);
     } finally {
       lock.readLock().unlock();
     }

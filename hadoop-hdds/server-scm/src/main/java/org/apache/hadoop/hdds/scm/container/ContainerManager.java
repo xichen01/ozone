@@ -197,6 +197,7 @@ public interface ContainerManager {
   void updateDeleteTransactionId(Map<ContainerID, Long> deleteTransactionMap)
       throws IOException;
 
+  // TODO StoragePolicy replace this with StorageTier getMatchingContainer
   default ContainerInfo getMatchingContainer(long size, String owner,
                                      Pipeline pipeline) {
     return getMatchingContainer(size, owner, pipeline, Collections.emptySet());

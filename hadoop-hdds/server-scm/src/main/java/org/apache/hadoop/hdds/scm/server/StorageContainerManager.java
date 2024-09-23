@@ -60,6 +60,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hdds.HddsConfigKeys;
 import org.apache.hadoop.hdds.HddsUtils;
 import org.apache.hadoop.hdds.annotation.InterfaceAudience;
+import org.apache.hadoop.hdds.client.StorageTier;
 import org.apache.hadoop.hdds.conf.ConfigurationSource;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.conf.ReconfigurationHandler;
@@ -685,6 +686,10 @@ public final class StorageContainerManager extends ServiceRuntimeInfoImpl
     // Use SystemClock when data is persisted
     // and used again after system restarts.
     systemClock = Clock.system(ZoneOffset.UTC);
+
+    StorageTier.setDefaultTier(StorageTier.valueOf(conf.get(
+        OzoneConfigKeys.OZONE_DEFAULT_STORAGE_TIER_KEY,
+        OzoneConfigKeys.OZONE_DEFAULT_STORAGE_TIER_DEFAULT)));
 
     if (configurator.getNetworkTopology() != null) {
       clusterMap = configurator.getNetworkTopology();

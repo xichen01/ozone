@@ -37,14 +37,15 @@ import org.apache.hadoop.hdds.utils.db.Table;
  */
 public interface PipelineManager extends Closeable, PipelineManagerMXBean {
 
-  Pipeline createPipeline(ReplicationConfig replicationConfig)
+  Pipeline createPipeline(ReplicationConfig replicationConfig, StorageTier storageTier)
       throws IOException;
 
   Pipeline createPipeline(ReplicationConfig replicationConfig,
                           List<DatanodeDetails> excludedNodes,
-                          List<DatanodeDetails> favoredNodes)
+                          List<DatanodeDetails> favoredNodes, StorageTier storageTier)
       throws IOException;
 
+  // TODO StoragePolicy EC Support
   Pipeline buildECPipeline(ReplicationConfig replicationConfig,
                            List<DatanodeDetails> excludedNodes,
                            List<DatanodeDetails> favoredNodes)
@@ -52,6 +53,7 @@ public interface PipelineManager extends Closeable, PipelineManagerMXBean {
 
   void addEcPipeline(Pipeline pipeline) throws IOException;
 
+  // TODO StoragePolicy Check whether need remove the createPipeline which without the StorageTier
   Pipeline createPipeline(
       ReplicationConfig replicationConfig,
       List<DatanodeDetails> nodes,
@@ -76,11 +78,15 @@ public interface PipelineManager extends Closeable, PipelineManagerMXBean {
   );
 
   List<Pipeline> getPipelines(
+      ReplicationConfig replicationConfig, Pipeline.PipelineState state,
+      StorageTier storageTier);
+
+  List<Pipeline> getPipelines(
       ReplicationConfig replicationConfig,
       Pipeline.PipelineState state,
       Collection<DatanodeDetails> excludeDns,
-      Collection<PipelineID> excludePipelines
-  );
+      Collection<PipelineID> excludePipelines,
+      StorageTier storageTier);
 
   /**
    * Returns the count of pipelines meeting the given ReplicationConfig and

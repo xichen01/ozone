@@ -173,7 +173,7 @@ public interface ContainerStateManager extends SCMHandler {
 
   /**
    * Updates container state with sequenceId synchronization for HA consistency.
-   * This method ensures that all SCM nodes have the same sequenceId when 
+   * This method ensures that all SCM nodes have the same sequenceId when
    * state transitions occur.
    */
   @Replicate

@@ -25,12 +25,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeoutException;
 import org.apache.hadoop.hdds.client.RatisReplicationConfig;
 import org.apache.hadoop.hdds.client.ReplicationConfig;
+import org.apache.hadoop.hdds.client.StorageTier;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.DatanodeDetails;
 import org.apache.hadoop.hdds.protocol.MockDatanodeDetails;
@@ -44,6 +46,7 @@ import org.apache.hadoop.hdds.scm.ha.SCMHAManager;
 import org.apache.hadoop.hdds.scm.ha.SCMHAManagerStub;
 import org.apache.hadoop.hdds.scm.metadata.SCMDBDefinition;
 import org.apache.hadoop.hdds.scm.node.NodeManager;
+import org.apache.hadoop.hdds.scm.pipeline.Pipeline.PipelineState;
 import org.apache.hadoop.hdds.utils.db.DBStore;
 import org.apache.hadoop.hdds.utils.db.DBStoreBuilder;
 import org.apache.hadoop.ozone.ClientVersion;
@@ -93,6 +96,11 @@ public class TestPipelineStateManagerImpl {
 
   private Pipeline createDummyPipeline(HddsProtos.ReplicationType type,
       HddsProtos.ReplicationFactor factor, int numNodes) {
+    return createDummyPipeline(type, factor, numNodes, StorageTier.getDefaultTier());
+  }
+
+  private Pipeline createDummyPipeline(HddsProtos.ReplicationType type,
+      HddsProtos.ReplicationFactor factor, int numNodes, StorageTier storageTier) {
     List<DatanodeDetails> nodes = new ArrayList<>();
     for (int i = 0; i < numNodes; i++) {
       nodes.add(MockDatanodeDetails.randomDatanodeDetails());
@@ -103,6 +111,7 @@ public class TestPipelineStateManagerImpl {
         .setNodes(nodes)
         .setState(Pipeline.PipelineState.ALLOCATED)
         .setId(PipelineID.randomId())
+        .setSupportedStorageTier(storageTier)
         .build();
   }
 
@@ -168,32 +177,38 @@ public class TestPipelineStateManagerImpl {
   }
 
   @Test
-  public void testGetPipelinesByTypeAndFactor()
+  public void testGetPipelinesByTypeAndFactorAndStorageTier()
       throws IOException, TimeoutException {
+
     Set<HddsProtos.Pipeline> pipelines = new HashSet<>();
     for (HddsProtos.ReplicationType type : new ReplicationType[] {
         ReplicationType.RATIS, ReplicationType.STAND_ALONE}) {
       for (HddsProtos.ReplicationFactor factor : HddsProtos.ReplicationFactor
           .values()) {
-        for (int i = 0; i < 5; i++) {
-          // 5 pipelines in allocated state for each type and factor
-          HddsProtos.Pipeline pipeline =
-              createDummyPipeline(type, factor, factor.getNumber())
-                  .getProtobufMessage(ClientVersion.CURRENT_VERSION);
-          stateManager.addPipeline(pipeline);
-          pipelines.add(pipeline);
+        for (StorageTier storageTier : StorageTier.values()) {
+          if (storageTier == StorageTier.EMPTY) {
+            continue;
+          }
+          for (int i = 0; i < 5; i++) {
+            // 5 pipelines in allocated state for each type and factor and storageTier
+            HddsProtos.Pipeline pipeline =
+                createDummyPipeline(type, factor, factor.getNumber(), storageTier)
+                    .getProtobufMessage(ClientVersion.CURRENT_VERSION);
+            stateManager.addPipeline(pipeline);
+            pipelines.add(pipeline);
 
-          // 5 pipelines in open state for each type and factor
-          pipeline = createDummyPipeline(type, factor, factor.getNumber())
-              .getProtobufMessage(ClientVersion.CURRENT_VERSION);
-          stateManager.addPipeline(pipeline);
-          pipelines.add(pipeline);
+            // 5 pipelines in open state for each type and factor
+            pipeline = createDummyPipeline(type, factor, factor.getNumber(), storageTier)
+                .getProtobufMessage(ClientVersion.CURRENT_VERSION);
+            stateManager.addPipeline(pipeline);
+            pipelines.add(pipeline);
 
-          // 5 pipelines in closed state for each type and factor
-          pipeline = createDummyPipeline(type, factor, factor.getNumber())
-              .getProtobufMessage(ClientVersion.CURRENT_VERSION);
-          stateManager.addPipeline(pipeline);
-          pipelines.add(pipeline);
+            // 5 pipelines in closed state for each type and factor
+            pipeline = createDummyPipeline(type, factor, factor.getNumber(), storageTier)
+                .getProtobufMessage(ClientVersion.CURRENT_VERSION);
+            stateManager.addPipeline(pipeline);
+            pipelines.add(pipeline);
+          }
         }
       }
     }
@@ -202,11 +217,24 @@ public class TestPipelineStateManagerImpl {
         ReplicationType.RATIS, ReplicationType.STAND_ALONE}) {
       for (HddsProtos.ReplicationFactor factor : HddsProtos.ReplicationFactor
           .values()) {
-        // verify pipelines received
+        for (StorageTier storageTier : StorageTier.values()) {
+          if (storageTier == StorageTier.EMPTY || factor == ReplicationFactor.ZERO) {
+            continue;
+          }
+          // verify pipelines received
+          List<Pipeline> pipelines1 =
+              stateManager.getPipelines(ReplicationConfig.fromTypeAndFactor(
+                      org.apache.hadoop.hdds.client.ReplicationType.fromProto(type),
+                      org.apache.hadoop.hdds.client.ReplicationFactor.fromProto(factor)),
+                  storageTier);
+          assertEquals(15, pipelines1.size());
+          pipelines1.forEach(p -> assertEquals(type, p.getType()));
+          pipelines1.forEach(p -> assertEquals(storageTier, p.getSupportedStorageTier()));
+        }
         List<Pipeline> pipelines1 =
             stateManager.getPipelines(
                 ReplicationConfig.fromProtoTypeAndFactor(type, factor));
-        assertEquals(15, pipelines1.size());
+        assertEquals(15 * (StorageTier.values().length - 1), pipelines1.size());
         pipelines1.stream().forEach(p -> {
           assertEquals(type, p.getType());
         });
@@ -444,54 +472,149 @@ public class TestPipelineStateManagerImpl {
 
   @Test
   public void testQueryPipeline() throws IOException, TimeoutException {
-    Pipeline pipeline = createDummyPipeline(HddsProtos.ReplicationType.RATIS,
-        HddsProtos.ReplicationFactor.THREE, 3);
-    // pipeline in allocated state should not be reported
+    for (StorageTier storageTier : StorageTier.values()) {
+      if (storageTier == StorageTier.EMPTY) {
+        continue;
+      }
+      Pipeline pipeline = createDummyPipeline(HddsProtos.ReplicationType.RATIS,
+          HddsProtos.ReplicationFactor.THREE, 3, storageTier);
+      // pipeline in allocated state should not be reported
+      HddsProtos.Pipeline pipelineProto = pipeline
+          .getProtobufMessage(ClientVersion.CURRENT_VERSION);
+      stateManager.addPipeline(pipelineProto);
+      assertEquals(0, stateManager
+          .getPipelines(RatisReplicationConfig
+                  .getInstance(ReplicationFactor.THREE),
+              Pipeline.PipelineState.OPEN)
+          .size());
+
+      // pipeline in open state should be reported
+      openPipeline(pipelineProto);
+      assertEquals(1, stateManager
+          .getPipelines(RatisReplicationConfig
+                  .getInstance(ReplicationFactor.THREE),
+              Pipeline.PipelineState.OPEN)
+          .size());
+
+      Pipeline pipeline2 = createDummyPipeline(HddsProtos.ReplicationType.RATIS,
+          HddsProtos.ReplicationFactor.THREE, 3, storageTier);
+      pipeline2 = pipeline2.toBuilder()
+          .setState(Pipeline.PipelineState.OPEN)
+          .build();
+      HddsProtos.Pipeline pipelineProto2 = pipeline2
+          .getProtobufMessage(ClientVersion.CURRENT_VERSION);
+      // pipeline in open state should be reported
+      stateManager.addPipeline(pipelineProto2);
+      assertEquals(2, stateManager
+          .getPipelines(RatisReplicationConfig
+                  .getInstance(ReplicationFactor.THREE),
+              Pipeline.PipelineState.OPEN)
+          .size());
+
+      // pipeline in closed state should not be reported
+      finalizePipeline(pipelineProto2);
+      assertEquals(1, stateManager
+          .getPipelines(RatisReplicationConfig
+                  .getInstance(ReplicationFactor.THREE),
+              Pipeline.PipelineState.OPEN)
+          .size());
+
+      // clean up
+      finalizePipeline(pipelineProto);
+      removePipeline(pipelineProto);
+      finalizePipeline(pipelineProto2);
+      removePipeline(pipelineProto2);
+    }
+  }
+
+  private HddsProtos.Pipeline createAndAddDummyPipeline(HddsProtos.ReplicationType type,
+      HddsProtos.ReplicationFactor factor, int numNodes, StorageTier storageTier)
+      throws IOException, TimeoutException {
+    Pipeline pipeline = createDummyPipeline(type,
+        factor, numNodes, storageTier);
     HddsProtos.Pipeline pipelineProto = pipeline
         .getProtobufMessage(ClientVersion.CURRENT_VERSION);
     stateManager.addPipeline(pipelineProto);
-    assertEquals(0, stateManager
-        .getPipelines(RatisReplicationConfig
-            .getInstance(ReplicationFactor.THREE),
-            Pipeline.PipelineState.OPEN)
-        .size());
+    return pipelineProto;
+  }
 
-    // pipeline in open state should be reported
-    openPipeline(pipelineProto);
-    assertEquals(1, stateManager
-        .getPipelines(RatisReplicationConfig
-            .getInstance(ReplicationFactor.THREE),
-            Pipeline.PipelineState.OPEN)
-        .size());
+  private void assertQueryPipeline(int expectSize, PipelineState state,
+      HddsProtos.ReplicationFactor factor, StorageTier storageTier) {
+    assertEquals(expectSize, stateManager.getPipelines(
+            RatisReplicationConfig.getInstance(factor), state, storageTier).size());
+  }
 
-    Pipeline pipeline2 = createDummyPipeline(HddsProtos.ReplicationType.RATIS,
-        HddsProtos.ReplicationFactor.THREE, 3);
-    pipeline2 = pipeline2.toBuilder()
-        .setState(Pipeline.PipelineState.OPEN)
-        .build();
-    HddsProtos.Pipeline pipelineProto2 = pipeline2
-        .getProtobufMessage(ClientVersion.CURRENT_VERSION);
+  private void assertQueryPipeline(int expectSize, PipelineState state,
+      HddsProtos.ReplicationFactor factor) {
+    assertEquals(expectSize, stateManager.getPipelines(
+            RatisReplicationConfig.getInstance(factor), state).size());
+  }
+
+  @Test
+  public void testQueryPipelineWithStorageTier() throws IOException, TimeoutException {
     // pipeline in open state should be reported
-    stateManager.addPipeline(pipelineProto2);
-    assertEquals(2, stateManager
-        .getPipelines(RatisReplicationConfig
-            .getInstance(ReplicationFactor.THREE),
-            Pipeline.PipelineState.OPEN)
-        .size());
+    HddsProtos.Pipeline diskTierPipeline = createAndAddDummyPipeline(
+        ReplicationType.RATIS, ReplicationFactor.THREE, 3, StorageTier.DISK);
+    openPipeline(diskTierPipeline);
+    // diskTierPipeline
+    assertQueryPipeline(1, PipelineState.OPEN, ReplicationFactor.THREE);
+    assertQueryPipeline(1, PipelineState.OPEN, ReplicationFactor.THREE, StorageTier.DISK);
+    assertQueryPipeline(0, PipelineState.OPEN, ReplicationFactor.THREE, StorageTier.SSD);
+
+    HddsProtos.Pipeline ssdTierPipeline = createAndAddDummyPipeline(
+        ReplicationType.RATIS, ReplicationFactor.THREE, 3, StorageTier.SSD);
+    openPipeline(ssdTierPipeline);
+    // diskTierPipeline + ssdTierPipeline
+    assertQueryPipeline(2, PipelineState.OPEN, ReplicationFactor.THREE);
+    assertQueryPipeline(1, PipelineState.OPEN, ReplicationFactor.THREE, StorageTier.DISK);
+    assertQueryPipeline(1, PipelineState.OPEN, ReplicationFactor.THREE, StorageTier.SSD);
+
+    HddsProtos.Pipeline archiveTierPipeline = createAndAddDummyPipeline(
+        ReplicationType.RATIS, ReplicationFactor.THREE, 3, StorageTier.ARCHIVE);
+    openPipeline(archiveTierPipeline);
+    // diskTierPipeline + ssdTierPipeline + archiveTierPipeline
+    assertQueryPipeline(3, PipelineState.OPEN, ReplicationFactor.THREE);
+    assertQueryPipeline(1, PipelineState.OPEN, ReplicationFactor.THREE, StorageTier.DISK);
+    assertQueryPipeline(1, PipelineState.OPEN, ReplicationFactor.THREE, StorageTier.SSD);
+    assertQueryPipeline(1, PipelineState.OPEN, ReplicationFactor.THREE, StorageTier.ARCHIVE);
 
     // pipeline in closed state should not be reported
-    finalizePipeline(pipelineProto2);
-    assertEquals(1, stateManager
-        .getPipelines(RatisReplicationConfig
-            .getInstance(ReplicationFactor.THREE),
-            Pipeline.PipelineState.OPEN)
-        .size());
+    finalizePipeline(diskTierPipeline);
+    // ssdTierPipeline + archiveTierPipeline
+    assertQueryPipeline(2, PipelineState.OPEN, ReplicationFactor.THREE);
+    assertQueryPipeline(0, PipelineState.OPEN, ReplicationFactor.THREE, StorageTier.DISK);
+    assertQueryPipeline(1, PipelineState.OPEN, ReplicationFactor.THREE, StorageTier.SSD);
+    assertQueryPipeline(1, PipelineState.OPEN, ReplicationFactor.THREE, StorageTier.ARCHIVE);
+
+    // Legacy pipelines without StorageTier are treated as the default tier.
+    Pipeline legacyPipeline = Pipeline.newBuilder()
+        .setReplicationConfig(
+            ReplicationConfig.fromProtoTypeAndFactor(ReplicationType.RATIS,
+                ReplicationFactor.THREE))
+        .setNodes(Arrays.asList(
+            MockDatanodeDetails.randomDatanodeDetails(),
+            MockDatanodeDetails.randomDatanodeDetails(),
+            MockDatanodeDetails.randomDatanodeDetails()))
+        .setState(Pipeline.PipelineState.OPEN)
+        .setId(PipelineID.randomId())
+        .build();
+    HddsProtos.Pipeline legacyPipelineProto = legacyPipeline
+        .getProtobufMessage(ClientVersion.CURRENT_VERSION);
+    stateManager.addPipeline(legacyPipelineProto);
+    assertQueryPipeline(3, PipelineState.OPEN, ReplicationFactor.THREE);
+    assertQueryPipeline(1, PipelineState.OPEN, ReplicationFactor.THREE,
+        StorageTier.getDefaultTier());
+    assertQueryPipeline(1, PipelineState.OPEN, ReplicationFactor.THREE, StorageTier.SSD);
 
     // clean up
-    finalizePipeline(pipelineProto);
-    removePipeline(pipelineProto);
-    finalizePipeline(pipelineProto2);
-    removePipeline(pipelineProto2);
+    finalizePipeline(diskTierPipeline);
+    removePipeline(diskTierPipeline);
+    finalizePipeline(ssdTierPipeline);
+    removePipeline(ssdTierPipeline);
+    finalizePipeline(archiveTierPipeline);
+    removePipeline(archiveTierPipeline);
+    finalizePipeline(legacyPipelineProto);
+    removePipeline(legacyPipelineProto);
   }
 
   private void removePipeline(HddsProtos.Pipeline pipeline)

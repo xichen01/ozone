@@ -20,6 +20,7 @@ package org.apache.hadoop.hdds.client;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import org.apache.hadoop.fs.StorageType;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.StorageTierProto;
 
@@ -66,6 +67,18 @@ public enum StorageTier {
 
   public static StorageTier getDefaultTier() {
     return defaultTier;
+  }
+
+  /**
+   * Sets the default StorageTier used when callers do not specify one.
+   */
+  public static void setDefaultTier(StorageTier storageTier) {
+    Objects.requireNonNull(storageTier, "storageTier cannot be null");
+    if (storageTier == EMPTY) {
+      throw new IllegalArgumentException(
+          "Default StorageTier cannot be EMPTY");
+    }
+    defaultTier = storageTier;
   }
 
   public StorageTierProto toProto() {
