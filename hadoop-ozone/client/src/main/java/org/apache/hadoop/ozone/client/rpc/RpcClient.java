@@ -641,10 +641,20 @@ public class RpcClient implements ClientProtocol {
         BucketArgs.newBuilder().build());
   }
 
-  private boolean isOMFeatureSupported(OzoneManagerVersion checkedFeature) {
-    return OzoneManagerVersion.isOmFeatureSupported(omSupportedFeatureBitmap, checkedFeature);
+  public static boolean isOmFeatureSupported(long omSupportedFeatureBitmap, OzoneManagerVersion omVersion,
+                                              OzoneManagerVersion checkedFeature) {
+    if (omSupportedFeatureBitmap > 0) {
+      // For the OM which support the "FeatureBitmap"
+      return OzoneManagerVersion.isOmFeatureSupported(omSupportedFeatureBitmap, checkedFeature);
+    } else {
+      // For the old OM which not support "FeatureBitmap~", fallback to use omVersion
+      return omVersion.compareTo(checkedFeature) >= 0;
+    }
   }
 
+  private boolean isOmFeatureSupported(OzoneManagerVersion checkedFeature) {
+    return isOmFeatureSupported(omSupportedFeatureBitmap, omVersion, checkedFeature);
+  }
 
   @Override
   public void createBucket(
@@ -655,7 +665,7 @@ public class RpcClient implements ClientProtocol {
     Preconditions.checkNotNull(bucketArgs);
     verifyCountsQuota(bucketArgs.getQuotaInNamespace());
     verifySpaceQuota(bucketArgs.getQuotaInBytes());
-    if (!isOMFeatureSupported(OzoneManagerVersion.ERASURE_CODED_STORAGE_SUPPORT)) {
+    if (!isOmFeatureSupported(OzoneManagerVersion.ERASURE_CODED_STORAGE_SUPPORT)) {
       if (bucketArgs.getDefaultReplicationConfig() != null &&
           bucketArgs.getDefaultReplicationConfig().getType()
           == ReplicationType.EC) {
@@ -1311,7 +1321,7 @@ public class RpcClient implements ClientProtocol {
     verifyVolumeName(volumeName);
     verifyBucketName(bucketName);
     Preconditions.checkNotNull(replicationConfig);
-    if (!isOMFeatureSupported(OzoneManagerVersion.ERASURE_CODED_STORAGE_SUPPORT)) {
+    if (!isOmFeatureSupported(OzoneManagerVersion.ERASURE_CODED_STORAGE_SUPPORT)) {
       if (replicationConfig.getReplicationType()
           == HddsProtos.ReplicationType.EC) {
         throw new IOException("Can not set the default replication of the"
@@ -1430,7 +1440,7 @@ public class RpcClient implements ClientProtocol {
       Map<String, String> metadata, Map<String, String> tags) throws IOException {
     createKeyPreChecks(volumeName, bucketName, keyName, replicationConfig);
 
-    if (!isOMFeatureSupported(OzoneManagerVersion.OBJECT_TAG)) {
+    if (!isOmFeatureSupported(OzoneManagerVersion.OBJECT_TAG)) {
       if (tags != null && !tags.isEmpty()) {
         throw new IOException("OzoneManager does not support object tags");
       }
@@ -1465,7 +1475,7 @@ public class RpcClient implements ClientProtocol {
   public OzoneOutputStream rewriteKey(String volumeName, String bucketName, String keyName,
       long size, long existingKeyGeneration, ReplicationConfig replicationConfig,
       Map<String, String> metadata) throws IOException {
-    if (!isOMFeatureSupported(OzoneManagerVersion.ATOMIC_REWRITE_KEY)) {
+    if (!isOmFeatureSupported(OzoneManagerVersion.ATOMIC_REWRITE_KEY)) {
       throw new IOException("OzoneManager does not support atomic key rewrite.");
     }
 
@@ -1500,7 +1510,7 @@ public class RpcClient implements ClientProtocol {
       HddsClientUtils.verifyKeyName(keyName);
     }
     HddsClientUtils.checkNotNull(keyName);
-    if (!isOMFeatureSupported(OzoneManagerVersion.ERASURE_CODED_STORAGE_SUPPORT)) {
+    if (!isOmFeatureSupported(OzoneManagerVersion.ERASURE_CODED_STORAGE_SUPPORT)) {
       if (replicationConfig != null &&
           replicationConfig.getReplicationType()
               == HddsProtos.ReplicationType.EC) {
@@ -1537,7 +1547,7 @@ public class RpcClient implements ClientProtocol {
     }
     HddsClientUtils.checkNotNull(keyName);
 
-    if (!isOMFeatureSupported(OzoneManagerVersion.OBJECT_TAG)) {
+    if (!isOmFeatureSupported(OzoneManagerVersion.OBJECT_TAG)) {
       if (tags != null && !tags.isEmpty()) {
         throw new IOException("OzoneManager does not support object tags");
       }
@@ -1758,7 +1768,7 @@ public class RpcClient implements ClientProtocol {
                                  int maxListResult)
       throws IOException {
 
-    if (isOMFeatureSupported(OzoneManagerVersion.LIGHTWEIGHT_LIST_KEYS)) {
+    if (isOmFeatureSupported(OzoneManagerVersion.LIGHTWEIGHT_LIST_KEYS)) {
       List<BasicOmKeyInfo> keys = ozoneManagerClient.listKeysLight(
           volumeName, bucketName, prevKey, keyPrefix, maxListResult).getKeys();
 
@@ -1887,7 +1897,7 @@ public class RpcClient implements ClientProtocol {
 
   private OmKeyInfo getKeyInfo(OmKeyArgs keyArgs) throws IOException {
     final OmKeyInfo keyInfo;
-    if (isOMFeatureSupported(OzoneManagerVersion.OPTIMIZED_GET_KEY_INFO)) {
+    if (isOmFeatureSupported(OzoneManagerVersion.OPTIMIZED_GET_KEY_INFO)) {
       keyInfo = ozoneManagerClient.getKeyInfo(keyArgs, false)
           .getKeyInfo();
     } else {
@@ -1952,7 +1962,7 @@ public class RpcClient implements ClientProtocol {
     verifyBucketName(bucketName);
     HddsClientUtils.checkNotNull(keyName);
     String ownerName = getRealUserInfo().getShortUserName();
-    if (!isOMFeatureSupported(OzoneManagerVersion.ERASURE_CODED_STORAGE_SUPPORT)) {
+    if (!isOmFeatureSupported(OzoneManagerVersion.ERASURE_CODED_STORAGE_SUPPORT)) {
       if (replicationConfig != null && replicationConfig.getReplicationType()
           == HddsProtos.ReplicationType.EC) {
         throw new IOException("Can not set the replication of the file to"
@@ -1961,7 +1971,7 @@ public class RpcClient implements ClientProtocol {
       }
     }
 
-    if (!isOMFeatureSupported(OzoneManagerVersion.OBJECT_TAG)) {
+    if (!isOmFeatureSupported(OzoneManagerVersion.OBJECT_TAG)) {
       if (tags != null && !tags.isEmpty()) {
         throw new IOException("OzoneManager does not support object tags");
       }
@@ -2203,7 +2213,7 @@ public class RpcClient implements ClientProtocol {
         .setLatestVersionLocation(getLatestVersionLocation)
         .build();
     final OmKeyInfo keyInfo;
-    if (isOMFeatureSupported(OzoneManagerVersion.OPTIMIZED_GET_KEY_INFO)) {
+    if (isOmFeatureSupported(OzoneManagerVersion.OPTIMIZED_GET_KEY_INFO)) {
       keyInfo = ozoneManagerClient.getKeyInfo(keyArgs, false)
           .getKeyInfo();
       if (!keyInfo.isFile()) {
@@ -2251,7 +2261,7 @@ public class RpcClient implements ClientProtocol {
   public OzoneOutputStream createFile(String volumeName, String bucketName,
       String keyName, long size, ReplicationConfig replicationConfig,
       boolean overWrite, boolean recursive) throws IOException {
-    if (!isOMFeatureSupported(OzoneManagerVersion.ERASURE_CODED_STORAGE_SUPPORT)) {
+    if (!isOmFeatureSupported(OzoneManagerVersion.ERASURE_CODED_STORAGE_SUPPORT)) {
       if (replicationConfig.getReplicationType()
           == HddsProtos.ReplicationType.EC) {
         throw new IOException("Can not set the replication of the file to"
@@ -2332,7 +2342,7 @@ public class RpcClient implements ClientProtocol {
       String bucketName, String keyName, boolean recursive, String startKey,
       long numEntries, boolean allowPartialPrefixes) throws IOException {
     OmKeyArgs keyArgs = prepareOmKeyArgs(volumeName, bucketName, keyName);
-    if (isOMFeatureSupported(OzoneManagerVersion.LIGHTWEIGHT_LIST_STATUS)) {
+    if (isOmFeatureSupported(OzoneManagerVersion.LIGHTWEIGHT_LIST_STATUS)) {
       return ozoneManagerClient.listStatusLight(keyArgs, recursive, startKey,
           numEntries, allowPartialPrefixes);
     } else {
@@ -2726,7 +2736,7 @@ public class RpcClient implements ClientProtocol {
   public LeaseKeyInfo recoverLease(String volumeName, String bucketName,
                                    String keyName, boolean force)
       throws IOException {
-    if (!isOMFeatureSupported(OzoneManagerVersion.HBASE_SUPPORT)) {
+    if (!isOmFeatureSupported(OzoneManagerVersion.HBASE_SUPPORT)) {
       throw new UnsupportedOperationException("Lease recovery API requires OM feature "
           + OzoneManagerVersion.HBASE_SUPPORT + ". Current OM support feature "
           + omSupportedFeatureBitmap);
@@ -2736,7 +2746,7 @@ public class RpcClient implements ClientProtocol {
 
   @Override
   public void recoverKey(OmKeyArgs args, long clientID) throws IOException {
-    if (!isOMFeatureSupported(OzoneManagerVersion.HBASE_SUPPORT)) {
+    if (!isOmFeatureSupported(OzoneManagerVersion.HBASE_SUPPORT)) {
       throw new UnsupportedOperationException("Lease recovery API requires OM feature "
           + OzoneManagerVersion.HBASE_SUPPORT + ". Current OM support feature "
           + omSupportedFeatureBitmap);

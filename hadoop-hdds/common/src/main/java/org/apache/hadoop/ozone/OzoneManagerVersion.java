@@ -59,6 +59,22 @@ public enum OzoneManagerVersion implements ComponentVersion {
   private final int version;
   private final String description;
 
+  /**
+   * This is limited to 63 because the version bitmap is stored in a `long` type,
+   * which has 64 bits. One bit is reserved for each version number, starting from 0.
+   * Therefore, the highest representable version number is 63.
+   */
+  public static final int MAX_SUPPORTED_VERSION = 63;
+
+  static {
+    for (OzoneManagerVersion version : OzoneManagerVersion.values()) {
+      if (version.toProtoValue() > MAX_SUPPORTED_VERSION) {
+        throw new IllegalStateException(
+                "Version " + version + " exceeds the maximum supported version: " + MAX_SUPPORTED_VERSION);
+      }
+    }
+  }
+
   OzoneManagerVersion(int version, String description) {
     this.version = version;
     this.description = description;

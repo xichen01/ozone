@@ -50,6 +50,7 @@ import org.apache.hadoop.hdds.scm.pipeline.PipelineID;
 import org.apache.hadoop.io.retry.RetryPolicies;
 import org.apache.hadoop.io.retry.RetryPolicy;
 import org.apache.hadoop.ozone.OzoneManagerVersion;
+import org.apache.hadoop.ozone.client.rpc.RpcClient;
 import org.apache.hadoop.ozone.om.helpers.OmKeyLocationInfo;
 import org.apache.hadoop.ozone.om.helpers.OmKeyLocationInfoGroup;
 import org.apache.hadoop.ozone.om.helpers.OmMultipartCommitUploadPartInfo;
@@ -542,7 +543,7 @@ public class KeyOutputStream extends OutputStream
         throw new UnsupportedOperationException("The replication factor = "
             + replication.getRequiredNodes() + " <= 1");
       }
-      if (!OzoneManagerVersion.isOmFeatureSupported(omSupportedFeatureBitmap, OzoneManagerVersion.HBASE_SUPPORT)) {
+      if (RpcClient.isOmFeatureSupported(omSupportedFeatureBitmap, ozoneManagerVersion, OzoneManagerVersion.HBASE_SUPPORT)) {
         throw new UnsupportedOperationException("Hsync API requires OM feature "
             + OzoneManagerVersion.HBASE_SUPPORT + ". Current OM feature "
             + omSupportedFeatureBitmap);
