@@ -273,7 +273,6 @@ public class OMKeyCommitRequest extends OMKeyRequest {
               " metadata while recovery flag is not set in request", KEY_UNDER_LEASE_RECOVERY);
         }
       }
-
       OmKeyInfo openKeyToDelete = null;
       String dbOpenKeyToDeleteKey = null;
       if (isOverwrittenHsyncKey) {
@@ -290,7 +289,16 @@ public class OMKeyCommitRequest extends OMKeyRequest {
             dbOpenKeyToDeleteKey, openKeyToDelete, trxnLogIndex);
       }
 
-      omKeyInfo.setModificationTime(commitKeyArgs.getModificationTime());
+      long modificationTime = commitKeyArgs.getModificationTime();
+      if (commitKeyArgs.hasObjectAttributes() && commitKeyArgs.getObjectAttributes().hasMtime()) {
+        modificationTime = commitKeyArgs.getObjectAttributes().getMtime();
+      }
+      if (commitKeyArgs.hasObjectAttributes() && commitKeyArgs.getObjectAttributes().hasCtime()) {
+        // If the request contains the creation time, the creation time is not modified,
+        // as the creation time has already been set in OMKeyCreateRequest.
+        omKeyInfo.setCreationTime(commitKeyArgs.getObjectAttributes().getCtime());
+      }
+      omKeyInfo.setModificationTime(modificationTime);
       // non-null indicates it is necessary to update the open key
       OmKeyInfo newOpenKeyInfo = null;
 

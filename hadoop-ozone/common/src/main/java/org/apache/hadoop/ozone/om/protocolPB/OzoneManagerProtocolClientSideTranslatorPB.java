@@ -757,6 +757,10 @@ public final class OzoneManagerProtocolClientSideTranslatorPB
       keyArgs.addAllTags(KeyValueUtil.toProtobuf(args.getTags()));
     }
 
+    if (args.getObjectAttributes() != null) {
+      keyArgs.setObjectAttributes(args.getObjectAttributes().toProto());
+    }
+
     if (args.getMultipartUploadID() != null) {
       keyArgs.setMultipartUploadID(args.getMultipartUploadID());
     }
@@ -786,7 +790,7 @@ public final class OzoneManagerProtocolClientSideTranslatorPB
     CreateKeyResponse keyResponse = handleSubmitRequestAndSCMSafeModeRetry(omRequest).getCreateKeyResponse();
     OpenKeySession openKeySession = new OpenKeySession(keyResponse.getID(),
         OmKeyInfo.getFromProtobuf(keyResponse.getKeyInfo()),
-        keyResponse.getOpenVersion());
+        keyResponse.getOpenVersion(), args.getObjectAttributes());
     if (keyResponse.hasDerivedKey()) {
       openKeySession.setDerivedKey(keyResponse.getDerivedKey().asReadOnlyByteBuffer());
     }
@@ -888,6 +892,9 @@ public final class OzoneManagerProtocolClientSideTranslatorPB
             // TODO use OM version?
             .map(info -> info.getProtobuf(ClientVersion.CURRENT_VERSION))
             .collect(Collectors.toList()));
+    if (args.getObjectAttributes() != null) {
+      keyArgsBuilder.setObjectAttributes(args.getObjectAttributes().toProto());
+    }
 
     setReplicationConfig(args.getReplicationConfig(), keyArgsBuilder);
 
@@ -2467,7 +2474,7 @@ public final class OzoneManagerProtocolClientSideTranslatorPB
     CreateFileResponse resp = handleSubmitRequestAndSCMSafeModeRetry(omRequest).getCreateFileResponse();
 
     return new OpenKeySession(resp.getID(),
-        OmKeyInfo.getFromProtobuf(resp.getKeyInfo()), resp.getOpenVersion());
+        OmKeyInfo.getFromProtobuf(resp.getKeyInfo()), resp.getOpenVersion(), null);
   }
 
   @Nonnull

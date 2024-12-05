@@ -115,6 +115,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.hdds.client.DefaultReplicationConfig;
 import org.apache.hadoop.hdds.client.ECReplicationConfig;
 import org.apache.hadoop.hdds.client.ECReplicationConfig.EcCodec;
+import org.apache.hadoop.hdds.client.ObjectAttributes;
 import org.apache.hadoop.hdds.client.OzoneQuota;
 import org.apache.hadoop.hdds.client.RatisReplicationConfig;
 import org.apache.hadoop.hdds.client.ReplicationConfig;
@@ -686,6 +687,120 @@ abstract class OzoneRpcClientTests extends OzoneTestBase {
     assertNotNull(bucket.getMetadata());
     assertEquals("value1", bucket.getMetadata().get("key1"));
 
+  }
+
+  @ParameterizedTest
+  @MethodSource("bucketLayouts")
+  public void testCreateKeyWithMetadataAndTags(BucketLayout bucketLayout) throws Exception {
+    String volumeName = UUID.randomUUID().toString();
+    String bucketName = UUID.randomUUID().toString();
+    String keyName = UUID.randomUUID().toString();
+    String value = "sample value";
+    OzoneVolume volume = null;
+    store.createVolume(volumeName);
+
+    volume = store.getVolume(volumeName);
+    BucketArgs bucketArgs =
+        BucketArgs.newBuilder().setBucketLayout(bucketLayout).build();
+    volume.createBucket(bucketName, bucketArgs);
+
+    OzoneBucket ozoneBucket = volume.getBucket(bucketName);
+
+    Map<String, String> customMetadata = new HashMap<>();
+    customMetadata.put("custom-key1", "custom-value1");
+    customMetadata.put("custom-key2", "custom-value2");
+
+    Map<String, String> tags = new HashMap<>();
+    tags.put("tag-key1", "tag-value1");
+    tags.put("tag-key2", "tag-value2");
+
+    writeKey(ozoneBucket, keyName, ONE, value, value.length(), customMetadata, tags, null);
+
+    OzoneKeyDetails keyDetails = ozoneBucket.getKey(keyName);
+
+    Map<String, String> keyMetadata = keyDetails.getMetadata();
+
+    Map<String, String> keyTags = keyDetails.getTags();
+
+    assertEquals("custom-value1", keyMetadata.get("custom-key1"));
+    assertEquals("custom-value2", keyMetadata.get("custom-key2"));
+    assertFalse(keyMetadata.containsKey("tag-key1"));
+    assertFalse(keyMetadata.containsKey("tag-key2"));
+
+    assertEquals("tag-value1", keyTags.get("tag-key1"));
+    assertEquals("tag-value2", keyTags.get("tag-key2"));
+    assertFalse(keyTags.containsKey("custom-key1"));
+    assertFalse(keyTags.containsKey("custom-key2"));
+  }
+
+  @ParameterizedTest
+  @MethodSource("bucketLayouts")
+  public void testCreateKeyWithObjectAttributes(BucketLayout bucketLayout) throws Exception {
+    // Only support Object/Legacy Bucket
+    Assumptions.assumeTrue(!bucketLayout.isFileSystemOptimized());
+    // ENV
+    String volumeName = UUID.randomUUID().toString();
+    String bucketName = UUID.randomUUID().toString();
+    String value = "sample value";
+    OzoneVolume volume;
+    store.createVolume(volumeName);
+    volume = store.getVolume(volumeName);
+    BucketArgs bucketArgs =
+        BucketArgs.newBuilder().setBucketLayout(bucketLayout).build();
+    volume.createBucket(bucketName, bucketArgs);
+    OzoneBucket ozoneBucket = volume.getBucket(bucketName);
+
+    // Only specifying creation Time
+    ObjectAttributes objectAttributes0 = new ObjectAttributes();
+    long ctime0 = System.currentTimeMillis();
+    objectAttributes0.setCtime(ctime0);
+    String keyName0 = UUID.randomUUID().toString();
+    writeKey(ozoneBucket, keyName0, ONE, value, value.length(), objectAttributes0);
+    OzoneKeyDetails keyDetails = ozoneBucket.getKey(keyName0);
+    assertEquals(ctime0, keyDetails.getCreationTime().toEpochMilli());
+    assertEquals(UserGroupInformation.getCurrentUser().getShortUserName(), keyDetails.getOwnerName());
+
+    // Only specifying modification Time
+    ObjectAttributes objectAttributes1 = new ObjectAttributes();
+    long mTime1 = System.currentTimeMillis();
+    objectAttributes1.setMtime(mTime1);
+    String keyName1 = UUID.randomUUID().toString();
+    writeKey(ozoneBucket, keyName1, ONE, value, value.length(), objectAttributes1);
+    OzoneKeyDetails keyDetails1 = ozoneBucket.getKey(keyName1);
+    assertEquals(mTime1, keyDetails1.getModificationTime().toEpochMilli());
+    assertEquals(UserGroupInformation.getCurrentUser().getShortUserName(), keyDetails1.getOwnerName());
+
+    // Only specifying username
+    ObjectAttributes objectAttributes2 = new ObjectAttributes();
+    String userName2 = UUID.randomUUID().toString();
+    objectAttributes2.setUsername(userName2);
+    String keyName2 = UUID.randomUUID().toString();
+    writeKey(ozoneBucket, keyName2, ONE, value, value.length(), objectAttributes2);
+    OzoneKeyDetails keyDetails2 = ozoneBucket.getKey(keyName2);
+    assertEquals(userName2, keyDetails2.getOwnerName());
+
+    // Specifying multiple attribute
+    String userName3 = UUID.randomUUID().toString();
+    long mTime3 = System.currentTimeMillis();
+    ObjectAttributes objectAttributes3 = new ObjectAttributes();
+    objectAttributes3.setUsername(userName3);
+    objectAttributes3.setMtime(mTime3);
+    String keyName3 = UUID.randomUUID().toString();
+    writeKey(ozoneBucket, keyName3, ONE, value, value.length(), objectAttributes3);
+    OzoneKeyDetails keyDetails3 = ozoneBucket.getKey(keyName3);
+    assertEquals(mTime3, keyDetails3.getModificationTime().toEpochMilli());
+    assertEquals(userName3, keyDetails3.getOwnerName());
+
+    // Test overwrite
+    String userName4 = UUID.randomUUID().toString();
+    long mTime4 = System.currentTimeMillis();
+    ObjectAttributes objectAttributes4 = new ObjectAttributes();
+    objectAttributes4.setUsername(userName4);
+    objectAttributes4.setMtime(mTime4);
+    writeKey(ozoneBucket, keyName3, ONE, value, value.length(), objectAttributes4);
+    OzoneKeyDetails keyDetails4 = ozoneBucket.getKey(keyName3);
+    assertEquals(mTime4, keyDetails4.getModificationTime().toEpochMilli());
+    assertEquals(userName4, keyDetails4.getOwnerName());
   }
 
   @Test
@@ -2144,6 +2259,24 @@ abstract class OzoneRpcClientTests extends OzoneTestBase {
       throws IOException {
     OzoneOutputStream out = bucket.createKey(keyName, valueLength,
         ReplicationConfig.fromTypeAndFactor(RATIS, replication), customMetadata, tags);
+    out.write(value.getBytes(UTF_8));
+    out.close();
+  }
+
+  private void writeKey(OzoneBucket bucket, String keyName,
+      ReplicationFactor replication, String value,
+      int valueLength, ObjectAttributes objectAttributes)
+      throws IOException {
+    writeKey(bucket, keyName, replication, value, valueLength, Collections.EMPTY_MAP,
+        Collections.EMPTY_MAP, objectAttributes);
+  }
+
+  private void writeKey(OzoneBucket bucket, String keyName,
+      ReplicationFactor replication, String value, int valueLength, Map<String, String> customMetadata,
+      Map<String, String> tags, ObjectAttributes objectAttributes)
+      throws IOException {
+    OzoneOutputStream out = bucket.createKey(keyName, valueLength,
+        ReplicationConfig.fromTypeAndFactor(RATIS, replication), customMetadata, tags, objectAttributes);
     out.write(value.getBytes(UTF_8));
     out.close();
   }

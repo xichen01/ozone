@@ -1038,6 +1038,9 @@ public abstract class OMKeyRequest extends OMClientRequest {
         builder.setExpectedDataGeneration(keyArgs.getExpectedDataGeneration());
       }
 
+      if (keyArgs.hasObjectAttributes() && keyArgs.getObjectAttributes().hasUsername()) {
+        builder.setOwnerName(keyArgs.getObjectAttributes().getUsername());
+      }
       return builder.build();
     }
 
@@ -1065,6 +1068,12 @@ public abstract class OMKeyRequest extends OMClientRequest {
       long transactionLogIndex, long objectID,
       OmConfig config) throws OMException {
     OmKeyInfo.Builder builder = new OmKeyInfo.Builder();
+    String ownerName;
+    if (keyArgs.hasObjectAttributes() && keyArgs.getObjectAttributes().hasUsername()) {
+      ownerName = keyArgs.getObjectAttributes().getUsername();
+    } else {
+      ownerName = keyArgs.getOwnerName();
+    }
     builder.setVolumeName(keyArgs.getVolumeName())
             .setBucketName(keyArgs.getBucketName())
             .setKeyName(keyArgs.getKeyName())
@@ -1082,7 +1091,7 @@ public abstract class OMKeyRequest extends OMClientRequest {
             .addAllTags(KeyValueUtil.getFromProtobuf(
                     keyArgs.getTagsList()))
             .setUpdateID(transactionLogIndex)
-            .setOwnerName(keyArgs.getOwnerName())
+            .setOwnerName(ownerName)
             .setFile(true);
     if (keyArgs.hasExpectedDataGeneration()) {
       builder.setExpectedDataGeneration(keyArgs.getExpectedDataGeneration());

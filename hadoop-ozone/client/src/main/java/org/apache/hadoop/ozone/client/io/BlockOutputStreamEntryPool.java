@@ -104,7 +104,12 @@ public class BlockOutputStreamEntryPool implements KeyMetadataAware {
         .setDataSize(info.getDataSize())
         .setIsMultipartKey(b.isMultipartKey())
         .setMultipartUploadID(b.getMultipartUploadID())
-        .setMultipartUploadPartNumber(b.getMultipartNumber());
+        .setMultipartUploadPartNumber(b.getMultipartNumber())
+        // The object attribute modification time should specify the time when the key was committed,
+        // not the time when the key was opened, some cleanup services rely on the
+        // modification time of the open key.
+        .setObjectAttributes(b.getOpenHandler().getObjectAttributes())
+        .build();
     this.openID = b.getOpenHandler().getId();
     this.excludeList = createExcludeList();
 

@@ -19,6 +19,7 @@ package org.apache.hadoop.ozone.om.helpers;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.nio.ByteBuffer;
+import org.apache.hadoop.hdds.client.ObjectAttributes;
 
 /**
  * This class represents a open key "session". A session here means a key is
@@ -35,10 +36,17 @@ public class OpenKeySession {
   private long openVersion;
   private ByteBuffer derivedKey;
 
+  private final ObjectAttributes objectAttributes;
+
   public OpenKeySession(long id, OmKeyInfo info, long version) {
+    this(id, info, version, null);
+  }
+
+  public OpenKeySession(long id, OmKeyInfo info, long version, ObjectAttributes objectAttributes) {
     this.id = id;
     this.keyInfo = info;
     this.openVersion = version;
+    this.objectAttributes = objectAttributes;
   }
 
   public void setDerivedKey(ByteBuffer derivedKey) {
@@ -60,4 +68,9 @@ public class OpenKeySession {
   public long getId() {
     return id;
   }
+
+  public ObjectAttributes getObjectAttributes() {
+    return objectAttributes;
+  }
+
 }

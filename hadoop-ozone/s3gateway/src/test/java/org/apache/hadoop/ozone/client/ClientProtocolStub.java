@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 import org.apache.hadoop.crypto.key.KeyProvider;
+import org.apache.hadoop.hdds.client.ObjectAttributes;
 import org.apache.hadoop.hdds.client.ReplicationConfig;
 import org.apache.hadoop.hdds.client.ReplicationFactor;
 import org.apache.hadoop.hdds.client.ReplicationType;
@@ -340,6 +341,14 @@ public class ClientProtocolStub implements ClientProtocol {
     return getBucket(volumeName, bucketName)
         .rewriteStreamKeyIfMatch(keyName, size, expectedETag,
             replicationConfig, metadata, tags);
+  }
+
+  @Override
+  public OzoneOutputStream createKey(String volumeName, String bucketName, String keyName,
+      long size, ReplicationConfig replicationConfig, Map<String, String> metadata,
+      Map<String, String> tags, ObjectAttributes objectAttributes) throws IOException {
+    return getBucket(volumeName, bucketName)
+        .createKey(keyName, size, replicationConfig, metadata, tags, objectAttributes);
   }
 
   @Override

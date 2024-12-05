@@ -1151,6 +1151,7 @@ message KeyArgs {
     // the given ETag for the operation to succeed. This is used for
     // S3 conditional writes with the If-Match header.
     optional string expectedETag = 24;
+    optional hadoop.hdds.ObjectAttributeProto objectAttributes = 1004;
 }
 
 message KeyLocation {

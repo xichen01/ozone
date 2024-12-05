@@ -638,3 +638,9 @@ enum JobworkerPortType {
     UNKNOWN_PORT = 0;
     HTTP = 1;
 }
+
+message ObjectAttributeProto {
+    optional string username = 1;  // owner name of the Object
+    optional int64 mtime = 2;  // Unix timestamp for modification time
+    optional int64 ctime = 3;  // Unix timestamp for creation time
+}

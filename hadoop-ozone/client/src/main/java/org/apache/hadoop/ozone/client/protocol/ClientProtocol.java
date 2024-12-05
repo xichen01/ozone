@@ -23,6 +23,7 @@ import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import org.apache.hadoop.crypto.key.KeyProvider;
+import org.apache.hadoop.hdds.client.ObjectAttributes;
 import org.apache.hadoop.hdds.client.ReplicationConfig;
 import org.apache.hadoop.hdds.client.ReplicationFactor;
 import org.apache.hadoop.hdds.client.ReplicationType;
@@ -494,6 +495,25 @@ public interface ClientProtocol {
   OzoneDataStreamOutput createStreamKey(String volumeName, String bucketName,
       String keyName, long size, ReplicationConfig replicationConfig,
       Map<String, String> metadata, Map<String, String> tags)
+      throws IOException;
+
+
+  /**
+   * Writes a key in an existing bucket.
+   * @param volumeName Name of the Volume
+   * @param bucketName Name of the Bucket
+   * @param keyName Name of the Key
+   * @param size Size of the data
+   * @param replicationConfig Replication config of the key
+   * @param metadata Custom key metadata
+   * @param tags Custom key tags (used for S3 object tag)
+   * @param objectAttributes Attributes to set for the created key, such as owner or modification time.
+   * @return {@link OzoneOutputStream}
+   *
+   */
+  OzoneOutputStream createKey(String volumeName, String bucketName,
+      String keyName, long size, ReplicationConfig replicationConfig,
+      Map<String, String> metadata, Map<String, String> tags, ObjectAttributes objectAttributes)
       throws IOException;
 
   /**

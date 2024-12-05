@@ -38,6 +38,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.hadoop.hdds.client.DefaultReplicationConfig;
+import org.apache.hadoop.hdds.client.ObjectAttributes;
 import org.apache.hadoop.hdds.client.OzoneQuota;
 import org.apache.hadoop.hdds.client.ReplicationConfig;
 import org.apache.hadoop.hdds.client.ReplicationFactor;
@@ -486,7 +487,26 @@ public class OzoneBucket extends WithMetadata {
    * @param key               Name of the key to be created.
    * @param size              Size of the data the key will point to.
    * @param replicationConfig Replication configuration.
-   * @param keyMetadata       Custom key metadata.
+   * @param keyMetadata       Custom key metadata
+   * @param objectAttributes  The Object attributes need to specify
+   * @return OzoneOutputStream to which the data has to be written.
+   * @throws IOException
+   */
+  public OzoneOutputStream createKey(String key, long size,
+      ReplicationConfig replicationConfig,
+      Map<String, String> keyMetadata, ObjectAttributes objectAttributes)
+      throws IOException {
+    return this.createKey(key, size, replicationConfig, keyMetadata,
+            Collections.emptyMap(), objectAttributes);
+  }
+
+  /**
+   * Creates a new key in the bucket.
+   *
+   * @param key               Name of the key to be created.
+   * @param size              Size of the data the key will point to.
+   * @param replicationConfig Replication configuration.
+   * @param keyMetadata       Custom key metadata
    * @param tags              Tags used for S3 object tags
    * @return OzoneOutputStream to which the data has to be written.
    * @throws IOException
@@ -584,6 +604,28 @@ public class OzoneBucket extends WithMetadata {
       throws IOException {
     return proxy.rewriteKeyIfMatch(volumeName, name, keyName, size,
         expectedETag, replicationConfig, metadata, tags, derivedKeyPiggyBacking);
+  }
+
+  /**
+   * Creates a new key in the bucket.
+   *
+   * @param key               Name of the key to be created.
+   * @param size              Size of the data the key will point to.
+   * @param replicationConfig Replication configuration.
+   * @param keyMetadata       Custom key metadata
+   * @param tags              Custom key tags (used for S3 object tag)
+   * @param objectAttributes  Attributes to set for the created key,
+   *                          such as owner or modification time.
+   * @return OzoneOutputStream to which the data has to be written.
+   * @throws IOException
+   */
+  public OzoneOutputStream createKey(String key, long size,
+      ReplicationConfig replicationConfig,
+      Map<String, String> keyMetadata,
+      Map<String, String> tags, ObjectAttributes objectAttributes)
+      throws IOException {
+    return proxy
+        .createKey(volumeName, name, key, size, replicationConfig, keyMetadata, tags, objectAttributes);
   }
 
   /**

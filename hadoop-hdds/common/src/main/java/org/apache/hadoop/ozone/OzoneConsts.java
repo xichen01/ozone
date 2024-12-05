@@ -306,6 +306,7 @@ public final class OzoneConsts {
   public static final String CREATION_TIME = "creationTime";
   public static final String MODIFICATION_TIME = "modificationTime";
   public static final String DATA_SIZE = "dataSize";
+  public static final String OBJECT_ATTRIBUTES = "objectAttributes";
   public static final String REPLICATION_TYPE = "replicationType";
   public static final String REPLICATION_FACTOR = "replicationFactor";
   public static final String REPLICATION_CONFIG = "replicationConfig";

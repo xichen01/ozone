@@ -75,7 +75,7 @@ public final class OmKeyInfo extends WithParentObjectId
   private String keyName;
   private long dataSize;
   private List<OmKeyLocationInfoGroup> keyLocationVersions;
-  private final long creationTime;
+  private long creationTime;
   private long modificationTime;
   private ReplicationConfig replicationConfig;
   private FileEncryptionInfo encInfo;
@@ -210,6 +210,10 @@ public final class OmKeyInfo extends WithParentObjectId
 
   public String getOwnerName() {
     return ownerName;
+  }
+
+  public void setOwnerName(String owner) {
+    this.ownerName = owner;
   }
 
   public OmKeyInfo withCommittedKeyDeletedFlag(boolean val) {
@@ -453,6 +457,10 @@ public final class OmKeyInfo extends WithParentObjectId
 
   public void setModificationTime(long modificationTime) {
     this.modificationTime = modificationTime;
+  }
+
+  public void setCreationTime(long creationTime) {
+    this.creationTime = creationTime;
   }
 
   public FileEncryptionInfo getFileEncryptionInfo() {

@@ -70,6 +70,7 @@ import org.apache.hadoop.fs.Syncable;
 import org.apache.hadoop.hdds.client.DefaultReplicationConfig;
 import org.apache.hadoop.hdds.client.ECReplicationConfig;
 import org.apache.hadoop.hdds.client.RatisReplicationConfig;
+import org.apache.hadoop.hdds.client.ObjectAttributes;
 import org.apache.hadoop.hdds.client.ReplicationConfig;
 import org.apache.hadoop.hdds.client.ReplicationConfigValidator;
 import org.apache.hadoop.hdds.client.ReplicationFactor;
@@ -1425,6 +1426,18 @@ public class RpcClient implements ClientProtocol {
         bucketName, keyName, size, replicationConfig, metadata, tags);
     builder.setOwnerName(ownerName);
     builder.setDerivedKeyPiggyBacking(derivedKeyPiggyBacking);
+    return openOutputStream(builder.build(), size);
+  }
+
+  @Override
+  public OzoneOutputStream createKey(
+      String volumeName, String bucketName, String keyName, long size,
+      ReplicationConfig replicationConfig, Map<String, String> metadata,
+      Map<String, String> tags, ObjectAttributes objectAttributes) throws IOException {
+    String ownerName = getRealUserInfo().getShortUserName();
+    OmKeyArgs.Builder builder = createWriteKeyArgsBuilder(volumeName,
+        bucketName, keyName, size, replicationConfig, metadata, tags);
+    builder.setOwnerName(ownerName).setObjectAttributes(objectAttributes);
     return openOutputStream(builder.build(), size);
   }
 

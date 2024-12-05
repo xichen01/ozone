@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.hadoop.hdds.client.ObjectAttributes;
 import org.apache.hadoop.hdds.client.ReplicationConfig;
 import org.apache.hadoop.ozone.OzoneAcl;
 import org.apache.hadoop.ozone.OzoneConsts;
@@ -66,6 +67,7 @@ public final class OmKeyArgs extends WithMetadata implements Auditable {
   private final String listPrefix;
   private final String expectedETag;
   private final boolean derivedKeyPiggyBacking;
+  private final ObjectAttributes objectAttributes;
 
   private OmKeyArgs(Builder b) {
     super(b);
@@ -90,6 +92,11 @@ public final class OmKeyArgs extends WithMetadata implements Auditable {
     this.listPrefix = b.listPrefix;
     this.expectedETag = b.expectedETag;
     this.derivedKeyPiggyBacking = b.derivedKeyPiggyBacking;
+    this.objectAttributes = b.objectAttributes;
+  }
+
+  public ObjectAttributes getObjectAttributes() {
+    return objectAttributes;
   }
 
   public boolean getIsMultipartKey() {
@@ -199,6 +206,7 @@ public final class OmKeyArgs extends WithMetadata implements Auditable {
     auditMap.put(OzoneConsts.REPLICATION_CONFIG,
         (this.replicationConfig != null) ?
             this.replicationConfig.toString() : null);
+    auditMap.put(OzoneConsts.OBJECT_ATTRIBUTES, String.valueOf(this.objectAttributes));
     return auditMap;
   }
 
@@ -314,7 +322,9 @@ public final class OmKeyArgs extends WithMetadata implements Auditable {
       this.tags = MapBuilder.of(obj.tags);
       this.acls = AclListBuilder.of(obj.acls);
       this.listPrefix = obj.listPrefix;
+      this.objectAttributes = obj.objectAttributes;
     }
+    private ObjectAttributes objectAttributes;
 
     public Builder setVolumeName(String volume) {
       this.volumeName = volume;
@@ -384,6 +394,11 @@ public final class OmKeyArgs extends WithMetadata implements Auditable {
 
     public Builder setMultipartUploadPartNumber(int multipartUploadPartNumber) {
       this.multipartUploadPartNumber = multipartUploadPartNumber;
+      return this;
+    }
+
+    public Builder setObjectAttributes(ObjectAttributes objectAttributes) {
+      this.objectAttributes = objectAttributes;
       return this;
     }
 

@@ -148,8 +148,17 @@ public class TestOMKeyCommitRequest extends OMKeyRequestTests {
 
   @Test
   public void testValidateAndUpdateCache() throws Exception {
+    OMRequest modifiedOmRequest;
+    long mtime = 0;
+    long ctime = 0;
+    if (!(getBucketLayout() == BucketLayout.FILE_SYSTEM_OPTIMIZED)) {
+      mtime = Time.now();
+      ctime = mtime + 1;
+      modifiedOmRequest = doPreExecute(createCommitKeyRequest(mtime, ctime));
+    } else {
+      modifiedOmRequest = doPreExecute(createCommitKeyRequest());
+    }
 
-    OMRequest modifiedOmRequest = doPreExecute(createCommitKeyRequest());
 
     OMKeyCommitRequest omKeyCommitRequest =
             getOmKeyCommitRequest(modifiedOmRequest);
@@ -363,7 +372,7 @@ public class TestOMKeyCommitRequest extends OMKeyRequestTests {
     List<KeyLocation> committedKeyLocationList = allocatedKeyLocationList.subList(0, 3);
 
     OMRequest modifiedOmRequest = doPreExecute(createCommitKeyRequest(
-        committedKeyLocationList, false));
+        committedKeyLocationList, false, null, null));
 
     OMKeyCommitRequest omKeyCommitRequest =
         getOmKeyCommitRequest(modifiedOmRequest);
@@ -542,7 +551,7 @@ public class TestOMKeyCommitRequest extends OMKeyRequestTests {
     // allocated block list
     dataSize = keyLocations.size() * 100;
     OMRequest modifiedOmRequest = doPreExecute(createCommitKeyRequest(
-        keyLocations, isHSync));
+        keyLocations, isHSync, null, null));
     OMKeyCommitRequest omKeyCommitRequest =
         getOmKeyCommitRequest(modifiedOmRequest);
 
@@ -994,19 +1003,31 @@ public class TestOMKeyCommitRequest extends OMKeyRequestTests {
   }
 
   private OMRequest createCommitKeyRequest() {
-    return createCommitKeyRequest(false);
+    return createCommitKeyRequest(false, null, null);
   }
 
   private OMRequest createCommitKeyRequest(boolean isHsync) {
-    return createCommitKeyRequest(getKeyLocation(DEFAULT_COMMIT_BLOCK_SIZE), isHsync);
+    return createCommitKeyRequest(getKeyLocation(DEFAULT_COMMIT_BLOCK_SIZE), isHsync, null, null);
+  }
+
+  private OMRequest createCommitKeyRequest(Long mtime, Long ctime) {
+    return createCommitKeyRequest(false, mtime, ctime);
+  }
+
+  private OMRequest createCommitKeyRequest(boolean isHsync, Long mtime, Long ctime) {
+    return createCommitKeyRequest(getKeyLocation(DEFAULT_COMMIT_BLOCK_SIZE), isHsync, mtime, ctime);
+  }
+
+  private OMRequest createCommitKeyRequest(List<KeyLocation> keyLocations, boolean isHsync) {
+    return createCommitKeyRequest(keyLocations, isHsync, null, null);
   }
 
   /**
    * Create OMRequest which encapsulates CommitKeyRequest.
    */
   private OMRequest createCommitKeyRequest(
-      List<KeyLocation> keyLocations, boolean isHsync) {
-    KeyArgs keyArgs =
+      List<KeyLocation> keyLocations, boolean isHsync, Long mtime, Long ctime) {
+    KeyArgs.Builder builder =
         KeyArgs.newBuilder().setDataSize(dataSize).setVolumeName(volumeName)
             .setKeyName(keyName).setBucketName(bucketName)
             .setType(replicationConfig.getReplicationType())
@@ -1014,7 +1035,7 @@ public class TestOMKeyCommitRequest extends OMKeyRequestTests {
             .addAllKeyLocations(keyLocations).build();
 
     CommitKeyRequest commitKeyRequest =
-        CommitKeyRequest.newBuilder().setKeyArgs(keyArgs)
+        CommitKeyRequest.newBuilder().setKeyArgs(builder)
             .setClientID(clientID).setHsync(isHsync).build();
 
     return OMRequest.newBuilder()

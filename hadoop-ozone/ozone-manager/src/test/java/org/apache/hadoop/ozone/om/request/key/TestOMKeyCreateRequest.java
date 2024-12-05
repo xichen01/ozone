@@ -367,7 +367,6 @@ public class TestOMKeyCreateRequest extends OMKeyRequestTests {
     Map<String, String> tags = new HashMap<>();
     tags.put("tag-key1", "tag-value1");
     tags.put("tag-key2", "tag-value2");
-
     OMRequest modifiedOmRequest =
         doPreExecute(createKeyRequest(false, 0, emptyMap(), tags));
 
