@@ -72,7 +72,7 @@ public class JobworkerProtocolClientSideTranslatorPB implements JobworkerProtoco
    */
   public JobworkerProtocolClientSideTranslatorPB(String omHostname, int port, OzoneConfiguration conf) {
     JobworkerClientConfiguration jobworkerServiceConfig = conf.getObject(JobworkerClientConfiguration.class);
-    Duration timeoutDuration = jobworkerServiceConfig.getGrpcTimeout();
+    Duration timeoutDuration = jobworkerServiceConfig.getRpcTimeout();
     int maxInboundLength = jobworkerServiceConfig.getGrpcMaximumInboundLength();
     if (port < 0) {
       JobworkerServiceConfig jwsConf = conf.getObject(JobworkerServiceConfig.class);

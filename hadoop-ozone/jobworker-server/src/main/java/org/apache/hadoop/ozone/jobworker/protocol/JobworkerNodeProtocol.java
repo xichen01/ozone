@@ -18,20 +18,30 @@
 
 package org.apache.hadoop.ozone.jobworker.protocol;
 
-import org.apache.hadoop.ozone.jobworker.command.OMJobworkerCommand;
-import org.apache.hadoop.hdds.annotation.InterfaceAudience;
-import org.apache.hadoop.hdds.protocol.JobworkerDetails;
-import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.RegisterJobworkerResponse;
-
 import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
+import org.apache.hadoop.hdds.annotation.InterfaceAudience;
+import org.apache.hadoop.hdds.protocol.JobworkerDetails;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.GetOMVersionRequest;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.GetOMVersionResponse;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.RegisterJobworkerResponse;
+import org.apache.hadoop.ozone.jobworker.command.OMJobworkerCommand;
 
 /**
  * The protocol to maintain jobworker status on the OM side.
  */
 @InterfaceAudience.Private
 public interface JobworkerNodeProtocol {
+
+  /**
+   * Gets the version info from OM.
+   *
+   * @param versionRequest - version Request.
+   * @return - returns OM version info and other required information needed
+   * by jobworker.
+   */
+  GetOMVersionResponse getVersion(GetOMVersionRequest versionRequest);
 
   /**
    * Send a REGISTER request to the OM for Jobworker gRPC server.

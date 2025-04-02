@@ -29,6 +29,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import io.grpc.StatusRuntimeException;
 import java.io.IOException;
@@ -55,8 +56,13 @@ public class TestJobworkerGrpcServer {
   @BeforeEach
   public void setUp() throws IOException {
     OzoneConfiguration conf = new OzoneConfiguration();
+    OzoneManager ozoneManager = Mockito.mock(OzoneManager.class);
+    JobworkerNodeManager jobworkerNodemanager = mock(JobworkerNodeManager.class);
+    when(jobworkerNodemanager.getVersion(any())).thenReturn(
+        GetOMVersionResponse.newBuilder().setSoftwareVersion(0).build());
+    when(ozoneManager.getJobworkerNodemanager()).thenReturn(jobworkerNodemanager);
     jobworkerProtocolServer =
-        spy(new JobworkerProtocolServerImpl(mock(OzoneManager.class), mock(JobworkerNodeManager.class)));
+        spy(new JobworkerProtocolServerImpl(ozoneManager, mock(JobworkerNodeManager.class)));
     server = new JobworkerGrpcServer(conf, jobworkerProtocolServer, null);
     server.start();
     client = new JobworkerClient("localhost", conf);

@@ -111,6 +111,8 @@ message GetOMVersionRequest {
 }
 
 message GetOMVersionResponse {
+  required uint32 softwareVersion = 1;
+  repeated hadoop.hdds.KeyValue keys = 2;
 }
 
 // General Message

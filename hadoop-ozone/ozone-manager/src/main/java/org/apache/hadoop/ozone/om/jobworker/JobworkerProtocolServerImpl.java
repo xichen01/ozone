@@ -19,6 +19,7 @@
 
 package org.apache.hadoop.ozone.om.jobworker;
 
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Maps;
 import org.apache.hadoop.ozone.jobworker.command.OMJobworkerCommand;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
@@ -73,7 +74,7 @@ public class JobworkerProtocolServerImpl implements JobworkerProtocol {
   @Override
   public GetOMVersionResponse getOMVersion(GetOMVersionRequest getOMVersionRequest)
       throws IOException {
-    return GetOMVersionResponse.newBuilder().build();
+    return om.getJobworkerNodemanager().getVersion(getOMVersionRequest);
   }
 
   @Override
@@ -101,6 +102,9 @@ public class JobworkerProtocolServerImpl implements JobworkerProtocol {
     JobworkerDetailsProto jobworkerDetailProto = sendHeartbeatRequest.getJobworkerDetails();
 
     try {
+      Preconditions.checkState(sendHeartbeatRequest.getOmServiceId().equals(om.getOMServiceId()),
+          String.format("OM received a heartbeat with mismatched OMServiceId: expected=%s, actual=%s.",
+              om.getOMServiceId(), sendHeartbeatRequest.getOmServiceId()));
       List<OMJobworkerCommand> commands =
           jobworkerHeartbeatDispatcher.dispatch(sendHeartbeatRequest);
       for (OMJobworkerCommand command : commands) {

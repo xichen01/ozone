@@ -67,6 +67,7 @@ public class JobworkerGrpcServer {
   private ThreadPoolExecutor readExecutors;
   private EventLoopGroup bossEventLoopGroup;
   private EventLoopGroup workerEventLoopGroup;
+  private final int maxInboundLength;
   private final ProtocolMessageMetrics<ProtocolMessageEnum> protocolMessageMetrics;
   private final String serviceName = "Jobworker";
   private final OMNodeDetails omNodeDetails;
@@ -77,6 +78,7 @@ public class JobworkerGrpcServer {
     JobworkerServiceConfig jobworkerServiceConfig = config.getObject(JobworkerServiceConfig.class);
     port = getGrpcPort(config, jobworkerServiceConfig);
     grpcExecutorSize = jobworkerServiceConfig.getGrpcExecutorThreadNum();
+    maxInboundLength = jobworkerServiceConfig.getGrpcMaximumInboundLength();
     bossGroupSize = jobworkerServiceConfig.getGrpcBossGroupSize();
     workerGroupSize = jobworkerServiceConfig.getGrpcWorkerGroupSize();
     threadNamePrefix = serviceName;
@@ -111,6 +113,7 @@ public class JobworkerGrpcServer {
 
     NettyServerBuilder nettyServerBuilder = NettyServerBuilder.forPort(port)
         .bossEventLoopGroup(bossEventLoopGroup)
+        .maxInboundMessageSize(maxInboundLength)
         .workerEventLoopGroup(workerEventLoopGroup)
         .channelType(channelType)
         .executor(readExecutors)

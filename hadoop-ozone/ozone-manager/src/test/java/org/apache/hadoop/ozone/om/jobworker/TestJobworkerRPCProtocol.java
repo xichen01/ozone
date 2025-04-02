@@ -61,8 +61,7 @@ public class TestJobworkerRPCProtocol {
   private OzoneManager ozoneManager;
   private HddsProtos.UUID jwUuid;
   private JobworkerDetailsProto jobworkerDetailsProto;
-  private final static String OM_SERVICE_ID_1 = "omServiceId1";
-
+  private String omServiceId;
 
   @BeforeEach
   public void setUp() throws IOException, AuthenticationException {
@@ -70,6 +69,7 @@ public class TestJobworkerRPCProtocol {
     OzoneConfiguration conf = createNewTestPath();
     OmTestManagers omTestManagers = new OmTestManagers(conf);
     ozoneManager = omTestManagers.getOzoneManager();
+    omServiceId = ozoneManager.getOMServiceId();
 
     client = new JobworkerClient("localhost", conf);
 
@@ -165,7 +165,7 @@ public class TestJobworkerRPCProtocol {
   private JobworkerServiceProtocolProtos.SendHeartbeatRequest createHeartbeatRequest() {
     return JobworkerServiceProtocolProtos.SendHeartbeatRequest.newBuilder()
         .setJobworkerDetails(jobworkerDetailsProto)
-        .setOmServiceId(OM_SERVICE_ID_1)
+        .setOmServiceId(omServiceId)
         .build();
   }
 

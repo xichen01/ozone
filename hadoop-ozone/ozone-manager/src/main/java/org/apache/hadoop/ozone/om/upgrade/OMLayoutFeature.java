@@ -85,4 +85,14 @@ public enum OMLayoutFeature implements LayoutFeature {
   public Optional<OmUpgradeAction> action() {
     return Optional.ofNullable(action);
   }
+
+  /**
+   * Returns the latest version.
+   *
+   * @return OMLayoutFeature
+   */
+  public static OMLayoutFeature getLatestVersion() {
+    OMLayoutFeature[] features = values();
+    return features[features.length - 1];
+  }
 }

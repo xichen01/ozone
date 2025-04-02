@@ -37,14 +37,14 @@ public class JobworkerClientConfiguration {
       defaultValue = "10s",
       description = "Timeout for RPC."
   )
-  private Duration grpcTimeout;
+  private Duration rpcTimeout;
 
-  public Duration getGrpcTimeout() {
-    return grpcTimeout;
+  public Duration getRpcTimeout() {
+    return rpcTimeout;
   }
 
-  public void setGrpcTimeout(Duration grpcTimeout) {
-    this.grpcTimeout = grpcTimeout;
+  public void setRpcTimeout(Duration rpcTimeout) {
+    this.rpcTimeout = rpcTimeout;
   }
 
   @Config(key = "grpc.maximum.inbound.length",
@@ -62,6 +62,36 @@ public class JobworkerClientConfiguration {
     this.grpcMaximumInboundLength = grpcMaximumInboundLength;
   }
 
+  @Config(key = "heartbeat.interval",
+      type = ConfigType.TIME,
+      tags = {ConfigTag.JOBWORKER},
+      defaultValue = "30s",
+      description = "Heartbeat interval from JobWorker to OM."
+  )
+  private Duration heartbeatInterval = Duration.ofSeconds(30);
 
+  public Duration getHeartbeatInterval() {
+    return heartbeatInterval;
+  }
+
+  public void setHeartbeatInterval(Duration heartbeatInterval) {
+    this.heartbeatInterval = heartbeatInterval;
+  }
+
+  @Config(key = "heartbeat.log.warn.interval",
+      type = ConfigType.INT,
+      tags = {ConfigTag.JOBWORKER},
+      defaultValue = "10",
+      description = "Number of heartbeat failures before logging a warning."
+  )
+  private int heartbeatLogWarnInterval = 10;
+
+  public int getHeartbeatLogWarnInterval() {
+    return heartbeatLogWarnInterval;
+  }
+
+  public void setHeartbeatLogWarnInterval(int heartbeatLogWarnInterval) {
+    this.heartbeatLogWarnInterval = heartbeatLogWarnInterval;
+  }
 
 }

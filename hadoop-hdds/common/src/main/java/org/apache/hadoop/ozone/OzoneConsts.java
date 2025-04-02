@@ -42,6 +42,8 @@ public final class OzoneConsts {
   public static final String DATANODE_UUID = "datanodeUuid";
   public static final String DATANODE_LAYOUT_VERSION_DIR = "dnlayoutversion";
   public static final String CLUSTER_ID = "clusterID";
+  public static final String OM_ID = "omUuid";
+  public static final String OM_SERVICE_ID = "omServiceId";
   public static final String LAYOUTVERSION = "layOutVersion";
   public static final String CTIME = "ctime";
   /*

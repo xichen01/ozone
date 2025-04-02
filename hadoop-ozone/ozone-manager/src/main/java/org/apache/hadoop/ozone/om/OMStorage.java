@@ -25,6 +25,7 @@ import org.apache.hadoop.hdds.conf.ConfigurationSource;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.NodeType;
 import org.apache.hadoop.hdds.server.ServerUtils;
+import org.apache.hadoop.ozone.OzoneConsts;
 import org.apache.hadoop.ozone.common.Storage;
 import org.apache.hadoop.ozone.om.upgrade.OMLayoutVersionManager;
 
@@ -70,7 +71,7 @@ public class OMStorage extends Storage {
       "OM Storage is not initialized yet.";
 
   static final String STORAGE_DIR = "om";
-  static final String OM_ID = "omUuid";
+  public static final String OM_ID = OzoneConsts.OM_ID;
   static final String OM_CERT_SERIAL_ID = "omCertSerialId";
   static final String OM_NODE_ID = "nodeId";
 

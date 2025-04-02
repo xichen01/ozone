@@ -32,6 +32,7 @@ import java.nio.file.Path;
 import java.util.UUID;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
+import org.apache.hadoop.hdds.protocol.MockJobworkerDetails;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.RegisterJobworkerResponse;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.RegisterJobworkerResponse.ReturnCode;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.SendHeartbeatRequest;
@@ -58,7 +59,7 @@ public class TestJobworkerNodeManager {
   private OzoneManager ozoneManager;
   @TempDir
   private Path folder;
-  private final static String OM_SERVICE_ID_1 = "omServiceId1";
+  private String omServiceId1;
 
   @BeforeEach
   public void setUp() throws Exception {
@@ -66,6 +67,7 @@ public class TestJobworkerNodeManager {
 
     OmTestManagers omTestManagers = new OmTestManagers(conf);
     ozoneManager = omTestManagers.getOzoneManager();
+    omServiceId1 = ozoneManager.getOMServiceId();
     nodeManager = ozoneManager.getJobworkerNodemanager();
   }
 
@@ -119,13 +121,7 @@ public class TestJobworkerNodeManager {
   }
 
   private JobworkerDetails registerJobworker() throws IOException {
-    UUID jobworkerUuid = UUID.randomUUID();
-    JobworkerDetails jobworkerDetails = JobworkerDetails.newBuilder()
-        .setUuid(jobworkerUuid)
-        .setIpAddress("127.0.0.1")
-        .setHostName("localhost")
-        .addPort(JobworkerPortType.HTTP, 100)
-        .build();
+    JobworkerDetails jobworkerDetails = MockJobworkerDetails.randomLocalJobworkerDetails();
     RegisterJobworkerResponse registerResponse = nodeManager.registerJobworker(
         jobworkerDetails);
     assertEquals(ReturnCode.SUCCESS, registerResponse.getReturnCode());
@@ -135,7 +131,7 @@ public class TestJobworkerNodeManager {
   private SendHeartbeatRequest createHeartbeatRequest(JobworkerDetailsProto jobworkerDetailProto) {
     return SendHeartbeatRequest.newBuilder()
         .setJobworkerDetails(jobworkerDetailProto)
-        .setOmServiceId(OM_SERVICE_ID_1)
+        .setOmServiceId(omServiceId1)
         .build();
   }
 

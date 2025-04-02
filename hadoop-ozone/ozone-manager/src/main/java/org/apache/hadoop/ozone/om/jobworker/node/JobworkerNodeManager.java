@@ -17,8 +17,11 @@
 
 package org.apache.hadoop.ozone.om.jobworker.node;
 
+import static org.apache.hadoop.ozone.OzoneConsts.CLUSTER_ID;
+import static org.apache.hadoop.ozone.OzoneConsts.OM_SERVICE_ID;
 import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_OM_USE_JOBWORKER_HOSTNAME_DEFAULT;
 import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_OM_USE_JOBWORKER_HOSTNAME_KEY;
+import static org.apache.hadoop.ozone.om.OMStorage.OM_ID;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
@@ -31,9 +34,12 @@ import java.util.List;
 import java.util.UUID;
 import java.util.function.Function;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.GetOMVersionResponse;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.GetOMVersionRequest;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.RegisterJobworkerResponse;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.RegisterJobworkerResponse.ReturnCode;
+import org.apache.hadoop.hdds.protocol.proto.HddsProtos;
 import org.apache.hadoop.hdds.scm.net.NetworkTopology;
 import org.apache.hadoop.ozone.jobworker.command.OMJobworkerCommand;
 import org.apache.hadoop.ozone.jobworker.protocol.JobworkerNodeProtocol;
@@ -42,8 +48,9 @@ import org.apache.hadoop.ozone.om.helpers.OMNodeDetails;
 import org.apache.hadoop.ozone.om.jobworker.OMJobworkerCommandQueue;
 import org.apache.hadoop.ozone.om.jobworker.states.JobworkerNodeAlreadyExistsException;
 import org.apache.hadoop.ozone.om.jobworker.states.JobworkerNodeNotFoundException;
-import org.apache.hadoop.ozone.util.RemoteAddressInterceptor;
+import org.apache.hadoop.ozone.om.upgrade.OMLayoutFeature;
 import org.apache.hadoop.util.ProtobufUtils;
+import org.apache.hadoop.ozone.util.RemoteAddressInterceptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -61,6 +68,7 @@ public class JobworkerNodeManager implements JobworkerNodeProtocol, Closeable {
   private final OMStorage omStorage;
   private final OMNodeDetails omNodeDetails;
   private final OMJobworkerCommandQueue commandQueue;
+  private final OMLayoutFeature omLayoutFeature;
 
   public JobworkerNodeManager(Function<String, String> nodeResolver, NetworkTopology clusterMap,
                               OMStorage omStorage, OMNodeDetails omNodeDetails, OzoneConfiguration conf) {
@@ -72,6 +80,24 @@ public class JobworkerNodeManager implements JobworkerNodeProtocol, Closeable {
     this.omStorage = omStorage;
     this.omNodeDetails = omNodeDetails;
     this.commandQueue = new OMJobworkerCommandQueue();
+    this.omLayoutFeature = OMLayoutFeature.getLatestVersion();
+  }
+
+  @Override
+  public GetOMVersionResponse getVersion(
+      GetOMVersionRequest versionRequest) {
+    return GetOMVersionResponse.newBuilder()
+        .setSoftwareVersion(omLayoutFeature.layoutVersion())
+        .addKeys(HddsProtos.KeyValue.newBuilder()
+            .setKey(OM_ID)
+            .setValue(omStorage.getOmId()))
+        .addKeys(HddsProtos.KeyValue.newBuilder()
+            .setKey(CLUSTER_ID)
+            .setValue(omStorage.getClusterID()))
+        .addKeys(HddsProtos.KeyValue.newBuilder()
+            .setKey(OM_SERVICE_ID)
+            .setValue(omNodeDetails.getServiceId()))
+        .build();
   }
 
   @Override
