@@ -139,6 +139,22 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
   }
 
   /**
+   * Creates a new MiniOzoneCluster with Recon.
+   */
+  private MiniOzoneClusterImpl(OzoneConfiguration conf,
+      SCMConfigurator scmConfigurator,
+      StorageContainerManager scm,
+      List<HddsDatanodeService> hddsDatanodes,
+      ReconServer reconServer, List<Service> services) {
+    this.conf = conf;
+    this.scm = scm;
+    this.hddsDatanodes = hddsDatanodes;
+    this.reconServer = reconServer;
+    this.scmConfigurator = scmConfigurator;
+    this.services = services;
+  }
+
+  /**
    * Creates a new MiniOzoneCluster without the OzoneManager and
    * StorageContainerManager. This is used by
    * {@link MiniOzoneHAClusterImpl} for starting multiple
@@ -551,9 +567,14 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
       List<HddsDatanodeService> hddsDatanodes = Collections.emptyList();
       try {
         scm = createAndStartSingleSCM();
+        hddsDatanodes = createHddsDatanodes();
+        if (startDataNodes) {
+          for (HddsDatanodeService hddsDatanode : hddsDatanodes) {
+            hddsDatanode.start();
+          }
+        }
         om = createAndStartSingleOM();
         reconServer = createRecon();
-        hddsDatanodes = createHddsDatanodes();
 
         MiniOzoneClusterImpl cluster = new MiniOzoneClusterImpl(conf,
             scmConfigurator, om, scm,
@@ -561,9 +582,6 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
 
         cluster.setCAClient(certClient);
         cluster.setSecretKeyClient(secretKeyClient);
-        if (startDataNodes) {
-          cluster.startHddsDatanodes();
-        }
         cluster.startServices();
 
         prepareForNextBuild();
@@ -774,6 +792,9 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
           "3s");
       conf.setInt(ScmConfigKeys.OZONE_SCM_RATIS_PORT_KEY, getFreePort());
       conf.setInt(ScmConfigKeys.OZONE_SCM_GRPC_PORT_KEY, getFreePort());
+      if (conf.get(ScmConfigKeys.OZONE_SCM_HA_RATIS_SERVER_RPC_FIRST_ELECTION_TIMEOUT) == null) {
+        conf.set(ScmConfigKeys.OZONE_SCM_HA_RATIS_SERVER_RPC_FIRST_ELECTION_TIMEOUT, "1s");
+      }
     }
 
     private void configureOM() {

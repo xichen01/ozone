@@ -423,23 +423,20 @@ public class MiniOzoneHAClusterImpl extends MiniOzoneClusterImpl {
       ReconServer reconServer;
       try {
         scmService = createSCMService();
+        final List<HddsDatanodeService> hddsDatanodes = createHddsDatanodes();
+        if (startDataNodes) {
+          hddsDatanodes.forEach(HddsDatanodeService::start);
+        }
         omService = createOMService();
         reconServer = createRecon();
+        MiniOzoneHAClusterImpl cluster = new MiniOzoneHAClusterImpl(conf,
+            scmConfigurator, omService, scmService, hddsDatanodes, path,
+            reconServer);
+        prepareForNextBuild();
+        return cluster;
       } catch (AuthenticationException ex) {
         throw new IOException("Unable to build MiniOzoneCluster. ", ex);
       }
-
-      final List<HddsDatanodeService> hddsDatanodes = createHddsDatanodes();
-
-      MiniOzoneHAClusterImpl cluster = new MiniOzoneHAClusterImpl(conf,
-          scmConfigurator, omService, scmService, hddsDatanodes, path,
-          reconServer);
-
-      if (startDataNodes) {
-        cluster.startHddsDatanodes();
-      }
-      prepareForNextBuild();
-      return cluster;
     }
 
     protected int numberOfOzoneManagers() {
