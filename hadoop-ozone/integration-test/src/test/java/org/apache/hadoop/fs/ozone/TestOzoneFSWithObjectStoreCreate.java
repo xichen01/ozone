@@ -42,7 +42,6 @@ import java.util.List;
 import java.util.Map;
 import javax.xml.bind.DatatypeConverter;
 import org.apache.commons.lang3.RandomStringUtils;
-import org.apache.commons.lang3.RandomUtils;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileAlreadyExistsException;
 import org.apache.hadoop.fs.FileStatus;

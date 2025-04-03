@@ -786,14 +786,14 @@ public final class OmUtils {
    * For example: Path("//dir1").toUri().getAuthority() returns "dir1" and getPath() returns ""
    */
   private static String normalizeDoubleSlashPath(String keyName) {
-      if (keyName.startsWith(DOUBLE_SLASH_OM_KEY_PREFIX)) {
-        int doubleSlashLen = DOUBLE_SLASH_OM_KEY_PREFIX.length();
-        if (keyName.length() > doubleSlashLen && keyName.charAt(doubleSlashLen) != OM_KEY_PREFIX.charAt(0)) {
-          keyName = OM_KEY_PREFIX + keyName.substring(2);
-        }
-        return new Path(keyName).toUri().getPath();
+    if (keyName.startsWith(DOUBLE_SLASH_OM_KEY_PREFIX)) {
+      int doubleSlashLen = DOUBLE_SLASH_OM_KEY_PREFIX.length();
+      if (keyName.length() > doubleSlashLen && keyName.charAt(doubleSlashLen) != OM_KEY_PREFIX.charAt(0)) {
+        keyName = OM_KEY_PREFIX + keyName.substring(2);
       }
-      return keyName;
+      return new Path(keyName).toUri().getPath();
+    }
+    return keyName;
   }
 
   /**
