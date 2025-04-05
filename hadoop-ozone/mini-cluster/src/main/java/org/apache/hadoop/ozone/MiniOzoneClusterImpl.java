@@ -567,14 +567,9 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
       List<HddsDatanodeService> hddsDatanodes = Collections.emptyList();
       try {
         scm = createAndStartSingleSCM();
-        hddsDatanodes = createHddsDatanodes();
-        if (startDataNodes) {
-          for (HddsDatanodeService hddsDatanode : hddsDatanodes) {
-            hddsDatanode.start();
-          }
-        }
         om = createAndStartSingleOM();
         reconServer = createRecon();
+        hddsDatanodes = createHddsDatanodes();
 
         MiniOzoneClusterImpl cluster = new MiniOzoneClusterImpl(conf,
             scmConfigurator, om, scm,
@@ -582,6 +577,9 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
 
         cluster.setCAClient(certClient);
         cluster.setSecretKeyClient(secretKeyClient);
+        if (startDataNodes) {
+          cluster.startHddsDatanodes();
+        }
         cluster.startServices();
 
         prepareForNextBuild();
