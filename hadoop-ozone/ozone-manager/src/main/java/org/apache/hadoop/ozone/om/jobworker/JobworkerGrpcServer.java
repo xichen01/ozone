@@ -1,0 +1,182 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ */
+
+package org.apache.hadoop.ozone.om.jobworker;
+
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import com.google.protobuf.ProtocolMessageEnum;
+import io.grpc.Server;
+import io.grpc.ServerInterceptors;
+import io.grpc.netty.NettyServerBuilder;
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.ServerChannel;
+import io.netty.channel.epoll.Epoll;
+import io.netty.channel.epoll.EpollEventLoopGroup;
+import io.netty.channel.epoll.EpollServerSocketChannel;
+import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.nio.NioServerSocketChannel;
+import java.io.IOException;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import org.apache.hadoop.hdds.conf.OzoneConfiguration;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.JobworkerCommandType;
+import org.apache.hadoop.hdds.utils.ProtocolMessageMetrics;
+import org.apache.hadoop.ozone.conf.JobworkerServiceConfig;
+import org.apache.hadoop.ozone.grpc.metrics.GrpcMetrics;
+import org.apache.hadoop.ozone.grpc.metrics.GrpcMetricsServerRequestInterceptor;
+import org.apache.hadoop.ozone.grpc.metrics.GrpcMetricsServerResponseInterceptor;
+import org.apache.hadoop.ozone.grpc.metrics.GrpcMetricsServerTransportFilter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * gRPC server that manages network resources and transport for Jobworker communication.
+ */
+public class JobworkerGrpcServer {
+  private static final Logger LOG = LoggerFactory.getLogger(JobworkerGrpcServer.class);
+
+  private final GrpcMetrics grpcMetrics;
+  private Server server;
+  private final int port;
+  private final int grpcExecutorSize;
+  private final int bossGroupSize;
+  private final int workerGroupSize;
+  private final String threadNamePrefix;
+  private ThreadPoolExecutor readExecutors;
+  private EventLoopGroup bossEventLoopGroup;
+  private EventLoopGroup workerEventLoopGroup;
+  private final ProtocolMessageMetrics<ProtocolMessageEnum> protocolMessageMetrics;
+
+  public JobworkerGrpcServer(OzoneConfiguration config,
+      JobworkerProtocolServerImpl jobworkerServerImpl) {
+    JobworkerServiceConfig jobworkerServiceConfig = config.getObject(JobworkerServiceConfig.class);
+    port = jobworkerServiceConfig.getGrpcPort();
+    grpcExecutorSize = jobworkerServiceConfig.getGrpcExecutorThreadNum();
+    bossGroupSize = jobworkerServiceConfig.getGrpcBossGroupSize();
+    workerGroupSize = jobworkerServiceConfig.getGrpcWorkerGroupSize();
+    threadNamePrefix = "Jobworker-";
+    protocolMessageMetrics = getProtocolMessageMetrics(config);
+    grpcMetrics = GrpcMetrics.create(config, "Jobworker");
+    init(jobworkerServerImpl);
+  }
+
+  private void init(JobworkerProtocolServerImpl jobworkerServerImpl) {
+    readExecutors = new ThreadPoolExecutor(grpcExecutorSize, grpcExecutorSize,
+        60, TimeUnit.SECONDS,
+        new LinkedBlockingQueue<>(),
+        new ThreadFactoryBuilder().setDaemon(true)
+            .setNameFormat(threadNamePrefix + "RpcExecutor-%d")
+            .build());
+
+    Class<? extends ServerChannel> channelType;
+    if (Epoll.isAvailable()) {
+      bossEventLoopGroup = new EpollEventLoopGroup(bossGroupSize, new ThreadFactoryBuilder()
+          .setDaemon(true).setNameFormat(threadNamePrefix + "RpcBoss-ELG-%d").build());
+      workerEventLoopGroup = new EpollEventLoopGroup(workerGroupSize, new ThreadFactoryBuilder()
+          .setDaemon(true).setNameFormat(threadNamePrefix + "RpcWorker-ELG-%d").build());
+      channelType =  EpollServerSocketChannel.class;
+    } else {
+      bossEventLoopGroup = new NioEventLoopGroup(bossGroupSize, new ThreadFactoryBuilder()
+          .setDaemon(true).setNameFormat(threadNamePrefix + "RpcBoss-ELG-%d").build());
+      workerEventLoopGroup = new NioEventLoopGroup(workerGroupSize, new ThreadFactoryBuilder()
+          .setDaemon(true).setNameFormat(threadNamePrefix + "RpcWorker-ELG-%d").build());
+      channelType = NioServerSocketChannel.class;
+    }
+    LOG.info("GrpcServer channel type {}", channelType.getSimpleName());
+
+    NettyServerBuilder nettyServerBuilder = NettyServerBuilder.forPort(port)
+        .bossEventLoopGroup(bossEventLoopGroup)
+        .workerEventLoopGroup(workerEventLoopGroup)
+        .channelType(channelType)
+        .executor(readExecutors)
+        .addService(ServerInterceptors.intercept(
+            new JobworkerGrpcRequestHandler(jobworkerServerImpl, protocolMessageMetrics),
+            new GrpcMetricsServerRequestInterceptor(grpcMetrics),
+            new GrpcMetricsServerResponseInterceptor(grpcMetrics)))
+        .addTransportFilter(new GrpcMetricsServerTransportFilter(grpcMetrics));
+    server = nettyServerBuilder.build();
+  }
+
+  public void start() throws IOException {
+    server.start();
+    LOG.info("Job Worker gRPC Server started on port {}", port);
+  }
+
+  public void stop() {
+    LOG.info("Stopping Job Worker gRPC Server...");
+
+    if (readExecutors != null) {
+      readExecutors.shutdown();
+      try {
+        if (!readExecutors.awaitTermination(5, TimeUnit.SECONDS)) {
+          LOG.warn("gRPC readExecutors did not terminate gracefully within 5 seconds");
+          readExecutors.shutdownNow();
+        }
+      } catch (InterruptedException e) {
+        readExecutors.shutdownNow();
+        Thread.currentThread().interrupt();
+      }
+    }
+
+    if (server != null) {
+      try {
+        server.shutdown();
+        if (server.awaitTermination(10, TimeUnit.SECONDS)) {
+          LOG.warn("Netty server did not terminate gracefully within 10 seconds");
+          server.shutdownNow();
+        }
+      } catch (InterruptedException e) {
+        readExecutors.shutdownNow();
+        Thread.currentThread().interrupt();
+      }
+    }
+
+    try {
+      if (bossEventLoopGroup != null) {
+        bossEventLoopGroup.shutdownGracefully().sync();
+      }
+      if (workerEventLoopGroup != null) {
+        workerEventLoopGroup.shutdownGracefully().sync();
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
+
+    if (grpcMetrics != null) {
+      grpcMetrics.unRegister();
+    }
+
+    LOG.info("Job Worker gRPC Server stopped");
+  }
+
+  public int getPort() {
+    return port;
+  }
+
+  /**
+   * Get the ProtocolMessageMetrics for this server.
+   * @return ProtocolMessageMetrics
+   */
+  private ProtocolMessageMetrics<ProtocolMessageEnum> getProtocolMessageMetrics(OzoneConfiguration conf) {
+    return ProtocolMessageMetrics
+        .create("OMJobworkerGrpc", "OM Jobworker Grpc protocol",
+            JobworkerCommandType.values(), conf);
+  }
+}

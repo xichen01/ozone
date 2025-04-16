@@ -116,11 +116,12 @@ public class GrpcMetrics implements MetricsSource {
   /**
    * Create and return GrpcMetrics instance.
    * @param conf
+   * @param serviceName
    * @return GrpcMetrics
    */
-  public static synchronized GrpcMetrics create(Configuration conf) {
+  public static synchronized GrpcMetrics create(Configuration conf, String serviceName) {
     GrpcMetrics metrics = new GrpcMetrics(conf);
-    return DefaultMetricsSystem.instance().register(SOURCE_NAME,
+    return DefaultMetricsSystem.instance().register(SOURCE_NAME + "-" + serviceName,
         "Metrics for using gRPC", metrics);
   }
 
@@ -201,8 +202,7 @@ public class GrpcMetrics implements MetricsSource {
   public long getUnknownMessagesReceived() {
     return unknownMessagesReceived.value();
   }
-  
-  MutableRate getGrpcQueueTime() {
+  public MutableRate getGrpcQueueTime() {
     return grpcQueueTime;
   }
 

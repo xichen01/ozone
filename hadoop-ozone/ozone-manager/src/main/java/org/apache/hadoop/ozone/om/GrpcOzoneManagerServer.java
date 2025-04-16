@@ -102,7 +102,7 @@ public class GrpcOzoneManagerServer {
           getPort();
     }
     this.threadNamePrefix = threadPrefix;
-    this.omS3gGrpcMetrics = GrpcMetrics.create(config);
+    this.omS3gGrpcMetrics = GrpcMetrics.create(config, "OM");
 
     try {
       init(omTranslator,
