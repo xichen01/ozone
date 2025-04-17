@@ -94,9 +94,16 @@ message RegisterJobworkerResponse {
 
 // Heartbeat Message
 message SendHeartbeatRequest {
+  required hadoop.hdds.JobworkerDetailsProto jobworkerDetails = 1;
+  required string omServiceId = 2;
+  // Add Task report at here
 }
 
 message SendHeartbeatResponseProto {
+  required hadoop.hdds.UUID jobworkerUUID = 1;
+  required string omServiceId = 2;
+  optional int64 term = 3;
+  repeated OMJobworkerCommandProto commands = 4;
 }
 
 // Version Message
@@ -104,4 +111,20 @@ message GetOMVersionRequest {
 }
 
 message GetOMVersionResponse {
+}
+
+// General Message
+message OMJobworkerCommandProto {
+  enum Type {
+    unknownCommand = 0;
+    reregisterCommand = 1;
+    // OM -> Jobworker Command
+  }
+  required Type commandType = 1;
+  optional int64 term = 2;
+  optional int64 expirationTimestampMs = 3;
+  optional JobworkerReregisterCommandProto jobworkerReregisterCommandProto = 4;
+}
+
+message JobworkerReregisterCommandProto {
 }

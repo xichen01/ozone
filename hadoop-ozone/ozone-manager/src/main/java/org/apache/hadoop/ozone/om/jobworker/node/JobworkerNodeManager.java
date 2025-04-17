@@ -20,11 +20,14 @@ package org.apache.hadoop.ozone.om.jobworker.node;
 import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_OM_USE_JOBWORKER_HOSTNAME_DEFAULT;
 import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_OM_USE_JOBWORKER_HOSTNAME_KEY;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
+import com.google.protobuf.Message;
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetAddress;
+import java.util.List;
 import java.util.UUID;
 import java.util.function.Function;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
@@ -32,9 +35,11 @@ import org.apache.hadoop.hdds.protocol.JobworkerDetails;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.RegisterJobworkerResponse;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.RegisterJobworkerResponse.ReturnCode;
 import org.apache.hadoop.hdds.scm.net.NetworkTopology;
+import org.apache.hadoop.ozone.jobworker.command.OMJobworkerCommand;
 import org.apache.hadoop.ozone.jobworker.protocol.JobworkerNodeProtocol;
 import org.apache.hadoop.ozone.om.OMStorage;
 import org.apache.hadoop.ozone.om.helpers.OMNodeDetails;
+import org.apache.hadoop.ozone.om.jobworker.OMJobworkerCommandQueue;
 import org.apache.hadoop.ozone.om.jobworker.states.JobworkerNodeAlreadyExistsException;
 import org.apache.hadoop.ozone.om.jobworker.states.JobworkerNodeNotFoundException;
 import org.apache.hadoop.ozone.util.RemoteAddressInterceptor;
@@ -55,9 +60,10 @@ public class JobworkerNodeManager implements JobworkerNodeProtocol, Closeable {
   private final NetworkTopology clusterMap;
   private final OMStorage omStorage;
   private final OMNodeDetails omNodeDetails;
+  private final OMJobworkerCommandQueue commandQueue;
 
   public JobworkerNodeManager(Function<String, String> nodeResolver, NetworkTopology clusterMap,
-      OMStorage omStorage, OMNodeDetails omNodeDetails, OzoneConfiguration conf) {
+                              OMStorage omStorage, OMNodeDetails omNodeDetails, OzoneConfiguration conf) {
     this.nodeStateManager = new JobworkerNodeStateManager();
     this.useHostname = conf.getBoolean(OZONE_OM_USE_JOBWORKER_HOSTNAME_KEY,
         OZONE_OM_USE_JOBWORKER_HOSTNAME_DEFAULT);
@@ -65,6 +71,7 @@ public class JobworkerNodeManager implements JobworkerNodeProtocol, Closeable {
     this.clusterMap = clusterMap;
     this.omStorage = omStorage;
     this.omNodeDetails = omNodeDetails;
+    this.commandQueue = new OMJobworkerCommandQueue();
   }
 
   @Override
@@ -120,6 +127,21 @@ public class JobworkerNodeManager implements JobworkerNodeProtocol, Closeable {
   }
 
   @Override
+  public void processHeartbeat(JobworkerDetails jobworkerDetails) {
+    try {
+      nodeStateManager.updateLastHeartbeatTime(jobworkerDetails);
+    } catch (JobworkerNodeNotFoundException e) {
+      LOG.error("OM trying to process heartbeat from an " +
+          "unregistered node {}. Ignoring the heartbeat.", jobworkerDetails);
+    }
+  }
+
+  @Override
+  public List<OMJobworkerCommand> pollJobworkerCommand(UUID jobworkerId) {
+    return commandQueue.pollCommand(jobworkerId);
+  }
+
+  @Override
   public void close() throws IOException {
     if (nodeStateManager != null) {
       nodeStateManager.close();
@@ -146,6 +168,21 @@ public class JobworkerNodeManager implements JobworkerNodeProtocol, Closeable {
       builder.setNetworkLocation(jobworkerDetails.getNetworkLocation());
     }
     return builder.build();
+  }
+
+  /**
+   * Add a {@link OMJobworkerCommand} to the command queue, which are
+   * handled by HB thread asynchronously.
+   * @param uuid jobwoker uuid
+   * @param command The command need to add to the command queue
+   */
+  public void addOMJobworkerCommand(UUID uuid, OMJobworkerCommand<? extends Message> command) {
+    this.commandQueue.addCommand(uuid, command);
+  }
+
+  @VisibleForTesting
+  public JobworkerNodeStateManager getNodeStateManager() {
+    return nodeStateManager;
   }
 
 }

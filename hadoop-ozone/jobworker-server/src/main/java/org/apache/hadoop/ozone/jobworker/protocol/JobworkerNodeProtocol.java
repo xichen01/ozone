@@ -18,11 +18,14 @@
 
 package org.apache.hadoop.ozone.jobworker.protocol;
 
-import java.io.IOException;
-import java.util.UUID;
+import org.apache.hadoop.ozone.jobworker.command.OMJobworkerCommand;
 import org.apache.hadoop.hdds.annotation.InterfaceAudience;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.RegisterJobworkerResponse;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.UUID;
 
 /**
  * The protocol to maintain jobworker status on the OM side.
@@ -35,7 +38,7 @@ public interface JobworkerNodeProtocol {
    *
    * @throws IOException If gRPC call fails.
    */
-  RegisterJobworkerResponse registerJobworker(JobworkerDetails jobworkerDetail) throws IOException;
+  RegisterJobworkerResponse registerJobworker(JobworkerDetails jobworkerDetails) throws IOException;
 
   /**
    * Check if node is registered or not.
@@ -45,4 +48,17 @@ public interface JobworkerNodeProtocol {
    * @return true if Node is registered, false otherwise
    */
   Boolean isJobworkerNodeRegistered(UUID jobworkerID);
+
+  /**
+   * Process Jobworker heartbeat.
+   * @param jobworkerDetails - jobworkerDetails.
+   */
+  void processHeartbeat(JobworkerDetails jobworkerDetails);
+
+  /**
+   * Returns a list of Commands for the jobworker.
+   * @param jobworkerId jobworker UUID
+   * @return List of OMJobworkerCommand Commands.
+   */
+  List<OMJobworkerCommand> pollJobworkerCommand(UUID jobworkerId);
 }

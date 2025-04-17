@@ -34,6 +34,8 @@ import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.RegisterJobworkerResponse;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.RegisterJobworkerResponse.ReturnCode;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.SendHeartbeatRequest;
+import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerDetailsProto;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerPortType;
 import org.apache.hadoop.hdds.server.ServerUtils;
 import org.apache.hadoop.ozone.om.OmTestManagers;
@@ -56,6 +58,7 @@ public class TestJobworkerNodeManager {
   private OzoneManager ozoneManager;
   @TempDir
   private Path folder;
+  private final static String OM_SERVICE_ID_1 = "omServiceId1";
 
   @BeforeEach
   public void setUp() throws Exception {
@@ -86,6 +89,7 @@ public class TestJobworkerNodeManager {
       // Verify response
       assertNotNull(response);
       assertEquals(ReturnCode.SUCCESS, response.getReturnCode());
+      assertEquals(ozoneManager.getOMServiceId(), response.getOmServiceId());
       assertEquals(jobworkerUuid.getMostSignificantBits(), response.getJobworkerUUID().getMostSigBits());
       assertEquals(jobworkerUuid.getLeastSignificantBits(), response.getJobworkerUUID().getLeastSigBits());
       assertEquals(ozoneManager.getOmStorage().getClusterID(), response.getClusterID());
@@ -96,6 +100,43 @@ public class TestJobworkerNodeManager {
     } finally {
       ctx.detach(originalContext);
     }
+  }
+
+  @Test
+  public void testJobworkerHeartbeat() throws Exception {
+    JobworkerDetails jobworkerDetails = registerJobworker();
+    UUID jobworkerUuid = jobworkerDetails.getUuid();
+    SendHeartbeatRequest heartbeatRequest = createHeartbeatRequest(jobworkerDetails.getProtoBufMessage());
+
+    long heartbeatTime1 = nodeManager.getNodeStateManager()
+        .getNodeInfo(jobworkerUuid).getLastHeartbeatTime();
+    assertTrue(nodeManager.isJobworkerNodeRegistered(jobworkerUuid));
+
+    ozoneManager.getJobworkerServerProtocol().sendHeartbeat(heartbeatRequest);
+    long heartbeatTime2 = nodeManager.getNodeStateManager()
+        .getNodeInfo(jobworkerUuid).getLastHeartbeatTime();
+    assertTrue(heartbeatTime2 > heartbeatTime1);
+  }
+
+  private JobworkerDetails registerJobworker() throws IOException {
+    UUID jobworkerUuid = UUID.randomUUID();
+    JobworkerDetails jobworkerDetails = JobworkerDetails.newBuilder()
+        .setUuid(jobworkerUuid)
+        .setIpAddress("127.0.0.1")
+        .setHostName("localhost")
+        .addPort(JobworkerPortType.HTTP, 100)
+        .build();
+    RegisterJobworkerResponse registerResponse = nodeManager.registerJobworker(
+        jobworkerDetails);
+    assertEquals(ReturnCode.SUCCESS, registerResponse.getReturnCode());
+    return jobworkerDetails;
+  }
+
+  private SendHeartbeatRequest createHeartbeatRequest(JobworkerDetailsProto jobworkerDetailProto) {
+    return SendHeartbeatRequest.newBuilder()
+        .setJobworkerDetails(jobworkerDetailProto)
+        .setOmServiceId(OM_SERVICE_ID_1)
+        .build();
   }
 
   private OzoneConfiguration createNewTestPath() throws IOException {

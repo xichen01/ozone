@@ -19,9 +19,11 @@
 
 package org.apache.hadoop.ozone.om.jobworker.node;
 
+import com.google.common.annotations.VisibleForTesting;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
+import org.apache.hadoop.util.Time;
 
 /**
  * This class extends the primary identifier of a Jobworker with ephemeral
@@ -31,6 +33,7 @@ public class JobworkerInfo extends JobworkerDetails {
 
   private final ReadWriteLock lock;
   private JobworkerNodeStatus nodeStatus;
+  private volatile long lastHeartbeatTime;
 
   /**
    * Copy constructor for JobworkerDetails.
@@ -70,4 +73,31 @@ public class JobworkerInfo extends JobworkerDetails {
       lock.writeLock().unlock();
     }
   }
+
+  /**
+   * Updates the last heartbeat time with current time.
+   */
+  public void updateLastHeartbeatTime() {
+    updateLastHeartbeatTime(Time.monotonicNow());
+  }
+
+  /**
+   * Sets the last heartbeat time to a given value.
+   *
+   * @param milliSecondsSinceEpoch - ms since Epoch to set as the heartbeat time
+   */
+  private void updateLastHeartbeatTime(long milliSecondsSinceEpoch) {
+    try {
+      lock.writeLock().lock();
+      lastHeartbeatTime = milliSecondsSinceEpoch;
+    } finally {
+      lock.writeLock().unlock();
+    }
+  }
+
+  @VisibleForTesting
+  public long getLastHeartbeatTime() {
+    return lastHeartbeatTime;
+  }
+
 }

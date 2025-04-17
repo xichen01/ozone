@@ -121,6 +121,35 @@ public class JobworkerNodeStateManager implements Closeable {
     }
   }
 
+
+  /**
+   * Updates the last heartbeat time of the node.
+   *
+   * @throws JobworkerNodeNotFoundException if the node is not present
+   */
+  public void updateLastHeartbeatTime(JobworkerDetails jobworkerDetails)
+      throws JobworkerNodeNotFoundException {
+    lock.readLock().lock();
+    try {
+      checkIfNodeExist(jobworkerDetails.getUuid());
+      nodeMap.get(jobworkerDetails.getUuid()).updateLastHeartbeatTime();
+    } finally {
+      lock.readLock().unlock();
+    }
+  }
+
+  /**
+   * Throws NodeNotFoundException if the Node for given id doesn't exist.
+   *
+   * @param uuid Node UUID
+   * @throws JobworkerNodeNotFoundException If the node is missing.
+   */
+  private void checkIfNodeExist(UUID uuid) throws JobworkerNodeNotFoundException {
+    if (!nodeMap.containsKey(uuid)) {
+      throw new JobworkerNodeNotFoundException("Node UUID: " + uuid);
+    }
+  }
+
   @Override
   public void close() throws IOException {
 

@@ -6122,4 +6122,10 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
   public JobworkerNodeManager getJobworkerNodemanager() {
     return jobworkerNodemanager;
   }
+
+  @VisibleForTesting
+  public JobworkerProtocolServerImpl getJobworkerServerProtocol() {
+    return jobworkerServerProtocol;
+  }
+
 }

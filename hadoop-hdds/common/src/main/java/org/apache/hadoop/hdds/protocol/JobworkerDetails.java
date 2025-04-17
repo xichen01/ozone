@@ -241,6 +241,17 @@ public class JobworkerDetails extends NodeImpl implements
   /**
    * Returns a JobworkerDetails from the protocol buffers.
    *
+   * @param jobWorkDetailsProto - protoBuf Message
+   * @return JobworkerDetail
+   */
+  public static JobworkerDetails getFromProtoBuf(
+      JobworkerDetailsProto jobWorkDetailsProto) {
+    return newBuilder(jobWorkDetailsProto).build();
+  }
+
+  /**
+   * Returns a JobworkerDetails from the protocol buffers.
+   *
    * @param extendedDetailsProto - protoBuf Message
    * @return JobworkerDetails
    */

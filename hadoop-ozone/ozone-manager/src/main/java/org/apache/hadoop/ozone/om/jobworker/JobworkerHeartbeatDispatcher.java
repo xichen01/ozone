@@ -1,0 +1,65 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ */
+
+package org.apache.hadoop.ozone.om.jobworker;
+
+import java.util.List;
+import org.apache.hadoop.ozone.jobworker.command.JobworkerReregisterCommand;
+import org.apache.hadoop.ozone.jobworker.command.OMJobworkerCommand;
+import org.apache.hadoop.hdds.protocol.JobworkerDetails;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.SendHeartbeatRequest;
+import org.apache.hadoop.ozone.om.jobworker.node.JobworkerNodeManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * This class is responsible for dispatching heartbeat from jobworker to
+ * appropriate EventHandler at OM.
+ */
+public class JobworkerHeartbeatDispatcher {
+
+  public static final Logger LOG =
+      LoggerFactory.getLogger(JobworkerHeartbeatDispatcher.class);
+
+  private final JobworkerNodeManager nodeManager;
+
+  public JobworkerHeartbeatDispatcher(JobworkerNodeManager nodeManager) {
+    this.nodeManager = nodeManager;
+  }
+
+  /**
+   * Dispatches heartbeat to registered event handlers.
+   * @param heartbeat heartbeat to be dispatched.
+   * @return list of OMJobworkerCommand
+   */
+  public List<OMJobworkerCommand> dispatch(SendHeartbeatRequest heartbeat) {
+    JobworkerDetails jobworkerDetails =
+        JobworkerDetails.getFromProtoBuf(heartbeat.getJobworkerDetails());
+
+    if (!nodeManager.isJobworkerNodeRegistered(jobworkerDetails.getUuid())) {
+      LOG.info("OM received heartbeat from an unregistered jobworker {}. " +
+          "Asking jobworker to re-register.", jobworkerDetails);
+      nodeManager.addOMJobworkerCommand(jobworkerDetails.getUuid(), new JobworkerReregisterCommand());
+    } else {
+      LOG.debug("Processing jobworker {} Report.", jobworkerDetails);
+      nodeManager.processHeartbeat(jobworkerDetails);
+    }
+    return nodeManager.pollJobworkerCommand(jobworkerDetails.getUuid());
+  }
+}

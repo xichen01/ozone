@@ -20,34 +20,54 @@
 package org.apache.hadoop.ozone.om.jobworker;
 
 import com.google.common.collect.Maps;
-import java.io.IOException;
-import java.util.Map;
+import org.apache.hadoop.ozone.jobworker.command.OMJobworkerCommand;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.GetOMVersionRequest;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.GetOMVersionResponse;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.JobworkerReregisterCommandProto;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto.Type;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.RegisterJobworkerRequest;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.RegisterJobworkerResponse;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.SendHeartbeatRequest;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.SendHeartbeatResponseProto;
+import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerDetailsProto;
 import org.apache.hadoop.ozone.audit.AuditLogger;
 import org.apache.hadoop.ozone.audit.AuditLoggerType;
 import org.apache.hadoop.ozone.audit.OMAction;
 import org.apache.hadoop.ozone.jobworker.protocol.JobworkerProtocol;
 import org.apache.hadoop.ozone.om.OzoneManager;
 import org.apache.hadoop.ozone.om.jobworker.node.JobworkerNodeManager;
+import org.apache.hadoop.util.ProtobufUtils;
+import org.apache.ratis.server.DivisionInfo;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.OptionalLong;
 
 /**
  * Server-side implementation of the Jobworker protocol that processes client requests.
  */
 public class JobworkerProtocolServerImpl implements JobworkerProtocol {
+
+  private static final Logger LOG = LoggerFactory.getLogger(
+      JobworkerProtocolServerImpl.class);
   private static final AuditLogger AUDIT =
       new AuditLogger(AuditLoggerType.OMLOGGER);
+
   private final OzoneManager om;
+  private final JobworkerHeartbeatDispatcher jobworkerHeartbeatDispatcher;
   private final JobworkerNodeManager jobworkerNodeManager;
 
   public JobworkerProtocolServerImpl(OzoneManager om, JobworkerNodeManager jobworkerNodeManager) {
     this.om = om;
     this.jobworkerNodeManager = jobworkerNodeManager;
+    jobworkerHeartbeatDispatcher =
+        new JobworkerHeartbeatDispatcher(jobworkerNodeManager);
   }
 
   @Override
@@ -62,7 +82,7 @@ public class JobworkerProtocolServerImpl implements JobworkerProtocol {
     JobworkerDetails jobworkerDetails =
         JobworkerDetails.getFromProtoBuf(registerJobworkerRequest.getExtendedJobWorkDetailsProto());
     Map<String, String> auditMap = Maps.newHashMap();
-    auditMap.put("jobworkerDetails", jobworkerDetails.toString());
+    auditMap.put("JobworkerDetails", jobworkerDetails.toString());
     try {
       RegisterJobworkerResponse response =
           jobworkerNodeManager.registerJobworker(jobworkerDetails);
@@ -75,9 +95,73 @@ public class JobworkerProtocolServerImpl implements JobworkerProtocol {
   }
 
   @Override
-  public SendHeartbeatResponseProto sendHeartbeat(SendHeartbeatRequest sendHeartbeatRequest)
-      throws IOException {
-    return SendHeartbeatResponseProto.newBuilder().build();
+  public SendHeartbeatResponseProto sendHeartbeat(SendHeartbeatRequest sendHeartbeatRequest) {
+    List<OMJobworkerCommandProto> responseCommands = new ArrayList<>();
+    Map<String, String> auditMap = Maps.newHashMap();
+    JobworkerDetailsProto jobworkerDetailProto = sendHeartbeatRequest.getJobworkerDetails();
+
+    try {
+      List<OMJobworkerCommand> commands =
+          jobworkerHeartbeatDispatcher.dispatch(sendHeartbeatRequest);
+      for (OMJobworkerCommand command : commands) {
+        responseCommands.add(getCommandResponse(command));
+      }
+      final OptionalLong term = getTermIfLeader();
+      auditMap.put("JobworkerUUID", ProtobufUtils.fromProtobuf(jobworkerDetailProto.getUuid128()).toString());
+      auditMap.put("JobworkerHostname", jobworkerDetailProto.getHostName());
+      term.ifPresent(t -> auditMap.put("Term", String.valueOf(t)));
+      SendHeartbeatResponseProto.Builder builder =
+          SendHeartbeatResponseProto.newBuilder()
+              .setJobworkerUUID(sendHeartbeatRequest.getJobworkerDetails().getUuid128())
+              .setOmServiceId(om.getOMServiceId())
+              .addAllCommands(responseCommands);
+      term.ifPresent(builder::setTerm);
+      if (LOG.isDebugEnabled()) {
+        StringBuilder sb = new StringBuilder();
+        commands.forEach(command -> sb.append(command.getType()).append(", "));
+        LOG.debug("Sending heartbeat {} to {}: ", sb,
+            ProtobufUtils.fromProtobuf(jobworkerDetailProto.getUuid128()));
+      }
+      AUDIT.logWriteSuccess(om.buildAuditMessageForSuccess(OMAction.JW_HEARTBEAT, auditMap));
+      return builder.build();
+    } catch (Exception ex) {
+      AUDIT.logWriteFailure(om.buildAuditMessageForFailure(OMAction.JW_HEARTBEAT, auditMap, ex));
+      throw ex;
+    }
+  }
+
+  public static OMJobworkerCommandProto getCommandResponse(OMJobworkerCommand command) {
+    OMJobworkerCommandProto.Builder builder =
+        OMJobworkerCommandProto
+            .newBuilder()
+            .setTerm(command.getTerm())
+            .setExpirationTimestampMs(command.getExpirationTimestampMs());
+
+    switch (command.getType()) {
+    case reregisterCommand:
+      return builder
+          .setCommandType(Type.reregisterCommand)
+          .setJobworkerReregisterCommandProto(JobworkerReregisterCommandProto.getDefaultInstance())
+          .build();
+    case unknownCommand:
+      throw new IllegalArgumentException("Unknown OMJobworker command");
+    default:
+      throw new IllegalArgumentException("OMJobworker command " + command.getType() + " is not implemented");
+    }
+  }
+
+  private OptionalLong getTermIfLeader() {
+    if (om != null &&  om.getOmRatisServer() != null) {
+      try {
+        DivisionInfo divisionInfo = om.getOmRatisServer().getServerDivision().getInfo();
+        if (divisionInfo.isLeader()) {
+          return OptionalLong.of(divisionInfo.getCurrentTerm());
+        }
+      } catch (Exception e) {
+        LOG.debug("Exception when getting leader current term ", e);
+      }
+    }
+    return OptionalLong.empty();
   }
 
   @Override

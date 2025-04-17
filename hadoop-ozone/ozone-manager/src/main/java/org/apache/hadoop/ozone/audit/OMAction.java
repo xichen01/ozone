@@ -145,7 +145,9 @@ public enum OMAction implements AuditAction {
 
   REFRESH_CALL_QUEUE,
 
-  JW_REGISTER;
+  JW_REGISTER,
+  JW_HEARTBEAT;
+
   @Override
   public String getAction() {
     return this.toString();

@@ -21,13 +21,16 @@ package org.apache.hadoop.ozone.om.jobworker;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.UUID;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.RegisterJobworkerRequest;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.RegisterJobworkerResponse;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos;
@@ -58,6 +61,8 @@ public class TestJobworkerRPCProtocol {
   private OzoneManager ozoneManager;
   private HddsProtos.UUID jwUuid;
   private JobworkerDetailsProto jobworkerDetailsProto;
+  private final static String OM_SERVICE_ID_1 = "omServiceId1";
+
 
   @BeforeEach
   public void setUp() throws IOException, AuthenticationException {
@@ -112,6 +117,56 @@ public class TestJobworkerRPCProtocol {
     assertNotNull(response.getNetworkName());
     assertEquals(ozoneManager.getOmStorage().getClusterID(), response.getClusterID());
     assertEquals(ozoneManager.getNodeDetails().getServiceId(), response.getOmServiceId());
+  }
+
+
+  @Test
+  public void testRegisterAndSendHeartbeat() throws IOException {
+    registerJobworker();
+    // Send heartbeat after registration
+    JobworkerServiceProtocolProtos.SendHeartbeatRequest heartbeatRequest = createHeartbeatRequest();
+    JobworkerServiceProtocolProtos.SendHeartbeatResponseProto heartbeatResponse = client.sendHeartbeat(heartbeatRequest);
+    // Verify heartbeat response
+    assertNotNull(heartbeatResponse);
+    assertEquals(jwUuid, heartbeatResponse.getJobworkerUUID());
+  }
+
+  @Test
+  public void testSendHeartbeatReregister() throws IOException {
+    // Send heartbeat without registering first
+    JobworkerServiceProtocolProtos.SendHeartbeatRequest heartbeatRequest = createHeartbeatRequest();
+    JobworkerServiceProtocolProtos.SendHeartbeatResponseProto heartbeatResponse = client.sendHeartbeat(heartbeatRequest);
+
+    // Verify heartbeat response contains a reregister command
+    assertNotNull(heartbeatResponse);
+    assertEquals(jwUuid, heartbeatResponse.getJobworkerUUID());
+    assertTrue(heartbeatResponse.getCommandsCount() > 0,
+        "Reregister command expected for heartbeat from unregistered worker");
+
+    List<JobworkerServiceProtocolProtos.OMJobworkerCommandProto> commands = heartbeatResponse.getCommandsList();
+    boolean hasReregisterCommand = commands.stream()
+        .anyMatch(cmd -> cmd.getCommandType() == JobworkerServiceProtocolProtos.OMJobworkerCommandProto.Type.reregisterCommand);
+    assertTrue(hasReregisterCommand, "Response should contain a reregister command");
+  }
+
+  private void registerJobworker() throws IOException {
+    ExtendedJobWorkDetailsProto extendedJobWorkDetailsProto =
+        ExtendedJobWorkDetailsProto.newBuilder()
+            .setJobworkerDetails(jobworkerDetailsProto)
+            .build();
+    RegisterJobworkerRequest request =
+        RegisterJobworkerRequest.newBuilder()
+            .setExtendedJobWorkDetailsProto(extendedJobWorkDetailsProto)
+            .build();
+
+    client.register(request);
+  }
+
+  private JobworkerServiceProtocolProtos.SendHeartbeatRequest createHeartbeatRequest() {
+    return JobworkerServiceProtocolProtos.SendHeartbeatRequest.newBuilder()
+        .setJobworkerDetails(jobworkerDetailsProto)
+        .setOmServiceId(OM_SERVICE_ID_1)
+        .build();
   }
 
   private OzoneConfiguration createNewTestPath() throws IOException {
