@@ -36,6 +36,7 @@ import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.GetOMVersionResponse;
 import org.apache.hadoop.ozone.jobworker.client.JobworkerClient;
 import org.apache.hadoop.ozone.om.OzoneManager;
+import org.apache.hadoop.ozone.om.jobworker.node.JobworkerNodeManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -55,8 +56,8 @@ public class TestJobworkerGrpcServer {
   public void setUp() throws IOException {
     OzoneConfiguration conf = new OzoneConfiguration();
     jobworkerProtocolServer =
-        spy(new JobworkerProtocolServerImpl(mock(OzoneManager.class)));
-    server = new JobworkerGrpcServer(conf, jobworkerProtocolServer);
+        spy(new JobworkerProtocolServerImpl(mock(OzoneManager.class), mock(JobworkerNodeManager.class)));
+    server = new JobworkerGrpcServer(conf, jobworkerProtocolServer, null);
     server.start();
     client = new JobworkerClient("localhost", conf);
   }

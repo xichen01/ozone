@@ -134,6 +134,10 @@ public class GrpcMetrics implements MetricsSource {
     MetricUtil.stop(grpcQueueTimeMillisQuantiles);
   }
 
+  public void unRegister(String serviceName) {
+    DefaultMetricsSystem.instance().unregisterSource(SOURCE_NAME + "-" + serviceName);
+  }
+
   @Override
   public synchronized void getMetrics(MetricsCollector collector, boolean all) {
     registry.snapshot(collector.addRecord(registry.info()), all);

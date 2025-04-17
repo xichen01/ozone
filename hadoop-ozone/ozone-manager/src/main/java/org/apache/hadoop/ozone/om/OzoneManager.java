@@ -176,6 +176,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.FileUtil;
 import org.apache.hadoop.fs.SafeModeAction;
 import org.apache.hadoop.hdds.ExitManager;
+import org.apache.hadoop.hdds.DFSConfigKeysLegacy;
 import org.apache.hadoop.hdds.HddsConfigKeys;
 import org.apache.hadoop.hdds.HddsUtils;
 import org.apache.hadoop.hdds.annotation.InterfaceAudience;
@@ -198,6 +199,14 @@ import org.apache.hadoop.hdds.scm.ScmConfigKeys;
 import org.apache.hadoop.hdds.scm.ScmInfo;
 import org.apache.hadoop.hdds.scm.client.HddsClientUtils;
 import org.apache.hadoop.hdds.scm.client.ScmTopologyClient;
+import org.apache.hadoop.hdds.scm.net.NetworkTopology;
+import org.apache.hadoop.hdds.scm.net.NetworkTopologyImpl;
+import org.apache.hadoop.net.CachedDNSToSwitchMapping;
+import org.apache.hadoop.net.DNSToSwitchMapping;
+import org.apache.hadoop.net.TableMapping;
+import org.apache.hadoop.ozone.om.jobworker.JobworkerGrpcServer;
+import org.apache.hadoop.ozone.om.jobworker.JobworkerProtocolServerImpl;
+import org.apache.hadoop.ozone.om.jobworker.node.JobworkerNodeManager;
 import org.apache.hadoop.hdds.scm.ha.SCMNodeInfo;
 import org.apache.hadoop.hdds.scm.net.NetworkTopology;
 import org.apache.hadoop.hdds.scm.protocol.ScmBlockLocationProtocol;
@@ -359,6 +368,7 @@ import org.apache.hadoop.security.UserGroupInformation.AuthenticationMethod;
 import org.apache.hadoop.security.authentication.client.AuthenticationException;
 import org.apache.hadoop.security.token.Token;
 import org.apache.hadoop.util.KMSUtil;
+import org.apache.hadoop.util.ReflectionUtils;
 import org.apache.hadoop.util.Time;
 import org.apache.ratis.grpc.GrpcTlsConfig;
 import org.apache.ratis.proto.RaftProtos.RaftPeerRole;
@@ -434,6 +444,8 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
   private PrefixManagerImpl prefixManager;
   private final UpgradeFinalizer<OzoneManager> upgradeFinalizer;
   private ExecutorService edekCacheLoader = null;
+  private JobworkerGrpcServer jobworkerGrpcServer;
+  private final JobworkerNodeManager jobworkerNodemanager;
 
   /**
    * OM super user / admin list.
@@ -471,6 +483,7 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
   private volatile boolean isOmGrpcServerRunning = false;
   private String omComponent;
   private OzoneManagerProtocolServerSideTranslatorPB omServerProtocol;
+  private final JobworkerProtocolServerImpl jobworkerServerProtocol;
 
   private OzoneManagerRatisServer omRatisServer;
   private OMExecutionFlow omExecutionFlow;
@@ -544,6 +557,8 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
   private volatile DirectoryDeletingService dirDeletingService;
 
   private final OMServiceManager serviceManager;
+  private DNSToSwitchMapping dnsToSwitchMapping;
+  private NetworkTopology clusterMap;
 
   @SuppressWarnings("methodlength")
   private OzoneManager(OzoneConfiguration conf, StartupOption startupOption)
@@ -769,6 +784,14 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
         .create("OmClientProtocol", "Ozone Manager RPC endpoint",
             OzoneManagerProtocolProtos.Type.class);
 
+    clusterMap = new NetworkTopologyImpl(conf);
+    dnsToSwitchMapping = getDNSToSwitchMapping(conf);
+    jobworkerNodemanager = new JobworkerNodeManager(
+        this::resolveNodeLocation, clusterMap, omStorage, omNodeDetails, conf);
+    jobworkerServerProtocol =
+        new JobworkerProtocolServerImpl(this, jobworkerNodemanager);
+    jobworkerGrpcServer = getJobworkerGrpcServer(conf, jobworkerServerProtocol);
+
     // Start Om Rpc Server.
     omRpcServer = getRpcServer(configuration);
     omRpcAddress = updateRPCListenAddress(configuration,
@@ -784,7 +807,6 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
 
     ShutdownHookManager.get().addShutdownHook(this::saveOmMetrics,
         SHUTDOWN_HOOK_PRIORITY);
-
     if (isBootstrapping || isForcedBootstrapping) {
       omState = State.BOOTSTRAPPING;
     } else {
@@ -1649,6 +1671,18 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
         this.threadPrefix);
   }
 
+  /**
+   * Starts an s3g OmGrpc server.
+   *
+   * @param conf         configuration
+   * @return gRPC server
+   * @throws IOException if there is an I/O error while creating RPC server
+   */
+  private JobworkerGrpcServer getJobworkerGrpcServer(
+      OzoneConfiguration conf, JobworkerProtocolServerImpl serverSideTranslatorPB) {
+    return new JobworkerGrpcServer(conf, serverSideTranslatorPB, omNodeDetails);
+  }
+
   private static boolean isOzoneSecurityEnabled() {
     return securityEnabled;
   }
@@ -2063,6 +2097,7 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
       omS3gGrpcServer.start();
       isOmGrpcServerRunning = true;
     }
+    jobworkerGrpcServer.start();
     registerMXBean();
 
     setStartTime();
@@ -2150,6 +2185,9 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
       omS3gGrpcServer.start();
       isOmGrpcServerRunning = true;
     }
+    jobworkerGrpcServer = getJobworkerGrpcServer(configuration, jobworkerServerProtocol);
+    jobworkerGrpcServer.start();
+    startJVMPauseMonitor();
     setStartTime();
     omState = State.RUNNING;
     auditMap.put("NewOmState", omState.name());
@@ -2573,6 +2611,9 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
       omRpcServer.stop();
       if (isOmGrpcServerEnabled) {
         omS3gGrpcServer.stop();
+      }
+      if (jobworkerGrpcServer != null) {
+        jobworkerGrpcServer.stop();
       }
       // When ratis is not enabled, we need to call stop() to stop
       // OzoneManageDoubleBuffer in OM server protocol.
@@ -6052,5 +6093,33 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
     BOOTSTRAPPING,
     RUNNING,
     STOPPED
+  }
+
+  private DNSToSwitchMapping getDNSToSwitchMapping(OzoneConfiguration conf) {
+    Class<? extends DNSToSwitchMapping> dnsToSwitchMappingClass =
+        conf.getClass(
+            DFSConfigKeysLegacy.NET_TOPOLOGY_NODE_SWITCH_MAPPING_IMPL_KEY,
+            TableMapping.class, DNSToSwitchMapping.class);
+    DNSToSwitchMapping newInstance = ReflectionUtils.newInstance(
+        dnsToSwitchMappingClass, conf);
+    return ((newInstance instanceof CachedDNSToSwitchMapping) ? newInstance
+            : new CachedDNSToSwitchMapping(newInstance));
+  }
+
+  public String resolveNodeLocation(String hostname) {
+    List<String> hosts = Collections.singletonList(hostname);
+    List<String> resolvedHosts = dnsToSwitchMapping.resolve(hosts);
+    if (resolvedHosts != null && !resolvedHosts.isEmpty()) {
+      String location = resolvedHosts.get(0);
+      LOG.debug("Node {} resolved to location {}", hostname, location);
+      return location;
+    } else {
+      LOG.debug("Node resolution did not yield any result for {}", hostname);
+      return null;
+    }
+  }
+
+  public JobworkerNodeManager getJobworkerNodemanager() {
+    return jobworkerNodemanager;
   }
 }

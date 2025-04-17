@@ -48,6 +48,7 @@ import org.apache.hadoop.hdds.scm.server.StorageContainerManager;
 import org.apache.hadoop.metrics2.lib.DefaultMetricsSystem;
 import org.apache.hadoop.ozone.client.OzoneClient;
 import org.apache.hadoop.ozone.client.OzoneClientFactory;
+import org.apache.hadoop.ozone.conf.JobworkerServiceConfig;
 import org.apache.hadoop.ozone.container.common.utils.DatanodeStoreCache;
 import org.apache.hadoop.ozone.ha.ConfUtils;
 import org.apache.hadoop.ozone.om.OMConfigKeys;
@@ -380,12 +381,15 @@ public class MiniOzoneHAClusterImpl extends MiniOzoneClusterImpl {
         OMConfigKeys.OZONE_OM_GRPC_PORT_KEY, omServiceId, omNodeId);
     String omRatisPortKey = ConfUtils.addKeySuffixes(
         OMConfigKeys.OZONE_OM_RATIS_PORT_KEY, omServiceId, omNodeId);
+    String jobworkerGrpcPortKey = ConfUtils.addKeySuffixes(
+        JobworkerServiceConfig.getGrpcPortKey(), omServiceId, omNodeId);
 
     conf.set(omAddrKey, localhostWithFreePort());
     conf.set(omHttpAddrKey, localhostWithFreePort());
     conf.set(omHttpsAddrKey, localhostWithFreePort());
     conf.setInt(omGrpcPortKey, getFreePort());
     conf.setInt(omRatisPortKey, getFreePort());
+    conf.setInt(jobworkerGrpcPortKey, getFreePort());
   }
 
   private void stopAndDeactivate(StorageContainerManager scm) {

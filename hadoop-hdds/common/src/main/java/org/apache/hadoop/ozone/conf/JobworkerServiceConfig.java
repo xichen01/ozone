@@ -19,6 +19,8 @@
 
 package org.apache.hadoop.ozone.conf;
 
+import static org.apache.hadoop.ozone.conf.JobworkerServiceConfig.CONFIG_PREFIX;
+
 import org.apache.hadoop.hdds.conf.Config;
 import org.apache.hadoop.hdds.conf.ConfigGroup;
 import org.apache.hadoop.hdds.conf.ConfigTag;
@@ -27,8 +29,9 @@ import org.apache.hadoop.hdds.conf.ConfigType;
 /**
  * Job worker service configuration.
  */
-@ConfigGroup(prefix = "ozone.om.job.worker")
+@ConfigGroup(prefix = CONFIG_PREFIX)
 public class JobworkerServiceConfig {
+  static final String CONFIG_PREFIX = "ozone.om.jobworker";
 
   @Config(key = "grpc.executor.thread.num",
       defaultValue = "32",
@@ -52,9 +55,14 @@ public class JobworkerServiceConfig {
       tags = {ConfigTag.JOBWORKER},
       description = "Port used for the Job Worker gRPC service.")
   private int grpcPort;
+  static final String GRPC_PORT_KEY = "grpc.port";
 
   public int getGrpcPort() {
     return grpcPort;
+  }
+
+  public static String getGrpcPortKey() {
+    return CONFIG_PREFIX + "." + GRPC_PORT_KEY;
   }
 
   public JobworkerServiceConfig setGrpcPort(int grpcPort) {

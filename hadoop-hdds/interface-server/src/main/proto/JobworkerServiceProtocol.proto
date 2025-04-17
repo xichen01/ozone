@@ -73,9 +73,23 @@ message JobworkerResponse {
 
 // Register Message
 message RegisterJobworkerRequest {
+  required hadoop.hdds.ExtendedJobWorkDetailsProto extendedJobWorkDetailsProto = 1;
 }
 
 message RegisterJobworkerResponse {
+  enum ReturnCode {
+    UNKNOWN_CODE = 0;
+    SUCCESS = 1;
+    NODE_NOT_PERMITTED = 2;
+  }
+  required ReturnCode returnCode = 1;
+  required hadoop.hdds.UUID jobworkerUUID = 2;
+  required string clusterID = 3;
+  required string omServiceId = 4;
+  optional string hostname = 5;
+  optional string ipAddress = 6;
+  optional string networkName = 7;
+  optional string networkLocation = 8;
 }
 
 // Heartbeat Message

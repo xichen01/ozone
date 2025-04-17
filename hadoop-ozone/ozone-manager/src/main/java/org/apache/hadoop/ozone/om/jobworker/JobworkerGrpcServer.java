@@ -32,9 +32,11 @@ import io.netty.channel.epoll.EpollServerSocketChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import java.io.IOException;
+import java.util.OptionalInt;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import org.apache.hadoop.hdds.HddsUtils;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.JobworkerCommandType;
 import org.apache.hadoop.hdds.utils.ProtocolMessageMetrics;
@@ -43,6 +45,9 @@ import org.apache.hadoop.ozone.grpc.metrics.GrpcMetrics;
 import org.apache.hadoop.ozone.grpc.metrics.GrpcMetricsServerRequestInterceptor;
 import org.apache.hadoop.ozone.grpc.metrics.GrpcMetricsServerResponseInterceptor;
 import org.apache.hadoop.ozone.grpc.metrics.GrpcMetricsServerTransportFilter;
+import org.apache.hadoop.ozone.ha.ConfUtils;
+import org.apache.hadoop.ozone.om.helpers.OMNodeDetails;
+import org.apache.hadoop.ozone.util.RemoteAddressInterceptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,7 +57,7 @@ import org.slf4j.LoggerFactory;
 public class JobworkerGrpcServer {
   private static final Logger LOG = LoggerFactory.getLogger(JobworkerGrpcServer.class);
 
-  private final GrpcMetrics grpcMetrics;
+  private final GrpcMetrics jobworkerGrpcMetrics;
   private Server server;
   private final int port;
   private final int grpcExecutorSize;
@@ -63,17 +68,20 @@ public class JobworkerGrpcServer {
   private EventLoopGroup bossEventLoopGroup;
   private EventLoopGroup workerEventLoopGroup;
   private final ProtocolMessageMetrics<ProtocolMessageEnum> protocolMessageMetrics;
+  private final String serviceName = "Jobworker";
+  private final OMNodeDetails omNodeDetails;
 
   public JobworkerGrpcServer(OzoneConfiguration config,
-      JobworkerProtocolServerImpl jobworkerServerImpl) {
+      JobworkerProtocolServerImpl jobworkerServerImpl, OMNodeDetails nodeDetails) {
+    omNodeDetails = nodeDetails;
     JobworkerServiceConfig jobworkerServiceConfig = config.getObject(JobworkerServiceConfig.class);
-    port = jobworkerServiceConfig.getGrpcPort();
+    port = getGrpcPort(config, jobworkerServiceConfig);
     grpcExecutorSize = jobworkerServiceConfig.getGrpcExecutorThreadNum();
     bossGroupSize = jobworkerServiceConfig.getGrpcBossGroupSize();
     workerGroupSize = jobworkerServiceConfig.getGrpcWorkerGroupSize();
-    threadNamePrefix = "Jobworker-";
+    threadNamePrefix = serviceName;
     protocolMessageMetrics = getProtocolMessageMetrics(config);
-    grpcMetrics = GrpcMetrics.create(config, "Jobworker");
+    jobworkerGrpcMetrics = GrpcMetrics.create(config, serviceName);
     init(jobworkerServerImpl);
   }
 
@@ -108,9 +116,10 @@ public class JobworkerGrpcServer {
         .executor(readExecutors)
         .addService(ServerInterceptors.intercept(
             new JobworkerGrpcRequestHandler(jobworkerServerImpl, protocolMessageMetrics),
-            new GrpcMetricsServerRequestInterceptor(grpcMetrics),
-            new GrpcMetricsServerResponseInterceptor(grpcMetrics)))
-        .addTransportFilter(new GrpcMetricsServerTransportFilter(grpcMetrics));
+            new GrpcMetricsServerRequestInterceptor(jobworkerGrpcMetrics),
+            new GrpcMetricsServerResponseInterceptor(jobworkerGrpcMetrics)))
+        .addTransportFilter(new GrpcMetricsServerTransportFilter(jobworkerGrpcMetrics))
+        .intercept(new RemoteAddressInterceptor());
     server = nettyServerBuilder.build();
   }
 
@@ -159,8 +168,8 @@ public class JobworkerGrpcServer {
       Thread.currentThread().interrupt();
     }
 
-    if (grpcMetrics != null) {
-      grpcMetrics.unRegister();
+    if (jobworkerGrpcMetrics != null) {
+      jobworkerGrpcMetrics.unRegister(serviceName);
     }
 
     LOG.info("Job Worker gRPC Server stopped");
@@ -178,5 +187,22 @@ public class JobworkerGrpcServer {
     return ProtocolMessageMetrics
         .create("OMJobworkerGrpc", "OM Jobworker Grpc protocol",
             JobworkerCommandType.values(), conf);
+  }
+
+  private int getGrpcPort(OzoneConfiguration conf,
+                          JobworkerServiceConfig jobworkerServiceConfig) {
+    if (omNodeDetails == null) {
+      return jobworkerServiceConfig.getGrpcPort();
+    }
+
+    String haPortKey = ConfUtils.addKeySuffixes(JobworkerServiceConfig.getGrpcPortKey(),
+        omNodeDetails.getServiceId(), omNodeDetails.getNodeId());
+    OptionalInt haPort = HddsUtils.getNumberFromConfigKeys(conf, haPortKey,
+        JobworkerServiceConfig.getGrpcPortKey());
+    if (haPort.isPresent()) {
+      return haPort.getAsInt();
+    } else {
+      return jobworkerServiceConfig.getGrpcPort();
+    }
   }
 }

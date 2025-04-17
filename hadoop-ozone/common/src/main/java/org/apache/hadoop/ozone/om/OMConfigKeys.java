@@ -801,6 +801,17 @@ public final class OMConfigKeys {
       "ozone.om.ratis.events.max.limit";
   public static final int OZONE_OM_RATIS_EVENTS_MAX_LIMIT_DEFAULT = 100;
 
+  public static final String OZONE_OM_USE_JOBWORKER_HOSTNAME_KEY
+      = "ozone.om.use.jobworker.hostname";
+  public static final boolean OZONE_OM_USE_JOBWORKER_HOSTNAME_DEFAULT
+      = false;
+
+  /**
+   * Never constructed.
+   */
+  private OMConfigKeys() {
+  }
+}
   /**
    * Never constructed.
    */

@@ -78,6 +78,7 @@ public class GrpcOzoneManagerServer {
   private ThreadPoolExecutor readExecutors;
   private EventLoopGroup bossEventLoopGroup;
   private EventLoopGroup workerEventLoopGroup;
+  private final String serviceName = "OmS3gGrpc";
 
   public GrpcOzoneManagerServer(OzoneConfiguration config,
                                 OzoneManagerProtocolServerSideTranslatorPB
@@ -102,7 +103,7 @@ public class GrpcOzoneManagerServer {
           getPort();
     }
     this.threadNamePrefix = threadPrefix;
-    this.omS3gGrpcMetrics = GrpcMetrics.create(config, "OM");
+    this.omS3gGrpcMetrics = GrpcMetrics.create(config, serviceName);
 
     try {
       init(omTranslator,
@@ -222,7 +223,7 @@ public class GrpcOzoneManagerServer {
     } catch (InterruptedException ex) {
       LOG.warn("{} couldn't be stopped gracefully", getClass().getSimpleName());
     } finally {
-      omS3gGrpcMetrics.unRegister();
+      omS3gGrpcMetrics.unRegister(serviceName);
     }
   }
 
