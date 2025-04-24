@@ -127,6 +127,20 @@ public class JobworkerConnectionManager implements Closeable {
   }
 
   /**
+   * Returns all known OM Service.
+   *
+   * @return Collection of OM Services
+   */
+  public Collection<String> getAllOMServiceIds() {
+    readLock();
+    try {
+      return new ArrayList<>(omServiceIdEndpoints.keySet());
+    } finally {
+      readUnlock();
+    }
+  }
+
+  /**
    * Returns all known endpoints.
    *
    * @return Collection of endpoints

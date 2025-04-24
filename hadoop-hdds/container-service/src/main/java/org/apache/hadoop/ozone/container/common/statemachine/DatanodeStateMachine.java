@@ -17,6 +17,8 @@
 
 package org.apache.hadoop.ozone.container.common.statemachine;
 
+import static org.apache.hadoop.hdds.server.ServerUtils.executorServiceShutdownGraceful;
+
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import java.io.Closeable;
@@ -474,23 +476,6 @@ public class DatanodeStateMachine implements Closeable {
 
     if (nettyMetrics != null) {
       nettyMetrics.unregister();
-    }
-  }
-
-  private void executorServiceShutdownGraceful(ExecutorService executor) {
-    executor.shutdown();
-    try {
-      if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
-        executor.shutdownNow();
-      }
-
-      if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
-        LOG.error("Unable to shutdown state machine properly.");
-      }
-    } catch (InterruptedException e) {
-      LOG.error("Error attempting to shutdown.", e);
-      executor.shutdownNow();
-      Thread.currentThread().interrupt();
     }
   }
 

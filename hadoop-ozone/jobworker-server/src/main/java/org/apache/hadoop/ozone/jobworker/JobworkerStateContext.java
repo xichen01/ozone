@@ -24,10 +24,16 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.hadoop.hdds.conf.ConfigurationSource;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
+import org.apache.hadoop.ozone.jobworker.states.JobworkerStateHandler;
+import org.apache.hadoop.util.Time;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,14 +45,20 @@ public class JobworkerStateContext {
   private static final Logger LOG =
       LoggerFactory.getLogger(JobworkerStateContext.class);
 
+  private final JobworkerStateMachine parentJobworkerStateMachine;
+  private final AtomicLong stateExecutionCount;
   private final JobworkerClientConfiguration jwConf;
   private final Set<InetSocketAddress> endpoints;
+  private final AtomicLong threadPoolNotAvailableCount;
+  private final AtomicLong lastHeartbeatSent;
   // Endpoint -> Boolean of whether the full report should be queued in getFullReports call.
   private final Map<InetSocketAddress, AtomicBoolean> isReportReadyToBeSent;
   private final long initializeHeartbeatFrequencyMs = 2000;
   private final AtomicLong heartbeatFrequencyMs = new AtomicLong(initializeHeartbeatFrequencyMs);
   private final String threadNamePrefix;
   private JobworkerStates state;
+  private boolean shutdownOnError = false;
+  private boolean shutdownGracefully = false;
   private final JobworkerDetails jobworkerDetails;
 
 
@@ -55,24 +67,62 @@ public class JobworkerStateContext {
    *
    * @param conf             Configuration
    * @param state            Initial state
+   * @param stateMachine           Parent state machine
    * @param jobworkerDetails  Details of this jobworker
    * @param threadNamePrefix Thread name prefix
    */
   public JobworkerStateContext(ConfigurationSource conf,
                                JobworkerStates state,
                                JobworkerDetails jobworkerDetails,
-                               String threadNamePrefix) {
+                               String threadNamePrefix,
+                               JobworkerStateMachine stateMachine) {
     this.jwConf = conf.getObject(JobworkerClientConfiguration.class);
     this.state = state;
+    this.parentJobworkerStateMachine = stateMachine;
     endpoints = new HashSet<>();
+    stateExecutionCount = new AtomicLong(0);
+    threadPoolNotAvailableCount = new AtomicLong(0);
+    lastHeartbeatSent = new AtomicLong(0);
     isReportReadyToBeSent = new HashMap<>();
     this.threadNamePrefix = threadNamePrefix;
     this.jobworkerDetails = jobworkerDetails;
     // TODO jobworker support NodeReportProto
   }
 
+  /**
+   * Returns the JobworkerStateMachine class that holds this state.
+   *
+   * @return JobworkerStateMachine
+   */
+  public JobworkerStateMachine getParent() {
+    return parentJobworkerStateMachine;
+  }
+
   public JobworkerDetails getJobworkerDetails() {
     return jobworkerDetails;
+  }
+
+  /**
+   * Returns true if we are entering a new state.
+   *
+   * @return boolean
+   */
+  boolean isEntering() {
+    return stateExecutionCount.get() == 0;
+  }
+
+  /**
+   * Returns true if we are exiting from the current state.
+   *
+   * @param newState - newState.
+   * @return boolean
+   */
+  boolean isExiting(JobworkerStates newState) {
+    boolean isExiting = state != newState && stateExecutionCount.get() > 0;
+    if (isExiting) {
+      stateExecutionCount.set(0);
+    }
+    return isExiting;
   }
 
   /**
@@ -98,6 +148,51 @@ public class JobworkerStateContext {
             this.state, state);
       }
     }
+  }
+
+  /**
+   * Sets the shutdownOnError. This method needs to be called when we
+   * set JobworkerState to SHUTDOWN when executing a task of a JobworkerState.
+   */
+  void setShutdownOnError() {
+    this.shutdownOnError = true;
+  }
+
+  /**
+   * Indicate to the StateContext that StateMachine shutdown was called.
+   */
+  public void setShutdownGracefully() {
+    this.shutdownGracefully = true;
+  }
+
+  /**
+   * Get shutdownStateMachine.
+   *
+   * @return boolean
+   */
+  public boolean getShutdownOnError() {
+    return shutdownOnError;
+  }
+
+  /**
+   * Add a new endpoint to track.
+   *
+   * @param endpoint The endpoint address
+   */
+  public void addEndpoint(InetSocketAddress endpoint) {
+    if (!endpoints.contains(endpoint)) {
+      this.endpoints.add(endpoint);
+      this.isReportReadyToBeSent.putIfAbsent(endpoint, new AtomicBoolean(true));
+    }
+  }
+
+  /**
+   * Returns the count of the Execution.
+   *
+   * @return long
+   */
+  public long getExecutionCount() {
+    return stateExecutionCount.get();
   }
 
   /**
@@ -137,5 +232,82 @@ public class JobworkerStateContext {
    */
   public String getThreadNamePrefix() {
     return threadNamePrefix;
+  }
+
+  /**
+   * Execute the required state function.
+   *
+   * @param service - Executor Service
+   * @param time    - seconds to wait
+   * @param unit    - Time unit
+   * @throws InterruptedException
+   * @throws ExecutionException
+   * @throws TimeoutException
+   */
+  public void execute(ExecutorService service, long time, TimeUnit unit)
+      throws InterruptedException, ExecutionException, TimeoutException {
+    stateExecutionCount.incrementAndGet();
+    JobworkerStateHandler<JobworkerStates> task = getParent().getTask();
+
+    // Adding not null check, in a case where jobworker is still starting up, but
+    // we called stop JobworkerStateMachine, this sets state to SHUTDOWN, and
+    // there is a chance of getting task as null.
+    if (task == null) {
+      return;
+    }
+
+    if (this.isEntering()) {
+      task.onEnter();
+    }
+
+    boolean isThreadPoolAvailable = isThreadPoolAvailable(service);
+    if (!isThreadPoolAvailable) {
+      long count = threadPoolNotAvailableCount.incrementAndGet();
+      long unavailableTime = Time.monotonicNow() - lastHeartbeatSent.get();
+      if (unavailableTime > time && count % jwConf.getHeartbeatLogWarnInterval() == 0) {
+        LOG.warn("No available thread in pool for the past {} seconds " +
+            "and {} times.", unit.toSeconds(unavailableTime), count);
+      }
+      return;
+    }
+    threadPoolNotAvailableCount.set(0);
+
+    task.execute(service);
+    lastHeartbeatSent.set(Time.monotonicNow());
+    JobworkerStates newState = task.await(time, unit);
+    if (this.state != newState) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Task {} executed, state transited from {} to {}",
+            task.getClass().getSimpleName(), this.state, newState);
+      }
+      if (isExiting(newState)) {
+        task.onExit();
+      }
+      this.setState(newState);
+    }
+
+    if (!shutdownGracefully &&
+        this.state == JobworkerStates.SHUTDOWN) {
+      LOG.error("Critical error occurred in StateMachine, setting " +
+          "shutDownMachine");
+      // When some exception occurred, set shutdownStateMachine to true, so
+      // that we can terminate the jobworker.
+      setShutdownOnError();
+    }
+  }
+
+  /**
+   * Check if thread pool has available threads.
+   *
+   * @param executor The executor service
+   * @return true if threads are available, false otherwise
+   */
+  private boolean isThreadPoolAvailable(ExecutorService executor) {
+    if (executor instanceof java.util.concurrent.ThreadPoolExecutor) {
+      java.util.concurrent.ThreadPoolExecutor ex =
+          (java.util.concurrent.ThreadPoolExecutor) executor;
+      return ex.getQueue().isEmpty();
+    }
+    return true;
   }
 }

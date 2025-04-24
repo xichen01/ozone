@@ -626,6 +626,7 @@ message JobworkerDetailsProto {
     optional string networkName = 5;
     optional string networkLocation = 6;
     optional NodeOperationalState nodeOperationalState = 7;
+    required uint32 jobworkerVersion = 8;
 }
 
 message JobworkerPort {

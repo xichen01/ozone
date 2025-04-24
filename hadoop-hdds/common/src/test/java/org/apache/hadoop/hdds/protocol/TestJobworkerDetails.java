@@ -8,6 +8,7 @@ import java.util.UUID;
 
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.ExtendedJobWorkDetailsProto;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerPortType;
+import org.apache.hadoop.hdds.upgrade.JobworkerVersion;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -71,6 +72,7 @@ public class TestJobworkerDetails {
         .setVersion(version)
         .setSetupTime(setupTime)
         .setBuildDate(buildDate)
+        .setJobworkerVersion(JobworkerVersion.CURRENT)
         .build();
     ExtendedJobWorkDetailsProto extendedProto = original.getExtendedProtoBufMessage();
 
@@ -84,6 +86,8 @@ public class TestJobworkerDetails {
     assertEquals(original.getVersion(), fromProto.getVersion());
     assertEquals(original.getSetupTime(), fromProto.getSetupTime());
     assertEquals(original.getBuildDate(), fromProto.getBuildDate());
+    assertEquals(original.getBuildDate(), fromProto.getBuildDate());
+    assertEquals(JobworkerVersion.CURRENT, fromProto.getJobworkerVersion());
 
     Map<JobworkerPortType, Integer> originalPorts = original.getPorts();
     Map<JobworkerPortType, Integer> fromProtoPorts = fromProto.getPorts();

@@ -42,13 +42,14 @@ import org.apache.hadoop.ozone.jobworker.JobworkerClientConfiguration;
 import org.apache.hadoop.ozone.jobworker.JobworkerEndpointStateMachine;
 import org.apache.hadoop.ozone.jobworker.JobworkerEndpointStateMachine.EndpointStates;
 import org.apache.hadoop.ozone.jobworker.JobworkerStateContext;
+import org.apache.hadoop.ozone.jobworker.JobworkerStateMachine;
 import org.apache.hadoop.ozone.jobworker.JobworkerStates;
 import org.apache.hadoop.ozone.jobworker.protocol.JobworkerProtocol;
 import org.apache.hadoop.util.ProtobufUtils;
-
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Mockito;
 
 /**
  * This class tests the functionality of Jobworker HeartbeatEndpointTask.
@@ -72,7 +73,7 @@ public class TestHeartbeatEndpointTask {
     jwConf.setHeartbeatInterval(Duration.of(1, ChronoUnit.SECONDS));
     conf.setFromObject(jwConf);
     context = new JobworkerStateContext(conf, JobworkerStates.RUNNING,
-        jobworkerDetails, "jobworker-test-");
+        jobworkerDetails, "jobworker-test-", Mockito.mock(JobworkerStateMachine.class));
   }
 
   @Test

@@ -249,6 +249,8 @@ public class TestJobworkerEndpoint {
   public void testHeartbeatTask() throws Exception {
     try (JobworkerEndpointStateMachine endpoint = createEndpoint(serverAddress, ozoneConf)) {
       JobworkerStateContext context = mock(JobworkerStateContext.class);
+      JobworkerStateMachine stateMachine = mock(JobworkerStateMachine.class);
+      when(context.getParent()).thenReturn(stateMachine);
       when(context.getJobworkerDetails()).thenReturn(jobworkerDetails);
       try {
         endpoint.setState(JobworkerEndpointStateMachine.EndpointStates.HEARTBEAT);
@@ -273,6 +275,8 @@ public class TestJobworkerEndpoint {
     String invalidAddress = "localhost:1";
     try (JobworkerEndpointStateMachine endpoint = createEndpoint(invalidAddress, ozoneConf)) {
       JobworkerStateContext context = mock(JobworkerStateContext.class);
+      JobworkerStateMachine stateMachine = mock(JobworkerStateMachine.class);
+      when(context.getParent()).thenReturn(stateMachine);
       when(context.getJobworkerDetails()).thenReturn(jobworkerDetails);
 
       try {
@@ -309,6 +313,8 @@ public class TestJobworkerEndpoint {
 
     try (JobworkerEndpointStateMachine endpoint = createEndpoint(serverAddress, timeoutConf)) {
       JobworkerStateContext context = mock(JobworkerStateContext.class);
+      JobworkerStateMachine stateMachine = mock(JobworkerStateMachine.class);
+      when(context.getParent()).thenReturn(stateMachine);
       when(context.getJobworkerDetails()).thenReturn(jobworkerDetails);
 
       try {

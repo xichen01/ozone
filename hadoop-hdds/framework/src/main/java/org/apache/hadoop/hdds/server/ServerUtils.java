@@ -24,6 +24,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Collection;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.hdds.HddsConfigKeys;
 import org.apache.hadoop.hdds.conf.ConfigurationSource;
@@ -473,5 +476,21 @@ public final class ServerUtils {
       return files != null && files.length > 0;
     }
     return false;
+  }
+  public static void executorServiceShutdownGraceful(ExecutorService executor) {
+    executor.shutdown();
+    try {
+      if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+        executor.shutdownNow();
+      }
+
+      if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+        LOG.error("Unable to shutdown state machine properly.");
+      }
+    } catch (InterruptedException e) {
+      LOG.error("Error attempting to shutdown.", e);
+      executor.shutdownNow();
+      Thread.currentThread().interrupt();
+    }
   }
 }

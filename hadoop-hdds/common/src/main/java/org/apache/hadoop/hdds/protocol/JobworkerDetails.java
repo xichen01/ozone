@@ -31,6 +31,7 @@ import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerPortType;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.NodeOperationalState;
 import org.apache.hadoop.hdds.scm.net.NetConstants;
 import org.apache.hadoop.hdds.scm.net.NodeImpl;
+import org.apache.hadoop.hdds.upgrade.JobworkerVersion;
 import org.apache.hadoop.hdds.utils.db.Codec;
 import org.apache.hadoop.hdds.utils.db.DelegatedCodec;
 import org.apache.hadoop.hdds.utils.db.Proto2Codec;
@@ -80,6 +81,7 @@ public class JobworkerDetails extends NodeImpl implements
   private String buildDate;
   private volatile HddsProtos.NodeOperationalState operationalState;
   private String revision;
+  private JobworkerVersion jobworkerVersion;
 
   /**
    * Constructs JobworkerDetails instance. JobworkerDetails.Builder is used
@@ -94,12 +96,14 @@ public class JobworkerDetails extends NodeImpl implements
    * @param setupTime        the setup time of Jobworker
    * @param buildDate        Jobworker's build timestamp
    * @param opState          Jobworker's NodeOperationalState
+   * @param jobworkerVersion  Jobworker's JobworkerVersion
    */
   @SuppressWarnings("checkstyle:ParameterNumber")
   private JobworkerDetails(UUID uuid, String ipAddress, String hostName,
                            String networkLocation, Map<JobworkerPortType, Integer> ports,
                            String version, long setupTime, String buildDate,
-                           NodeOperationalState opState, String revision) {
+                           NodeOperationalState opState, String revision,
+                           JobworkerVersion jobworkerVersion) {
     super(hostName, networkLocation, NetConstants.NODE_COST_DEFAULT);
     this.uuid = uuid;
     this.ipAddress = ipAddress;
@@ -110,6 +114,7 @@ public class JobworkerDetails extends NodeImpl implements
     this.buildDate = buildDate;
     this.operationalState = opState;
     this.revision = revision;
+    this.jobworkerVersion = jobworkerVersion;
   }
 
   /**
@@ -132,6 +137,7 @@ public class JobworkerDetails extends NodeImpl implements
     this.buildDate = jobworkerDetails.buildDate;
     this.operationalState = jobworkerDetails.operationalState;
     this.revision = jobworkerDetails.revision;
+    this.jobworkerVersion = jobworkerDetails.jobworkerVersion;
   }
 
   /**
@@ -207,6 +213,15 @@ public class JobworkerDetails extends NodeImpl implements
   }
 
   /**
+   * Returns the Jobworker's JobworkerVersion.
+   *
+   * @return Jobworker's JobworkerVersion
+   */
+  public JobworkerVersion getJobworkerVersion() {
+    return jobworkerVersion;
+  }
+
+  /**
    * Starts building a new JobworkerDetails from the protobuf input.
    *
    * @param jobworkerDetailsProto protobuf message
@@ -234,6 +249,10 @@ public class JobworkerDetails extends NodeImpl implements
     }
     if (jobworkerDetailsProto.hasNodeOperationalState()) {
       builder.setOperationalState(jobworkerDetailsProto.getNodeOperationalState());
+    }
+    if (jobworkerDetailsProto.hasJobworkerVersion()) {
+      builder.setJobworkerVersion(JobworkerVersion.fromProtoValue(
+          jobworkerDetailsProto.getJobworkerVersion()));
     }
     return builder;
   }
@@ -312,6 +331,9 @@ public class JobworkerDetails extends NodeImpl implements
           .setValue(ports.get(portType))
           .build());
     }
+    if (jobworkerVersion != null) {
+      builder.setJobworkerVersion(jobworkerVersion.toProtoValue());
+    }
     return builder.build();
   }
 
@@ -352,6 +374,7 @@ public class JobworkerDetails extends NodeImpl implements
         ", networkName: " + getNetworkName() +
         ", setupTime: " + Time.formatTime(getSetupTime()) +
         ", operationalState: " + getOperationalState() +
+        ", jobworkerVersion: " + getJobworkerVersion() +
         "}";
   }
 
@@ -457,7 +480,6 @@ public class JobworkerDetails extends NodeImpl implements
     this.revision = rev;
   }
 
-
   /**
    * Builder class for building JobworkerDetails.
    */
@@ -473,6 +495,7 @@ public class JobworkerDetails extends NodeImpl implements
     private String buildDate;
     private HddsProtos.NodeOperationalState opState;
     private String revision;
+    private JobworkerVersion jobworkerVersion;
 
     /**
      * Default private constructor. To create Builder instance use
@@ -588,6 +611,16 @@ public class JobworkerDetails extends NodeImpl implements
     }
 
     /**
+     * Sets the JobworkerVersion.
+     * @param jobworkerVersion the JobworkerVersion of Jobworker.
+     * @return JobworkerDetails.Builder
+     */
+    public Builder setJobworkerVersion(JobworkerVersion jobworkerVersion) {
+      this.jobworkerVersion = jobworkerVersion;
+      return this;
+    }
+
+    /**
      * Sets the jobworker revision.
      *
      * @param rev the revision of jobworker.
@@ -611,7 +644,7 @@ public class JobworkerDetails extends NodeImpl implements
       }
       JobworkerDetails jw = new JobworkerDetails(uuid, ipAddress, hostName,
           networkLocation, ports, version, setupTime,
-          buildDate, opState, revision);
+          buildDate, opState, revision, jobworkerVersion);
       if (networkName != null) {
         jw.setNetworkName(networkName);
       }

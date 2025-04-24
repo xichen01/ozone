@@ -25,11 +25,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
 import java.io.IOException;
-import java.net.InetAddress;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
+import org.apache.hadoop.hdds.protocol.MockJobworkerDetails;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.RegisterJobworkerRequest;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.RegisterJobworkerResponse;
@@ -41,6 +41,7 @@ import org.apache.hadoop.ozone.jobworker.client.JobworkerClient;
 import org.apache.hadoop.ozone.om.OmTestManagers;
 import org.apache.hadoop.ozone.om.OzoneManager;
 import org.apache.hadoop.security.authentication.client.AuthenticationException;
+import org.apache.hadoop.util.ProtobufUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -77,12 +78,9 @@ public class TestJobworkerRPCProtocol {
         .setMostSigBits(UUID.randomUUID().getMostSignificantBits())
         .setLeastSigBits(UUID.randomUUID().getLeastSignificantBits())
         .build();
-    InetAddress localHost = InetAddress.getLocalHost();
-    jobworkerDetailsProto = JobworkerDetailsProto.newBuilder()
-        .setUuid128(jwUuid)
-        .setIpAddress(localHost.getHostAddress())
-        .setHostName(localHost.getHostName())
-        .build();
+    jobworkerDetailsProto =
+        MockJobworkerDetails.createJobworkerDetails(
+            ProtobufUtils.fromProtobuf(jwUuid).toString()).getProtoBufMessage();
   }
 
   @AfterEach

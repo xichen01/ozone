@@ -17,7 +17,9 @@
  */
 package org.apache.hadoop.hdds.protocol;
 
+import org.apache.hadoop.hdds.protocol.proto.HddsProtos;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerPortType;
+import org.apache.hadoop.hdds.upgrade.JobworkerVersion;
 import org.apache.ozone.test.GenericTestUtils;
 
 import java.util.Random;
@@ -78,7 +80,20 @@ public final class MockJobworkerDetails {
    */
   public static JobworkerDetails createJobworkerDetails(String uuid,
                                                       String hostname, String ipAddress, String networkLocation) {
-    return createJobworkerDetails(uuid, hostname, ipAddress, networkLocation, 0);
+    return createJobworkerDetails(uuid, hostname, ipAddress, networkLocation, 0,
+        HddsProtos.NodeOperationalState.IN_SERVICE, JobworkerVersion.CURRENT);
+  }
+
+  /**
+   * Creates JobworkerDetails with the given information.
+   *
+   * @param uuid      JobWorker's UUID
+   * @return JobworkerDetail
+   */
+  public static JobworkerDetails createJobworkerDetails(String uuid) {
+    return createJobworkerDetails(uuid, GenericTestUtils.PortAllocator.HOSTNAME,
+        GenericTestUtils.PortAllocator.HOST_ADDRESS, "/default-rack", 0,
+        HddsProtos.NodeOperationalState.IN_SERVICE, JobworkerVersion.CURRENT);
   }
 
   /**
@@ -89,16 +104,21 @@ public final class MockJobworkerDetails {
    * @param ipAddress       ip address of JobWorker
    * @param networkLocation network location of JobWorker
    * @param port            port number for service
+   * @param state           node operational state
+   * @param jobworkerVersion JobWorker's JobworkerVersion
    * @return JobworkerDetail
    */
   public static JobworkerDetails createJobworkerDetails(
-      String uuid, String hostname, String ipAddress, String networkLocation, int port) {
+      String uuid, String hostname, String ipAddress, String networkLocation, int port,
+      HddsProtos.NodeOperationalState state, JobworkerVersion jobworkerVersion) {
 
     JobworkerDetails.Builder jw = JobworkerDetails.newBuilder()
         .setUuid(UUID.fromString(uuid))
         .setHostName(hostname)
         .setIpAddress(ipAddress)
-        .setNetworkLocation(networkLocation);
+        .setNetworkLocation(networkLocation)
+        .setOperationalState(state)
+        .setJobworkerVersion(jobworkerVersion);
     if (port > 0) {
       jw.addPort(JobworkerPortType.HTTP, port);
     }
@@ -115,7 +135,8 @@ public final class MockJobworkerDetails {
     int port = GenericTestUtils.PortAllocator.getFreePort();
     return createJobworkerDetails(UUID.randomUUID().toString(),
         GenericTestUtils.PortAllocator.HOSTNAME,
-        GenericTestUtils.PortAllocator.HOST_ADDRESS, "/default-rack", port);
+        GenericTestUtils.PortAllocator.HOST_ADDRESS, "/default-rack",
+        port, HddsProtos.NodeOperationalState.IN_SERVICE, JobworkerVersion.CURRENT);
   }
 
   private MockJobworkerDetails() {
