@@ -34,6 +34,7 @@ import org.apache.hadoop.ozone.jobworker.states.endpoint.HeartbeatEndpointTask;
 import org.apache.hadoop.ozone.jobworker.states.endpoint.RegisterEndpointTask;
 import org.apache.hadoop.ozone.jobworker.states.endpoint.VersionEndpointTask;
 import org.apache.hadoop.ozone.jobworker.utils.JobworkerGrpcRequestHandlerMock;
+import org.apache.hadoop.ozone.jobworker.volume.JobworkerVolumeSet;
 import org.apache.hadoop.ozone.om.OMConfigKeys;
 import org.apache.hadoop.util.Time;
 import org.junit.jupiter.api.AfterAll;
@@ -100,8 +101,8 @@ public class TestJobworkerEndpoint {
     try (JobworkerEndpointStateMachine endpoint = createEndpoint(serverAddress, ozoneConf)) {
       try {
         endpoint.setState(JobworkerEndpointStateMachine.EndpointStates.GETVERSION);
-        VersionEndpointTask versionTask = new VersionEndpointTask(endpoint
-        );
+        VersionEndpointTask versionTask =
+            new VersionEndpointTask(endpoint, mock(JobworkerVolumeSet.class));
         JobworkerEndpointStateMachine.EndpointStates newState = versionTask.call();
 
         // if version call worked, the endpoint should automatically move to the
@@ -122,7 +123,7 @@ public class TestJobworkerEndpoint {
     try (JobworkerEndpointStateMachine endpoint = createEndpoint(nonExistentServerAddress, ozoneConf)) {
       try {
         endpoint.setState(JobworkerEndpointStateMachine.EndpointStates.GETVERSION);
-        VersionEndpointTask versionTask = new VersionEndpointTask(endpoint);
+        VersionEndpointTask versionTask = new VersionEndpointTask(endpoint, mock(JobworkerVolumeSet.class));
         JobworkerEndpointStateMachine.EndpointStates newState = versionTask.call();
         // This version call did NOT work, so endpoint should remain in the same
         // state.
@@ -149,7 +150,7 @@ public class TestJobworkerEndpoint {
     try (JobworkerEndpointStateMachine endpoint = createEndpoint(serverAddress, timeoutConf)) {
       try {
         endpoint.setState(JobworkerEndpointStateMachine.EndpointStates.GETVERSION);
-        VersionEndpointTask versionTask = new VersionEndpointTask(endpoint);
+        VersionEndpointTask versionTask = new VersionEndpointTask(endpoint, mock(JobworkerVolumeSet.class));
 
         long start = Time.monotonicNow();
         JobworkerEndpointStateMachine.EndpointStates newState = versionTask.call();
@@ -207,7 +208,7 @@ public class TestJobworkerEndpoint {
       try {
         endpoint.setState(JobworkerEndpointStateMachine.EndpointStates.REGISTER);
         VersionEndpointTask versionTask =
-            new VersionEndpointTask(endpoint);
+            new VersionEndpointTask(endpoint, mock(JobworkerVolumeSet.class));
         long start = Time.monotonicNow();
         JobworkerEndpointStateMachine.EndpointStates newState = versionTask.call();
         long end = Time.monotonicNow();

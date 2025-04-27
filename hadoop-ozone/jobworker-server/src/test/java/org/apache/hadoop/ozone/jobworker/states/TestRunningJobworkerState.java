@@ -17,6 +17,7 @@
 package org.apache.hadoop.ozone.jobworker.states;
 
 import static org.apache.hadoop.ozone.jobworker.JobworkerEndpointStateMachine.EndpointStates.SHUTDOWN;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.util.ArrayList;
@@ -31,6 +32,7 @@ import org.apache.hadoop.ozone.jobworker.JobworkerConnectionManager;
 import org.apache.hadoop.ozone.jobworker.JobworkerEndpointStateMachine;
 import org.apache.hadoop.ozone.jobworker.JobworkerStateContext;
 import org.apache.hadoop.ozone.jobworker.JobworkerStates;
+import org.apache.hadoop.ozone.jobworker.volume.JobworkerVolumeSet;
 import org.apache.hadoop.util.Time;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -48,8 +50,8 @@ public class TestRunningJobworkerState {
     JobworkerStateContext context = Mockito.mock(JobworkerStateContext.class);
     List<JobworkerEndpointStateMachine> stateMachines = new ArrayList<>();
     when(connectionManager.getAllEndpoints()).thenReturn(stateMachines);
-    RunningJobworkerState state =
-        new RunningJobworkerState(new OzoneConfiguration(), connectionManager, context);
+    RunningJobworkerState state = new RunningJobworkerState(
+        new OzoneConfiguration(), connectionManager, context, mock(JobworkerVolumeSet.class));
 
     // Set up a test executor service
     int threadPoolSize = 2;

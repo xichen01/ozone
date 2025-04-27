@@ -39,6 +39,7 @@ import org.apache.hadoop.ozone.jobworker.JobworkerStates;
 import org.apache.hadoop.ozone.jobworker.states.endpoint.HeartbeatEndpointTask;
 import org.apache.hadoop.ozone.jobworker.states.endpoint.RegisterEndpointTask;
 import org.apache.hadoop.ozone.jobworker.states.endpoint.VersionEndpointTask;
+import org.apache.hadoop.ozone.jobworker.volume.JobworkerVolumeSet;
 import org.apache.hadoop.util.Time;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,6 +54,7 @@ public class RunningJobworkerState implements JobworkerStateHandler<JobworkerSta
   private final JobworkerConnectionManager connectionManager;
   private final ConfigurationSource conf;
   private final JobworkerStateContext context;
+  private final JobworkerVolumeSet jobworkerVolumeSet;
   private CompletionService<EndpointStates> completionService;
   /**
    * Cache the endpoint task per endpoint per endpoint state.
@@ -61,10 +63,12 @@ public class RunningJobworkerState implements JobworkerStateHandler<JobworkerSta
 
   public RunningJobworkerState(ConfigurationSource conf,
                                JobworkerConnectionManager connectionManager,
-                               JobworkerStateContext context) {
+                               JobworkerStateContext context,
+                               JobworkerVolumeSet jobworkerVolumeSet) {
     this.connectionManager = connectionManager;
     this.conf = conf;
     this.context = context;
+    this.jobworkerVolumeSet = jobworkerVolumeSet;
     initEndPointTask();
   }
 
@@ -81,7 +85,7 @@ public class RunningJobworkerState implements JobworkerStateHandler<JobworkerSta
         Callable<EndpointStates> endPointTask = null;
         switch (state) {
         case GETVERSION:
-          endPointTask = new VersionEndpointTask(endpoint);
+          endPointTask = new VersionEndpointTask(endpoint, jobworkerVolumeSet);
           break;
         case REGISTER:
           endPointTask = RegisterEndpointTask.newBuilder()

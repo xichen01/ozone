@@ -34,6 +34,8 @@ import org.apache.hadoop.hdds.protocol.JobworkerDetails;
 import org.apache.hadoop.ozone.jobworker.states.InitJobworkerState;
 import org.apache.hadoop.ozone.jobworker.states.JobworkerStateHandler;
 import org.apache.hadoop.ozone.jobworker.states.RunningJobworkerState;
+import org.apache.hadoop.ozone.jobworker.volume.JobworkerVolumeSet;
+import org.apache.hadoop.ozone.jobworker.volume.VolatileJobworkerVolumeSet;
 import org.apache.hadoop.util.Time;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,6 +51,7 @@ public class JobworkerStateMachine implements Closeable {
   private final ExecutorService executorService;
   private final ConfigurationSource conf;
   private final JobworkerConnectionManager connectionManager;
+  private final JobworkerVolumeSet volumeSet;
   private final AtomicLong nextHB;
   private final JobworkerStopService jobworkerStopService;
   private JobworkerStateContext context;
@@ -74,7 +77,7 @@ public class JobworkerStateMachine implements Closeable {
         new ThreadFactoryBuilder()
             .setNameFormat(threadNamePrefix + "TaskThread-%d")
             .build());
-
+    this.volumeSet = new VolatileJobworkerVolumeSet(jobworkerDetails.getUuidString(), conf, context);
     this.connectionManager = new JobworkerConnectionManager(conf);
     this.context = new JobworkerStateContext(
         this.conf, JobworkerStates.getInitState(), jobworkerDetails, threadNamePrefix, this);
@@ -88,6 +91,15 @@ public class JobworkerStateMachine implements Closeable {
    */
   public JobworkerConnectionManager getConnectionManager() {
     return connectionManager;
+  }
+
+  /**
+   * Returns the volume set for this JobWorker.
+   *
+   * @return volume set
+   */
+  public JobworkerVolumeSet getVolumeSet() {
+    return volumeSet;
   }
 
   /**
@@ -119,7 +131,7 @@ public class JobworkerStateMachine implements Closeable {
     case INIT:
       return new InitJobworkerState(this.conf, getConnectionManager(), context);
     case RUNNING:
-      return new RunningJobworkerState(this.conf, getConnectionManager(), context);
+      return new RunningJobworkerState(this.conf, getConnectionManager(), context, volumeSet);
     case SHUTDOWN:
       return null;
     default:
@@ -190,6 +202,10 @@ public class JobworkerStateMachine implements Closeable {
 
     if (connectionManager != null) {
       connectionManager.close();
+    }
+
+    if (volumeSet != null) {
+      volumeSet.close();
     }
   }
 

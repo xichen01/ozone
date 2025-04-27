@@ -94,4 +94,19 @@ public class JobworkerClientConfiguration {
     this.heartbeatLogWarnInterval = heartbeatLogWarnInterval;
   }
 
+  @Config(key = "storage.volume.dirs",
+      type = ConfigType.STRING,
+      tags = {ConfigTag.JOBWORKER},
+      defaultValue = "",
+      description = "Comma separated directories where JobWorker will store data."
+  )
+  private String storageDirs = "";
+
+  public String getStorageDirs() {
+    return storageDirs;
+  }
+
+  public void setStorageVolumeDirs(String dirs) {
+    this.storageDirs = dirs;
+  }
 }

@@ -32,6 +32,7 @@ import org.apache.hadoop.hdds.protocol.proto.HddsProtos;
 import org.apache.hadoop.ozone.OzoneConsts;
 import org.apache.hadoop.ozone.jobworker.JobworkerEndpointStateMachine;
 import org.apache.hadoop.ozone.jobworker.JobworkerEndpointStateMachine.EndpointStates;
+import org.apache.hadoop.ozone.jobworker.volume.JobworkerVolumeSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,14 +44,19 @@ public class VersionEndpointTask implements Callable<EndpointStates> {
   private static volatile String verifiedClusterId = null;
   private final JobworkerEndpointStateMachine rpcEndPoint;
   private static final Map<String, String> OM_SERVICE_ID_MAPPING = new ConcurrentHashMap<>();
+  private final JobworkerVolumeSet jobworkerVolumeSet;
 
   /**
    * Constructs VersionEndpointTask.
    *
-   * @param rpcEndPoint - RPC endPoint.
+   * @param rpcEndPoint        - RPC endPoint.
+   * @param jobworkerVolumeSet - jobworkerVolumeSet
    */
-  public VersionEndpointTask(JobworkerEndpointStateMachine rpcEndPoint) {
+  public VersionEndpointTask(JobworkerEndpointStateMachine rpcEndPoint,
+                             JobworkerVolumeSet jobworkerVolumeSet) {
     this.rpcEndPoint = rpcEndPoint;
+    this.jobworkerVolumeSet = jobworkerVolumeSet;
+
   }
 
   /**
@@ -85,6 +91,7 @@ public class VersionEndpointTask implements Callable<EndpointStates> {
           verifiedClusterId(clusterId, serviceId, omId);
           validateAndSetOMServiceIdFromOM(serviceId);
         }
+        jobworkerVolumeSet.initializeVolumeSet(clusterId);
         rpcEndPoint.setVersion(versionResponse);
         // Move to the next state - REGISTER
         EndpointStates nextState = rpcEndPoint.getState().getNextState();

@@ -40,6 +40,7 @@ import org.apache.hadoop.ozone.OzoneConsts;
 import org.apache.hadoop.ozone.jobworker.JobworkerEndpointStateMachine;
 import org.apache.hadoop.ozone.jobworker.JobworkerEndpointStateMachine.EndpointStates;
 import org.apache.hadoop.ozone.jobworker.protocol.JobworkerProtocol;
+import org.apache.hadoop.ozone.jobworker.volume.JobworkerVolumeSet;
 import org.apache.ozone.test.GenericTestUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -110,7 +111,7 @@ public class TestVersionEndpointTask {
         CLUSTER_ID_1, OM_SERVICE_ID_1, "om1");
     when(protocol.getOMVersion(any(GetOMVersionRequest.class)))
         .thenReturn(versionResponse);
-    VersionEndpointTask task = new VersionEndpointTask(endpointStateMachine);
+    VersionEndpointTask task = new VersionEndpointTask(endpointStateMachine, mock(JobworkerVolumeSet.class));
     task.call();
 
     // The next states should be REGISTER
@@ -126,7 +127,7 @@ public class TestVersionEndpointTask {
         .thenReturn(versionResponse1);
 
     // Create and run the task for first OM
-    VersionEndpointTask task1 = new VersionEndpointTask(endpointStateMachine);
+    VersionEndpointTask task1 = new VersionEndpointTask(endpointStateMachine, mock(JobworkerVolumeSet.class));
     task1.call();
 
     // Create a second mock endpoint for a different OM in same cluster
@@ -143,7 +144,7 @@ public class TestVersionEndpointTask {
         .thenReturn(versionResponse2);
 
     // This should succeed as they have the same cluster ID
-    VersionEndpointTask task2 = new VersionEndpointTask(endpoint2);
+    VersionEndpointTask task2 = new VersionEndpointTask(endpoint2, mock(JobworkerVolumeSet.class));
     assertDoesNotThrow(task2::call);
     assertTrue(logCapturer.getOutput().contains("First OM reported cluster ID: " + CLUSTER_ID_1));
     assertFalse(logCapturer.getOutput().contains("A jobworker can only serve one cluster"));
@@ -160,7 +161,7 @@ public class TestVersionEndpointTask {
         .thenReturn(versionResponse1);
 
     // Create and run the task for first OM
-    VersionEndpointTask task1 = new VersionEndpointTask(endpointStateMachine);
+    VersionEndpointTask task1 = new VersionEndpointTask(endpointStateMachine, mock(JobworkerVolumeSet.class));
     task1.call();
 
     // Create a second mock endpoint for a different OM in different cluster
@@ -177,7 +178,7 @@ public class TestVersionEndpointTask {
         .thenReturn(versionResponse2);
 
     // This should fail with IllegalStateException due to cluster ID mismatch
-    VersionEndpointTask task2 = new VersionEndpointTask(endpoint2);
+    VersionEndpointTask task2 = new VersionEndpointTask(endpoint2, mock(JobworkerVolumeSet.class));
     task2.call();
     assertTrue(logCapturer.getOutput().contains("First OM reported cluster ID: " + CLUSTER_ID_1));
     assertTrue(logCapturer.getOutput().contains("A jobworker can only serve one cluster"));
@@ -193,7 +194,7 @@ public class TestVersionEndpointTask {
         .thenReturn(versionResponse1);
 
     // Create and run the task for first OM
-    VersionEndpointTask task1 = new VersionEndpointTask(endpointStateMachine);
+    VersionEndpointTask task1 = new VersionEndpointTask(endpointStateMachine, mock(JobworkerVolumeSet.class));
     task1.call();
 
     // Create a second mock endpoint with the same configured OMServiceId
@@ -211,7 +212,7 @@ public class TestVersionEndpointTask {
         .thenReturn(versionResponse2);
 
     // This should fail with IllegalStateException due to OMServiceId mismatch
-    VersionEndpointTask task2 = new VersionEndpointTask(endpoint2);
+    VersionEndpointTask task2 = new VersionEndpointTask(endpoint2, mock(JobworkerVolumeSet.class));
     task2.call();
     assertTrue(logCapturer.getOutput().contains("First OM reported cluster ID: " + CLUSTER_ID_1));
     assertTrue(logCapturer.getOutput().contains("Conflicting OMServiceId mapping detected"));
@@ -222,7 +223,7 @@ public class TestVersionEndpointTask {
   public void testFailureRequest() throws Exception {
     when(protocol.getOMVersion(any(GetOMVersionRequest.class)))
         .thenThrow(new IOException("Connection refused"));
-    VersionEndpointTask task = new VersionEndpointTask(endpointStateMachine);
+    VersionEndpointTask task = new VersionEndpointTask(endpointStateMachine, mock(JobworkerVolumeSet.class));
     task.call();
 
     // The state should not change
