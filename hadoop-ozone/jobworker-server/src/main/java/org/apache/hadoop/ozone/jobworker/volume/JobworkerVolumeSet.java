@@ -23,6 +23,7 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.JobworkerStorageReportProto;
 import org.apache.hadoop.ozone.lock.ReadWriteLockable;
 
 /**
@@ -68,4 +69,11 @@ public interface JobworkerVolumeSet extends ReadWriteLockable, Closeable {
    * @return true if cleanup was successful on all volumes
    */
   boolean cleanupTask(String taskId);
+
+  /**
+   * Get the Storage report list of the VolumeSet.
+   * @return Storage report list.
+   */
+  List<JobworkerStorageReportProto> getStorageReport();
+
 }

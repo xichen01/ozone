@@ -19,6 +19,7 @@ package org.apache.hadoop.ozone.jobworker;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -26,10 +27,12 @@ import io.grpc.Server;
 import io.grpc.ServerBuilder;
 import java.net.InetSocketAddress;
 import java.time.Duration;
+import java.util.ArrayList;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
 import org.apache.hadoop.hdds.protocol.MockJobworkerDetails;
 import org.apache.hadoop.ozone.jobworker.protocolPB.JobworkerProtocolClientSideTranslatorPB;
+import org.apache.hadoop.ozone.jobworker.report.JobworkerReportManager;
 import org.apache.hadoop.ozone.jobworker.states.endpoint.HeartbeatEndpointTask;
 import org.apache.hadoop.ozone.jobworker.states.endpoint.RegisterEndpointTask;
 import org.apache.hadoop.ozone.jobworker.states.endpoint.VersionEndpointTask;
@@ -250,7 +253,10 @@ public class TestJobworkerEndpoint {
   public void testHeartbeatTask() throws Exception {
     try (JobworkerEndpointStateMachine endpoint = createEndpoint(serverAddress, ozoneConf)) {
       JobworkerStateContext context = mock(JobworkerStateContext.class);
+      JobworkerReportManager jobworkerReportManager = mock(JobworkerReportManager.class);
       JobworkerStateMachine stateMachine = mock(JobworkerStateMachine.class);
+      when(jobworkerReportManager.getLimitedCountAvailableReports(any())).thenReturn(new ArrayList<>());
+      when(stateMachine.getReportManager()).thenReturn(jobworkerReportManager);
       when(context.getParent()).thenReturn(stateMachine);
       when(context.getJobworkerDetails()).thenReturn(jobworkerDetails);
       try {

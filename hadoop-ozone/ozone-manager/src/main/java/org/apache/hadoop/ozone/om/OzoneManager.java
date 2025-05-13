@@ -201,12 +201,15 @@ import org.apache.hadoop.hdds.scm.client.HddsClientUtils;
 import org.apache.hadoop.hdds.scm.client.ScmTopologyClient;
 import org.apache.hadoop.hdds.scm.net.NetworkTopology;
 import org.apache.hadoop.hdds.scm.net.NetworkTopologyImpl;
+import org.apache.hadoop.hdds.server.events.EventQueue;
 import org.apache.hadoop.net.CachedDNSToSwitchMapping;
 import org.apache.hadoop.net.DNSToSwitchMapping;
 import org.apache.hadoop.net.TableMapping;
 import org.apache.hadoop.ozone.om.jobworker.JobworkerGrpcServer;
 import org.apache.hadoop.ozone.om.jobworker.JobworkerProtocolServerImpl;
+import org.apache.hadoop.ozone.om.jobworker.OMJobworkerEvents;
 import org.apache.hadoop.ozone.om.jobworker.node.JobworkerNodeManager;
+import org.apache.hadoop.ozone.om.jobworker.node.JobworkerNodeReportHandler;
 import org.apache.hadoop.hdds.scm.ha.SCMNodeInfo;
 import org.apache.hadoop.hdds.scm.net.NetworkTopology;
 import org.apache.hadoop.hdds.scm.protocol.ScmBlockLocationProtocol;
@@ -559,6 +562,7 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
   private final OMServiceManager serviceManager;
   private DNSToSwitchMapping dnsToSwitchMapping;
   private NetworkTopology clusterMap;
+  private EventQueue eventQueue;
 
   @SuppressWarnings("methodlength")
   private OzoneManager(OzoneConfiguration conf, StartupOption startupOption)
@@ -788,9 +792,14 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
     dnsToSwitchMapping = getDNSToSwitchMapping(conf);
     jobworkerNodemanager = new JobworkerNodeManager(
         this::resolveNodeLocation, clusterMap, omStorage, omNodeDetails, conf);
+    JobworkerNodeReportHandler nodeReportHandler =
+        new JobworkerNodeReportHandler(jobworkerNodemanager);
+    eventQueue = new EventQueue(threadPrefix + "EventQueue");
+    eventQueue.addHandler(OMJobworkerEvents.JW_NODE_REPORT, nodeReportHandler);
     jobworkerServerProtocol =
-        new JobworkerProtocolServerImpl(this, jobworkerNodemanager);
+        new JobworkerProtocolServerImpl(this, jobworkerNodemanager, eventQueue);
     jobworkerGrpcServer = getJobworkerGrpcServer(conf, jobworkerServerProtocol);
+
 
     // Start Om Rpc Server.
     omRpcServer = getRpcServer(configuration);
@@ -2614,6 +2623,14 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
       }
       if (jobworkerGrpcServer != null) {
         jobworkerGrpcServer.stop();
+      }
+      try {
+        LOG.info("Stopping OM Event Queue.");
+        if (eventQueue != null) {
+          eventQueue.close();
+        }
+      } catch (Exception ex) {
+        LOG.error("OM Event Queue stop failed", ex);
       }
       // When ratis is not enabled, we need to call stop() to stop
       // OzoneManageDoubleBuffer in OM server protocol.
@@ -5587,6 +5604,7 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
     try (UncheckedAutoCloseableSupplier<IOmMetadataReader> rcReader = getReader(args)) {
       return rcReader.get().getObjectTagging(args);
     }
+  }
   }
 
   @Override

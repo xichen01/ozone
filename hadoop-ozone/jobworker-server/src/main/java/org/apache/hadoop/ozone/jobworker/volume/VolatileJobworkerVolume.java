@@ -275,6 +275,10 @@ public final class VolatileJobworkerVolume {
    * @return The total space used in bytes
    */
   public long getSpaceUsed() {
+    // TODO jobworker Currently, only the capacity space and available space of the disk where the volume
+    //  is located are reported, and the actual space used by the volume is not calculated.
+    //  This may cause some performance overhead.
+    //  we can consider updating the actual space used by the volume in the future.
     return usedSpace.get();
   }
 

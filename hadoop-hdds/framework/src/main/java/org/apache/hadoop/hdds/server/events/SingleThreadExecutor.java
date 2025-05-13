@@ -16,6 +16,7 @@
  */
 
 package org.apache.hadoop.hdds.server.events;
+import org.apache.hadoop.metrics2.lib.DefaultMetricsSystem;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -94,6 +95,7 @@ public class SingleThreadExecutor<P> implements EventExecutor<P> {
 
   @Override
   public void close() {
+    DefaultMetricsSystem.instance().unregisterSource(getMetricsName());
     executor.shutdown();
     metrics.unregister();
   }
@@ -101,5 +103,9 @@ public class SingleThreadExecutor<P> implements EventExecutor<P> {
   @Override
   public String getName() {
     return name;
+  }
+
+  public String getMetricsName() {
+    return EVENT_QUEUE + name;
   }
 }

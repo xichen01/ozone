@@ -22,6 +22,7 @@ package org.apache.hadoop.ozone.jobworker.volume;
 import com.google.common.collect.ImmutableList;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -31,6 +32,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.apache.hadoop.hdds.conf.ConfigurationSource;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.JobworkerStorageReportProto;
 import org.apache.hadoop.hdfs.server.datanode.StorageLocation;
 import org.apache.hadoop.ozone.jobworker.JobworkerClientConfiguration;
 import org.apache.hadoop.ozone.jobworker.JobworkerStateContext;
@@ -38,7 +40,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * volatile VolumeSet, no data will be retained after reboot.
+ * Volatile VolumeSet, no data will be retained after reboot.
  */
 public class VolatileJobworkerVolumeSet implements JobworkerVolumeSet {
 
@@ -64,7 +66,6 @@ public class VolatileJobworkerVolumeSet implements JobworkerVolumeSet {
    */
   private Map<String, VolatileJobworkerVolume> failedVolumeMap;
   private String clusterID;
-  // TODO jobworker, implement the volume checker
   private JobworkerStateContext context;
 
   /**
@@ -86,6 +87,16 @@ public class VolatileJobworkerVolumeSet implements JobworkerVolumeSet {
     initializingStatus =
         new AtomicReference<>(InitializingStatus.UNINITIALIZED);
     volumeMap = new ConcurrentHashMap<>();
+    failedVolumeMap = new ConcurrentHashMap<>();
+  }
+
+  /**
+   * Set the state context for this volume set.
+   *
+   * @param context The state context
+   */
+  public void setContext(JobworkerStateContext context) {
+    this.context = context;
   }
 
   /**
@@ -93,7 +104,8 @@ public class VolatileJobworkerVolumeSet implements JobworkerVolumeSet {
    *
    * @throws IOException if initialization fails
    */
-  public void initializeVolumeSet(String clusterId) throws IOException {
+  @Override
+  public void initializeVolumeSet(String currentClusterId) throws IOException {
     // If OM HA is enabled, this will be called multi-times
     // from VersionEndpointTask. The first call should do the initializing job,
     // the successive calls should wait until VolumeSet is initialized.
@@ -110,30 +122,34 @@ public class VolatileJobworkerVolumeSet implements JobworkerVolumeSet {
       LOG.info("Ignore. Jobworker Volume has been created.");
       return;
     }
-    this.clusterID = clusterId;
-    failedVolumeMap = new ConcurrentHashMap<>();
+    this.clusterID = currentClusterId;
 
     Collection<String> rawLocations = getConfiguredVolumePaths();
 
-    for (String locationString : rawLocations) {
-      VolatileJobworkerVolume volume = null;
-      try {
-        StorageLocation location = StorageLocation.parse(locationString);
-        volume = createVolume(location.getUri().getPath());
-        LOG.info("Added Volume : {} to VolumeSet", volume.getJobworkerDir().getPath());
-        if (!volume.getJobworkerDir().exists() || !volume.getJobworkerDir().isDirectory()) {
-          throw new IOException("Failed to create storage dir " + volume.getJobworkerDir());
-        }
-        volumeMap.put(volume.getJobworkerDir().getPath(), volume);
-      } catch (IOException e) {
-        if (volume != null) {
-          volume.shutdown();
-        }
+    this.writeLock();
+    try {
+      for (String locationString : rawLocations) {
+        VolatileJobworkerVolume volume = null;
+        try {
+          StorageLocation location = StorageLocation.parse(locationString);
+          volume = createVolume(location.getUri().getPath());
+          LOG.info("Added Volume : {} to VolumeSet", volume.getJobworkerDir().getPath());
+          if (!volume.getJobworkerDir().exists() || !volume.getJobworkerDir().isDirectory()) {
+            throw new IOException("Failed to create storage dir " + volume.getJobworkerDir());
+          }
+          volumeMap.put(volume.getJobworkerDir().getPath(), volume);
+        } catch (IOException e) {
+          if (volume != null) {
+            volume.shutdown();
+          }
 
-        volume = createFailedVolume(locationString);
-        failedVolumeMap.put(locationString, volume);
-        LOG.error("Failed to parse the storage location: {}", locationString, e);
+          volume = createFailedVolume(locationString);
+          failedVolumeMap.put(locationString, volume);
+          LOG.error("Failed to parse the storage location: {}", locationString, e);
+        }
       }
+    } finally {
+      this.writeUnlock();
     }
     initializingStatus.set(InitializingStatus.INITIALIZED);
   }
@@ -188,6 +204,7 @@ public class VolatileJobworkerVolumeSet implements JobworkerVolumeSet {
   /**
    * Acquire Volume Set Read lock.
    */
+  @Override
   public void readLock() {
     volumeSetRWLock.readLock().lock();
   }
@@ -195,6 +212,7 @@ public class VolatileJobworkerVolumeSet implements JobworkerVolumeSet {
   /**
    * Release Volume Set Read lock.
    */
+  @Override
   public void readUnlock() {
     volumeSetRWLock.readLock().unlock();
   }
@@ -202,6 +220,7 @@ public class VolatileJobworkerVolumeSet implements JobworkerVolumeSet {
   /**
    * Acquire Volume Set Write lock.
    */
+  @Override
   public void writeLock() {
     volumeSetRWLock.writeLock().lock();
   }
@@ -209,6 +228,7 @@ public class VolatileJobworkerVolumeSet implements JobworkerVolumeSet {
   /**
    * Release Volume Set Write lock.
    */
+  @Override
   public void writeUnlock() {
     volumeSetRWLock.writeLock().unlock();
   }
@@ -259,8 +279,53 @@ public class VolatileJobworkerVolumeSet implements JobworkerVolumeSet {
    *
    * @return List of volumes
    */
+  @Override
   public List<VolatileJobworkerVolume> getVolumesList() {
     return ImmutableList.copyOf(volumeMap.values());
+  }
+
+  /**
+   * Get storage reports for all active volumes.
+   *
+   * @return Array of StorageLocationReportProto
+   */
+  @Override
+  public List<JobworkerStorageReportProto> getStorageReport() {
+    this.readLock();
+    try {
+      List<JobworkerStorageReportProto> reports =
+          new ArrayList<>(volumeMap.size() + failedVolumeMap.size());
+      // Add reports for normal volumes
+      for (VolatileJobworkerVolume volume : volumeMap.values()) {
+        JobworkerStorageReportProto.Builder builder =
+            JobworkerStorageReportProto.newBuilder();
+
+        builder.setStorageLocation(volume.getVolumeRootDir().getAbsolutePath())
+            .setStorageUuid(volume.getStorageID())
+            .setFailed(false)
+            .setCapacity(volume.getCapacity())
+            .setRemaining(volume.getAvailable())
+            .setStorageLocation(volume.getVolumeRootDir().getAbsolutePath());
+        reports.add(builder.build());
+      }
+      // Add reports for failed volumes
+      for (VolatileJobworkerVolume volume : failedVolumeMap.values()) {
+        JobworkerStorageReportProto.Builder builder =
+            JobworkerStorageReportProto.newBuilder();
+
+        builder.setStorageLocation(volume.getVolumeRootDir().getAbsolutePath())
+            .setStorageUuid(volume.getStorageID())
+            .setFailed(true)
+            .setCapacity(0)
+            .setRemaining(0)
+            .setStorageLocation(volume.getVolumeRootDir().getAbsolutePath());
+        reports.add(builder.build());
+      }
+
+      return reports;
+    } finally {
+      this.readUnlock();
+    }
   }
 
   /**
@@ -268,6 +333,7 @@ public class VolatileJobworkerVolumeSet implements JobworkerVolumeSet {
    *
    * @return The chosen JobWorkerVolume or null if none available
    */
+  @Override
   public VolatileJobworkerVolume chooseVolume() {
     VolatileJobworkerVolume selectedVolume = null;
     long maxAvailable = 0;
@@ -297,6 +363,7 @@ public class VolatileJobworkerVolumeSet implements JobworkerVolumeSet {
    * @return The task directory
    * @throws IOException if there's an error creating the directory
    */
+  @Override
   public File createTaskDirectory(String taskId) throws IOException {
     VolatileJobworkerVolume volume = chooseVolume();
     if (volume == null) {
@@ -312,6 +379,7 @@ public class VolatileJobworkerVolumeSet implements JobworkerVolumeSet {
    * @param taskId The task ID to clean up
    * @return true if cleanup was successful on all volumes
    */
+  @Override
   public boolean cleanupTask(String taskId) {
     boolean success = true;
 

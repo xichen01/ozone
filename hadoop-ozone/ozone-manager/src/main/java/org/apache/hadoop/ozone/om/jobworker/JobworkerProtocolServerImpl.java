@@ -21,6 +21,7 @@ package org.apache.hadoop.ozone.om.jobworker;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Maps;
+import org.apache.hadoop.hdds.server.events.EventPublisher;
 import org.apache.hadoop.ozone.jobworker.command.OMJobworkerCommand;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.GetOMVersionRequest;
@@ -62,13 +63,15 @@ public class JobworkerProtocolServerImpl implements JobworkerProtocol {
 
   private final OzoneManager om;
   private final JobworkerHeartbeatDispatcher jobworkerHeartbeatDispatcher;
+
   private final JobworkerNodeManager jobworkerNodeManager;
 
-  public JobworkerProtocolServerImpl(OzoneManager om, JobworkerNodeManager jobworkerNodeManager) {
+  public JobworkerProtocolServerImpl(OzoneManager om, JobworkerNodeManager jobworkerNodeManager,
+                                     EventPublisher eventPublisher) {
     this.om = om;
     this.jobworkerNodeManager = jobworkerNodeManager;
     jobworkerHeartbeatDispatcher =
-        new JobworkerHeartbeatDispatcher(jobworkerNodeManager);
+        new JobworkerHeartbeatDispatcher(jobworkerNodeManager, eventPublisher);
   }
 
   @Override

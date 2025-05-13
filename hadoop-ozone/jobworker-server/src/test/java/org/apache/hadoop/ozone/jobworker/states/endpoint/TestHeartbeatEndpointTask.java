@@ -29,6 +29,7 @@ import static org.mockito.Mockito.when;
 import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.UUID;
 
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
@@ -45,11 +46,11 @@ import org.apache.hadoop.ozone.jobworker.JobworkerStateContext;
 import org.apache.hadoop.ozone.jobworker.JobworkerStateMachine;
 import org.apache.hadoop.ozone.jobworker.JobworkerStates;
 import org.apache.hadoop.ozone.jobworker.protocol.JobworkerProtocol;
+import org.apache.hadoop.ozone.jobworker.report.JobworkerReportManager;
 import org.apache.hadoop.util.ProtobufUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Mockito;
 
 /**
  * This class tests the functionality of Jobworker HeartbeatEndpointTask.
@@ -62,7 +63,6 @@ public class TestHeartbeatEndpointTask {
   private JobworkerDetails jobworkerDetails;
   private OzoneConfiguration conf;
   private JobworkerStateContext context;
-  private JobworkerProtocol jobworkerProtocol;
   private static final String OM_SERVICE_ID = "om-service-1";
 
   @BeforeEach
@@ -72,8 +72,12 @@ public class TestHeartbeatEndpointTask {
     JobworkerClientConfiguration jwConf = new JobworkerClientConfiguration();
     jwConf.setHeartbeatInterval(Duration.of(1, ChronoUnit.SECONDS));
     conf.setFromObject(jwConf);
+    JobworkerReportManager jobworkerReportManager = mock(JobworkerReportManager.class);
+    JobworkerStateMachine stateMachine = mock(JobworkerStateMachine.class);
+    when(jobworkerReportManager.getLimitedCountAvailableReports(any())).thenReturn(new ArrayList<>());
+    when(stateMachine.getReportManager()).thenReturn(jobworkerReportManager);
     context = new JobworkerStateContext(conf, JobworkerStates.RUNNING,
-        jobworkerDetails, "jobworker-test-", Mockito.mock(JobworkerStateMachine.class));
+        jobworkerDetails, "jobworker-test-", stateMachine);
   }
 
   @Test

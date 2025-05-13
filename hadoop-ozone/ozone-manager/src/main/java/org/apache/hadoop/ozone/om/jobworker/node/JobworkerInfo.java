@@ -20,9 +20,12 @@
 package org.apache.hadoop.ozone.om.jobworker.node;
 
 import com.google.common.annotations.VisibleForTesting;
+import java.util.Collections;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.List;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.JobworkerStorageReportProto;
 import org.apache.hadoop.util.Time;
 
 /**
@@ -34,6 +37,8 @@ public class JobworkerInfo extends JobworkerDetails {
   private final ReadWriteLock lock;
   private JobworkerNodeStatus nodeStatus;
   private volatile long lastHeartbeatTime;
+  private int failedVolumeCount;
+  private List<JobworkerStorageReportProto> storageReports;
 
   /**
    * Copy constructor for JobworkerDetails.
@@ -44,6 +49,7 @@ public class JobworkerInfo extends JobworkerDetails {
     super(jobworkerDetails);
     this.lock = new ReentrantReadWriteLock();
     this.nodeStatus = nodeStatus;
+    this.storageReports = Collections.emptyList();
   }
 
   /**
@@ -100,4 +106,50 @@ public class JobworkerInfo extends JobworkerDetails {
     return lastHeartbeatTime;
   }
 
+  /**
+   * Updates the datanode storage reports.
+   *
+   * @param reports list of storage report
+   */
+  public void updateStorageReports(List<JobworkerStorageReportProto> reports) {
+    final int failedCount = (int) reports.stream()
+        .filter(e -> e.hasFailed() && e.getFailed())
+        .count();
+
+    try {
+      lock.writeLock().lock();
+      updateLastHeartbeatTime();
+      failedVolumeCount = failedCount;
+      storageReports = reports;
+    } finally {
+      lock.writeLock().unlock();
+    }
+  }
+
+  /**
+   * Returns the storage reports associated with this jobworker.
+   *
+   * @return list of the storage report
+   */
+  public List<JobworkerStorageReportProto> getStorageReports() {
+    try {
+      lock.readLock().lock();
+      return storageReports;
+    } finally {
+      lock.readLock().unlock();
+    }
+  }
+
+  /**
+   * Returns count of healthy volumes reported from jobworker.
+   * @return count of healthy volumes
+   */
+  public int getHealthyVolumeCount() {
+    try {
+      lock.readLock().lock();
+      return storageReports.size() - failedVolumeCount;
+    } finally {
+      lock.readLock().unlock();
+    }
+  }
 }

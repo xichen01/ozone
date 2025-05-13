@@ -20,7 +20,11 @@
 package org.apache.hadoop.ozone.jobworker.states.endpoint;
 
 import com.google.common.base.Preconditions;
+import com.google.protobuf.Descriptors;
+import com.google.protobuf.Message;
 import java.time.ZonedDateTime;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ThreadLocalRandom;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
@@ -45,6 +49,17 @@ public class HeartbeatEndpointTask implements Callable<EndpointStates> {
   private final JobworkerEndpointStateMachine rpcEndpoint;
   private final JobworkerStateContext context;
   private JobworkerDetails jobworkerDetailsProto;
+  private static final Map<String, Descriptors.FieldDescriptor> REPORT_TYPE_TO_FIELD_MAP;
+
+  static {
+    REPORT_TYPE_TO_FIELD_MAP = new HashMap<>();
+    for (Descriptors.FieldDescriptor descriptor : SendHeartbeatRequest.getDescriptor().getFields()) {
+      if (descriptor.getJavaType() == Descriptors.FieldDescriptor.JavaType.MESSAGE) {
+        String heartbeatFieldName = descriptor.getMessageType().getFullName();
+        REPORT_TYPE_TO_FIELD_MAP.put(heartbeatFieldName, descriptor);
+      }
+    }
+  }
 
   /**
    * Constructs an OM heartbeat task.
@@ -101,6 +116,7 @@ public class HeartbeatEndpointTask implements Callable<EndpointStates> {
       requestBuilder = SendHeartbeatRequest.newBuilder()
           .setJobworkerDetails(jobworkerDetailsProto.getProtoBufMessage())
           .setOmServiceId(rpcEndpoint.getOMServiceId());
+      addReports(requestBuilder);
 
       SendHeartbeatRequest request = requestBuilder.build();
       LOG.debug("Sending heartbeat message to {}: {}",
@@ -252,6 +268,27 @@ public class HeartbeatEndpointTask implements Callable<EndpointStates> {
           this.endPointStateMachine, this.context);
       task.setJobworkerDetails(jobworkerDetails);
       return task;
+    }
+  }
+
+  /**
+   * Adds all the available reports to heartbeat.
+   *
+   * @param requestBuilder builder to which the report has to be added.
+   */
+  private void addReports(SendHeartbeatRequest.Builder requestBuilder) {
+    for (Message report : context.getParent().getReportManager()
+        .getLimitedCountAvailableReports(rpcEndpoint.getAddress())) {
+      String reportName = report.getDescriptorForType().getFullName();
+      Descriptors.FieldDescriptor descriptor = REPORT_TYPE_TO_FIELD_MAP.get(reportName);
+
+      if (descriptor != null) {
+        if (descriptor.isRepeated()) {
+          requestBuilder.addRepeatedField(descriptor, report);
+        } else {
+          requestBuilder.setField(descriptor, report);
+        }
+      }
     }
   }
 }

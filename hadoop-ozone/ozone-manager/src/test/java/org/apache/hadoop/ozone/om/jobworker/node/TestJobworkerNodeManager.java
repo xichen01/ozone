@@ -29,10 +29,14 @@ import java.io.File;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.UUID;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
 import org.apache.hadoop.hdds.protocol.MockJobworkerDetails;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.JobworkerNodeReportProto;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.JobworkerStorageReportProto;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.RegisterJobworkerResponse;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.RegisterJobworkerResponse.ReturnCode;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.SendHeartbeatRequest;
@@ -102,6 +106,94 @@ public class TestJobworkerNodeManager {
     } finally {
       ctx.detach(originalContext);
     }
+  }
+
+  @Test
+  public void testJobworkerNodeReport() throws Exception {
+    // Prepare
+    JobworkerDetails jobworkerDetails = registerJobworker();
+    UUID jobworkerUuid = jobworkerDetails.getUuid();
+    final long capacity = 2000;
+    final long remaining = 1900;
+    JobworkerStorageReportProto storageReport =
+        JobworkerStorageReportProto.newBuilder()
+            .setStorageUuid(jobworkerUuid.toString())
+            .setStorageLocation(folder.toString())
+            .setCapacity(capacity)
+            .setRemaining(remaining)
+            .setFailed(false)
+            .build();
+    JobworkerNodeReportProto nodeReport = JobworkerNodeReportProto.newBuilder()
+        .addStorageReport(storageReport)
+        .build();
+
+    nodeManager.processNodeReport(jobworkerDetails, nodeReport);
+
+    // Verify storage reports were updated
+    JobworkerInfo nodeInfo = nodeManager.getNodeStateManager().getNodeInfo(jobworkerUuid);
+    List<JobworkerStorageReportProto> storageSummary = nodeInfo.getStorageReports();
+
+    assertEquals(1, storageSummary.size());
+    assertEquals(capacity, storageSummary.get(0).getCapacity());
+    assertEquals(remaining, storageSummary.get(0).getRemaining());
+    assertEquals(jobworkerUuid.toString(), storageSummary.get(0).getStorageUuid());
+
+    // Test with multiple storage reports
+    JobworkerStorageReportProto storageReport2 =
+        JobworkerStorageReportProto.newBuilder()
+            .setStorageUuid(UUID.randomUUID().toString())
+            .setStorageLocation(folder.toString() + "/second")
+            .setCapacity(capacity)
+            .setRemaining(remaining)
+            .setFailed(false)
+            .build();
+    JobworkerNodeReportProto nodeReport2 = JobworkerNodeReportProto.newBuilder()
+        .addStorageReport(storageReport)
+        .addStorageReport(storageReport2)
+        .build();
+
+    // Process the updated node report
+    nodeManager.processNodeReport(jobworkerDetails, nodeReport2);
+
+    // Verify the updated storage reports
+    storageSummary = nodeInfo.getStorageReports();
+    assertEquals(2, storageSummary.size());
+    assertEquals(capacity * 2, storageSummary.stream().mapToLong(JobworkerStorageReportProto::getCapacity).sum());
+    assertEquals(remaining * 2, storageSummary.stream().mapToLong(JobworkerStorageReportProto::getRemaining).sum());
+
+    // Test with one failed volume
+    JobworkerStorageReportProto failedReport =
+        JobworkerStorageReportProto.newBuilder()
+            .setStorageUuid(UUID.randomUUID().toString())
+            .setStorageLocation(folder.toString() + "/failed")
+            .setCapacity(0)
+            .setRemaining(0)
+            .setFailed(true)
+            .build();
+    JobworkerNodeReportProto nodeReport3 = JobworkerNodeReportProto.newBuilder()
+        .addStorageReport(storageReport)
+        .addStorageReport(storageReport2)
+        .addStorageReport(failedReport)
+        .build();
+
+    // Process the report with a failed volume
+    nodeManager.processNodeReport(jobworkerDetails, nodeReport3);
+
+    // Verify the stats including the failed volume
+    storageSummary = nodeInfo.getStorageReports();
+    assertEquals(3, storageSummary.size());
+    assertEquals(1, storageSummary.stream().filter(JobworkerStorageReportProto::getFailed).count());
+    assertEquals(2, nodeInfo.getHealthyVolumeCount());
+
+    // Test processing a node report from an unregistered node
+    JobworkerDetails unregisteredNode = MockJobworkerDetails.randomJobworkerDetails();
+    JobworkerNodeReportProto unregReport = JobworkerNodeReportProto.newBuilder()
+        .addStorageReport(storageReport)
+        .build();
+
+    nodeManager.processNodeReport(unregisteredNode, unregReport);
+    storageSummary = nodeInfo.getStorageReports();
+    assertEquals(3, storageSummary.size());
   }
 
   @Test

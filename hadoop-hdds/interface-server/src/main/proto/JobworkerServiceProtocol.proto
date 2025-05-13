@@ -96,6 +96,7 @@ message RegisterJobworkerResponse {
 message SendHeartbeatRequest {
   required hadoop.hdds.JobworkerDetailsProto jobworkerDetails = 1;
   required string omServiceId = 2;
+  optional JobworkerNodeReportProto jobworkerNodeReport = 6;
   // Add Task report at here
 }
 
@@ -126,6 +127,18 @@ message OMJobworkerCommandProto {
   optional int64 term = 2;
   optional int64 expirationTimestampMs = 3;
   optional JobworkerReregisterCommandProto jobworkerReregisterCommandProto = 4;
+}
+
+message JobworkerNodeReportProto {
+  repeated JobworkerStorageReportProto storageReport = 1;
+}
+
+message JobworkerStorageReportProto {
+  required string storageUuid = 1;
+  required string storageLocation = 2;
+  optional uint64 capacity = 3;
+  optional uint64 remaining = 4;
+  optional bool failed = 5;
 }
 
 message JobworkerReregisterCommandProto {

@@ -35,6 +35,7 @@ import io.grpc.StatusRuntimeException;
 import java.io.IOException;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.GetOMVersionResponse;
+import org.apache.hadoop.hdds.server.events.EventPublisher;
 import org.apache.hadoop.ozone.jobworker.client.JobworkerClient;
 import org.apache.hadoop.ozone.om.OzoneManager;
 import org.apache.hadoop.ozone.om.jobworker.node.JobworkerNodeManager;
@@ -62,7 +63,7 @@ public class TestJobworkerGrpcServer {
         GetOMVersionResponse.newBuilder().setSoftwareVersion(0).build());
     when(ozoneManager.getJobworkerNodemanager()).thenReturn(jobworkerNodemanager);
     jobworkerProtocolServer =
-        spy(new JobworkerProtocolServerImpl(ozoneManager, mock(JobworkerNodeManager.class)));
+        spy(new JobworkerProtocolServerImpl(ozoneManager, mock(JobworkerNodeManager.class), mock(EventPublisher.class)));
     server = new JobworkerGrpcServer(conf, jobworkerProtocolServer, null);
     server.start();
     client = new JobworkerClient("localhost", conf);

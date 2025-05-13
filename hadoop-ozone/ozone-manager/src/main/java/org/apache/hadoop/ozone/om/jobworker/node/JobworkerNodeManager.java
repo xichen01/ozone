@@ -34,6 +34,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.function.Function;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.JobworkerNodeReportProto;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.GetOMVersionResponse;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.GetOMVersionRequest;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
@@ -171,6 +172,22 @@ public class JobworkerNodeManager implements JobworkerNodeProtocol, Closeable {
   public void close() throws IOException {
     if (nodeStateManager != null) {
       nodeStateManager.close();
+    }
+  }
+
+  public void processNodeReport(JobworkerDetails jobworkerDetails,
+                                JobworkerNodeReportProto nodeReport) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Processing node report from [datanode={}]",
+          jobworkerDetails.getHostName());
+    }
+    try {
+      JobworkerInfo datanodeInfo = nodeStateManager.getNodeInfo(jobworkerDetails.getUuid());
+      if (nodeReport != null) {
+        datanodeInfo.updateStorageReports(nodeReport.getStorageReportList());
+      }
+    } catch (JobworkerNodeNotFoundException e) {
+      LOG.warn("Got node report from unregistered datanode {}", jobworkerDetails);
     }
   }
 

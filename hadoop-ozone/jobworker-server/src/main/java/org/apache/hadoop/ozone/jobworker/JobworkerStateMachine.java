@@ -31,9 +31,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.hadoop.hdds.conf.ConfigurationSource;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos;
 import org.apache.hadoop.ozone.jobworker.states.InitJobworkerState;
 import org.apache.hadoop.ozone.jobworker.states.JobworkerStateHandler;
 import org.apache.hadoop.ozone.jobworker.states.RunningJobworkerState;
+import org.apache.hadoop.ozone.jobworker.report.JobworkerReportManager;
 import org.apache.hadoop.ozone.jobworker.volume.JobworkerVolumeSet;
 import org.apache.hadoop.ozone.jobworker.volume.VolatileJobworkerVolumeSet;
 import org.apache.hadoop.util.Time;
@@ -56,6 +58,7 @@ public class JobworkerStateMachine implements Closeable {
   private final JobworkerStopService jobworkerStopService;
   private JobworkerStateContext context;
   private volatile Thread stateMachineThread = null;
+  private final JobworkerReportManager reportManager;
 
   /**
    * Constructs a jobworker state machine.
@@ -82,6 +85,12 @@ public class JobworkerStateMachine implements Closeable {
     this.context = new JobworkerStateContext(
         this.conf, JobworkerStates.getInitState(), jobworkerDetails, threadNamePrefix, this);
     this.nextHB = new AtomicLong(Time.monotonicNow());
+    this.reportManager = JobworkerReportManager.newBuilder(conf)
+        .setStateContext(context)
+        .addThreadNamePrefix(context.getThreadNamePrefix())
+        .addPublisherFor(JobworkerServiceProtocolProtos.JobworkerNodeReportProto.class)
+        .build();
+    reportManager.init();
   }
 
   /**
@@ -207,6 +216,9 @@ public class JobworkerStateMachine implements Closeable {
     if (volumeSet != null) {
       volumeSet.close();
     }
+    if (reportManager != null) {
+      reportManager.shutdown();
+    }
   }
 
   /**
@@ -222,6 +234,10 @@ public class JobworkerStateMachine implements Closeable {
         // reportManager.shutdown();
         this.close();
         LOG.info("JobWorker service stopped.");
+
+        if (reportManager != null) {
+          reportManager.shutdown();
+        }
       }
     } catch (IOException e) {
       LOG.error("Stop JobWorker service failed.", e);
@@ -262,6 +278,10 @@ public class JobworkerStateMachine implements Closeable {
     if (stateMachineThread != null) {
       stateMachineThread.join();
     }
+  }
+
+  public JobworkerReportManager getReportManager() {
+    return reportManager;
   }
 
   /**

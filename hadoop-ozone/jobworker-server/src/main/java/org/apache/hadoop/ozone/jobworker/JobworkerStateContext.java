@@ -20,15 +20,12 @@
 package org.apache.hadoop.ozone.jobworker;
 
 import java.net.InetSocketAddress;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.hadoop.hdds.conf.ConfigurationSource;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
@@ -51,8 +48,6 @@ public class JobworkerStateContext {
   private final Set<InetSocketAddress> endpoints;
   private final AtomicLong threadPoolNotAvailableCount;
   private final AtomicLong lastHeartbeatSent;
-  // Endpoint -> Boolean of whether the full report should be queued in getFullReports call.
-  private final Map<InetSocketAddress, AtomicBoolean> isReportReadyToBeSent;
   private final long initializeHeartbeatFrequencyMs = 2000;
   private final AtomicLong heartbeatFrequencyMs = new AtomicLong(initializeHeartbeatFrequencyMs);
   private final String threadNamePrefix;
@@ -60,7 +55,6 @@ public class JobworkerStateContext {
   private boolean shutdownOnError = false;
   private boolean shutdownGracefully = false;
   private final JobworkerDetails jobworkerDetails;
-
 
   /**
    * Constructs a StateContext for JobworkerStateMachine.
@@ -83,10 +77,8 @@ public class JobworkerStateContext {
     stateExecutionCount = new AtomicLong(0);
     threadPoolNotAvailableCount = new AtomicLong(0);
     lastHeartbeatSent = new AtomicLong(0);
-    isReportReadyToBeSent = new HashMap<>();
     this.threadNamePrefix = threadNamePrefix;
     this.jobworkerDetails = jobworkerDetails;
-    // TODO jobworker support NodeReportProto
   }
 
   /**
@@ -176,13 +168,13 @@ public class JobworkerStateContext {
 
   /**
    * Add a new endpoint to track.
-   *
-   * @param endpoint The endpoint address
+   * This method is updated to register the endpoint with the report manager.
    */
   public void addEndpoint(InetSocketAddress endpoint) {
     if (!endpoints.contains(endpoint)) {
       this.endpoints.add(endpoint);
-      this.isReportReadyToBeSent.putIfAbsent(endpoint, new AtomicBoolean(true));
+      // Register the endpoint with the report manager
+      parentJobworkerStateMachine.getReportManager().registerEndpoint(endpoint);
     }
   }
 

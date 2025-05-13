@@ -109,4 +109,35 @@ public class JobworkerClientConfiguration {
   public void setStorageVolumeDirs(String dirs) {
     this.storageDirs = dirs;
   }
+
+  @Config(key = "node.report.interval",
+      type = ConfigType.TIME,
+      tags = {ConfigTag.JOBWORKER},
+      defaultValue = "60s",
+      description = "Interval for sending node reports from JobWorker to OM.")
+  private Duration nodeReportInterval = Duration.ofSeconds(60);
+
+  public Duration getNodeReportInterval() {
+    return nodeReportInterval;
+  }
+
+  public void setNodeReportInterval(Duration nodeReportInterval) {
+    this.nodeReportInterval = nodeReportInterval;
+  }
+
+  @Config(key = "max.report.count",
+      type = ConfigType.INT,
+      tags = {ConfigTag.JOBWORKER},
+      defaultValue = "4096",
+      description = "The maximum number of reports that a JobWorker can send to OM at one time.")
+  private int maxReportCount = 4096;
+
+
+  public int getMaxReportCount() {
+    return maxReportCount;
+  }
+
+  public void setMaxReportCount(int maxReportCount) {
+    this.maxReportCount = maxReportCount;
+  }
 }

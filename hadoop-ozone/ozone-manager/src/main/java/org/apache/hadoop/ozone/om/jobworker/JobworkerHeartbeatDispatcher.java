@@ -19,10 +19,15 @@
 
 package org.apache.hadoop.ozone.om.jobworker;
 
+import static org.apache.hadoop.ozone.om.jobworker.OMJobworkerEvents.JW_NODE_REPORT;
+
+import com.google.protobuf.Message;
 import java.util.List;
+import org.apache.hadoop.hdds.server.events.EventPublisher;
 import org.apache.hadoop.ozone.jobworker.command.JobworkerReregisterCommand;
 import org.apache.hadoop.ozone.jobworker.command.OMJobworkerCommand;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.JobworkerNodeReportProto;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.SendHeartbeatRequest;
 import org.apache.hadoop.ozone.om.jobworker.node.JobworkerNodeManager;
 import org.slf4j.Logger;
@@ -37,9 +42,11 @@ public class JobworkerHeartbeatDispatcher {
   public static final Logger LOG =
       LoggerFactory.getLogger(JobworkerHeartbeatDispatcher.class);
 
+  private EventPublisher eventPublisher;
   private final JobworkerNodeManager nodeManager;
 
-  public JobworkerHeartbeatDispatcher(JobworkerNodeManager nodeManager) {
+  public JobworkerHeartbeatDispatcher(JobworkerNodeManager nodeManager, EventPublisher eventPublisher) {
+    this.eventPublisher = eventPublisher;
     this.nodeManager = nodeManager;
   }
 
@@ -59,7 +66,55 @@ public class JobworkerHeartbeatDispatcher {
     } else {
       LOG.debug("Processing jobworker {} Report.", jobworkerDetails);
       nodeManager.processHeartbeat(jobworkerDetails);
+
+      if (heartbeat.hasJobworkerNodeReport()) {
+        LOG.debug("Dispatching Command Node Report.");
+        eventPublisher.fireEvent(
+            JW_NODE_REPORT,
+            new NodeReportFromJobworker(
+                jobworkerDetails,
+                heartbeat.getJobworkerNodeReport()));
+      }
     }
     return nodeManager.pollJobworkerCommand(jobworkerDetails.getUuid());
+  }
+
+  /**
+   * Wrapper class for events with the jobworker origin.
+   */
+  public static class ReportFromJobworker<T extends Message> {
+
+    private final JobworkerDetails jobworkerDetails;
+
+    private T report;
+
+    public ReportFromJobworker(JobworkerDetails jobworkerDetails, T report) {
+      this.jobworkerDetails = jobworkerDetails;
+      this.report = report;
+    }
+
+    public JobworkerDetails getJobworkerDetails() {
+      return jobworkerDetails;
+    }
+
+    public T getReport() {
+      return report;
+    }
+
+    public void setReport(T report) {
+      this.report = report;
+    }
+  }
+
+
+  /**
+   * Node report event payload with origin.
+   */
+  public static class NodeReportFromJobworker
+      extends ReportFromJobworker<JobworkerNodeReportProto> {
+    public NodeReportFromJobworker(
+        JobworkerDetails jobworkerDetails, JobworkerNodeReportProto report) {
+      super(jobworkerDetails, report);
+    }
   }
 }
