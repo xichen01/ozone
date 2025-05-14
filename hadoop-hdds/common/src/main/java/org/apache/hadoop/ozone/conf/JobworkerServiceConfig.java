@@ -117,4 +117,59 @@ public class JobworkerServiceConfig {
     this.grpcMaximumInboundLength = grpcMaximumInboundLength;
     return this;
   }
+
+  @Config(key = "stalenode.interval",
+      defaultValue = "300s",
+      type = ConfigType.TIME,
+      tags = {ConfigTag.JOBWORKER},
+      description = "Time interval after which a jobworker is marked as stale " +
+          "if it does not send heartbeats.")
+  private long staleNodeIntervalMs;
+
+  public long getStaleNodeIntervalMs() {
+    return staleNodeIntervalMs;
+  }
+
+  public JobworkerServiceConfig setStaleNodeIntervalMs(long staleNodeIntervalMs) {
+    this.staleNodeIntervalMs = staleNodeIntervalMs;
+    return this;
+  }
+
+  @Config(key = HEARTBEAT_PROCESS_INTERVAL_KEY,
+      defaultValue = "30s",
+      type = ConfigType.TIME,
+      tags = {ConfigTag.JOBWORKER},
+      description = "Time interval at which the OM processes jobworker heartbeats " +
+          "to check for stale nodes.")
+  private long heartbeatProcessIntervalMs;
+  private static final String HEARTBEAT_PROCESS_INTERVAL_KEY = "heartbeat.process.interval";
+
+  public static String getJobworkerServiceConfigKey() {
+    return CONFIG_PREFIX + "." + HEARTBEAT_PROCESS_INTERVAL_KEY;
+  }
+
+  public long getHeartbeatProcessIntervalMs() {
+    return heartbeatProcessIntervalMs;
+  }
+
+  public JobworkerServiceConfig setHeartbeatProcessIntervalMs(long heartbeatProcessIntervalMs) {
+    this.heartbeatProcessIntervalMs = heartbeatProcessIntervalMs;
+    return this;
+  }
+
+  @Config(key = "removal.timeout.ms",
+      defaultValue = "1h",
+      type = ConfigType.TIME,
+      tags = {ConfigTag.JOBWORKER},
+      description = "Time after which a stale jobworker is removed from OM's memory.")
+  private long removalTimeoutMs;
+
+  public long getRemovalTimeoutMs() {
+    return removalTimeoutMs;
+  }
+
+  public JobworkerServiceConfig setRemovalTimeoutMs(long removalTimeoutMs) {
+    this.removalTimeoutMs = removalTimeoutMs;
+    return this;
+  }
 }

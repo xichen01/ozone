@@ -21,9 +21,9 @@ package org.apache.hadoop.ozone.om.jobworker.node;
 
 import com.google.common.annotations.VisibleForTesting;
 import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.List;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.JobworkerStorageReportProto;
 import org.apache.hadoop.util.Time;
@@ -50,6 +50,7 @@ public class JobworkerInfo extends JobworkerDetails {
     this.lock = new ReentrantReadWriteLock();
     this.nodeStatus = nodeStatus;
     this.storageReports = Collections.emptyList();
+    this.lastHeartbeatTime = Time.monotonicNow();
   }
 
   /**
@@ -92,7 +93,8 @@ public class JobworkerInfo extends JobworkerDetails {
    *
    * @param milliSecondsSinceEpoch - ms since Epoch to set as the heartbeat time
    */
-  private void updateLastHeartbeatTime(long milliSecondsSinceEpoch) {
+  @VisibleForTesting
+  public void updateLastHeartbeatTime(long milliSecondsSinceEpoch) {
     try {
       lock.writeLock().lock();
       lastHeartbeatTime = milliSecondsSinceEpoch;
@@ -129,7 +131,7 @@ public class JobworkerInfo extends JobworkerDetails {
   /**
    * Returns the storage reports associated with this jobworker.
    *
-   * @return list of the storage report
+   * @return list of storage report
    */
   public List<JobworkerStorageReportProto> getStorageReports() {
     try {

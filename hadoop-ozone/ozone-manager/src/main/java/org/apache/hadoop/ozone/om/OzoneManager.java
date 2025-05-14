@@ -210,6 +210,8 @@ import org.apache.hadoop.ozone.om.jobworker.JobworkerProtocolServerImpl;
 import org.apache.hadoop.ozone.om.jobworker.OMJobworkerEvents;
 import org.apache.hadoop.ozone.om.jobworker.node.JobworkerNodeManager;
 import org.apache.hadoop.ozone.om.jobworker.node.JobworkerNodeReportHandler;
+import org.apache.hadoop.ozone.om.jobworker.node.NewJobworkerHandler;
+import org.apache.hadoop.ozone.om.jobworker.node.StaleJobworkerHandler;
 import org.apache.hadoop.hdds.scm.ha.SCMNodeInfo;
 import org.apache.hadoop.hdds.scm.net.NetworkTopology;
 import org.apache.hadoop.hdds.scm.protocol.ScmBlockLocationProtocol;
@@ -790,12 +792,10 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
 
     clusterMap = new NetworkTopologyImpl(conf);
     dnsToSwitchMapping = getDNSToSwitchMapping(conf);
-    jobworkerNodemanager = new JobworkerNodeManager(
-        this::resolveNodeLocation, clusterMap, omStorage, omNodeDetails, conf);
-    JobworkerNodeReportHandler nodeReportHandler =
-        new JobworkerNodeReportHandler(jobworkerNodemanager);
     eventQueue = new EventQueue(threadPrefix + "EventQueue");
-    eventQueue.addHandler(OMJobworkerEvents.JW_NODE_REPORT, nodeReportHandler);
+    jobworkerNodemanager = new JobworkerNodeManager(
+        this::resolveNodeLocation, clusterMap, omStorage, omNodeDetails, conf, eventQueue);
+    addEventQueue(eventQueue, jobworkerNodemanager);
     jobworkerServerProtocol =
         new JobworkerProtocolServerImpl(this, jobworkerNodemanager, eventQueue);
     jobworkerGrpcServer = getJobworkerGrpcServer(conf, jobworkerServerProtocol);
@@ -928,6 +928,18 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
     String[] edeks = new String[keys.size()];
     edeks = keys.toArray(edeks);
     executor.execute(new EDEKCacheLoader(edeks, getKmsProvider(), delay, interval, maxRetries));
+  }
+
+  private void addEventQueue(EventQueue queue, JobworkerNodeManager nodeManager) {
+    JobworkerNodeReportHandler nodeReportHandler =
+        new JobworkerNodeReportHandler(nodeManager);
+    StaleJobworkerHandler staleJobworkerHandler =
+        new StaleJobworkerHandler(nodeManager);
+    NewJobworkerHandler newJobworkerHandler =
+        new NewJobworkerHandler(nodeManager);
+    queue.addHandler(OMJobworkerEvents.JW_NODE_REPORT, nodeReportHandler);
+    queue.addHandler(OMJobworkerEvents.NEW_JOBWORKER, newJobworkerHandler);
+    queue.addHandler(OMJobworkerEvents.STALE_JOBWORKER, staleJobworkerHandler);
   }
 
   public boolean isStopped() {

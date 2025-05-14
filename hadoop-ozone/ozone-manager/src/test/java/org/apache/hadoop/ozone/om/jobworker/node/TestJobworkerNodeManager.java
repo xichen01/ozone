@@ -18,10 +18,16 @@
 
 package org.apache.hadoop.ozone.om.jobworker.node;
 
+import static org.apache.hadoop.ozone.om.jobworker.OMJobworkerEvents.NEW_JOBWORKER;
+import static org.apache.hadoop.ozone.om.jobworker.OMJobworkerEvents.STALE_JOBWORKER;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import io.grpc.Context;
@@ -29,12 +35,18 @@ import java.io.File;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
 import org.apache.hadoop.hdds.protocol.MockJobworkerDetails;
-import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.JobworkerNodeReportProto;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.JobworkerStorageReportProto;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.RegisterJobworkerResponse;
@@ -42,16 +54,28 @@ import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolP
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.SendHeartbeatRequest;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerDetailsProto;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerPortType;
+import org.apache.hadoop.hdds.protocol.proto.HddsProtos.NodeState;
+import org.apache.hadoop.hdds.scm.net.NetworkTopology;
+import org.apache.hadoop.hdds.scm.net.NetworkTopologyImpl;
 import org.apache.hadoop.hdds.server.ServerUtils;
+import org.apache.hadoop.hdds.server.events.Event;
+import org.apache.hadoop.hdds.server.events.EventPublisher;
+import org.apache.hadoop.ozone.common.statemachine.InvalidStateTransitionException;
+import org.apache.hadoop.ozone.conf.JobworkerServiceConfig;
+import org.apache.hadoop.ozone.om.OMStorage;
 import org.apache.hadoop.ozone.om.OmTestManagers;
 import org.apache.hadoop.ozone.om.OzoneManager;
+import org.apache.hadoop.ozone.om.helpers.OMNodeDetails;
+import org.apache.hadoop.ozone.om.jobworker.states.JobworkerNodeNotFoundException;
 import org.apache.hadoop.ozone.util.RemoteAddressInterceptor;
+import org.apache.hadoop.util.Time;
+import org.apache.ozone.test.GenericTestUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
@@ -59,25 +83,22 @@ import org.mockito.junit.jupiter.MockitoExtension;
  */
 @ExtendWith(MockitoExtension.class)
 public class TestJobworkerNodeManager {
-  private JobworkerNodeManager nodeManager;
   private OzoneManager ozoneManager;
   @TempDir
   private Path folder;
   private String omServiceId1;
 
-  @BeforeEach
-  public void setUp() throws Exception {
-    OzoneConfiguration conf = createNewTestPath();
-
+  public JobworkerNodeManager getNodeManager(OzoneConfiguration conf) throws Exception {
     OmTestManagers omTestManagers = new OmTestManagers(conf);
     ozoneManager = omTestManagers.getOzoneManager();
     omServiceId1 = ozoneManager.getOMServiceId();
-    nodeManager = ozoneManager.getJobworkerNodemanager();
+    return ozoneManager.getJobworkerNodemanager();
   }
 
   @Test
   public void testRegisterJobworker() throws Exception {
     // Prepare
+    JobworkerNodeManager nodeManager = getNodeManager(createNewTestPath());
     InetAddress mockInetAddress = mock(InetAddress.class);
     when(mockInetAddress.getHostAddress()).thenReturn("1.2.3.4");
     when(mockInetAddress.getHostName()).thenReturn("test-hostname");
@@ -111,7 +132,8 @@ public class TestJobworkerNodeManager {
   @Test
   public void testJobworkerNodeReport() throws Exception {
     // Prepare
-    JobworkerDetails jobworkerDetails = registerJobworker();
+    JobworkerNodeManager nodeManager = getNodeManager(createNewTestPath());
+    JobworkerDetails jobworkerDetails = registerJobworker(nodeManager);
     UUID jobworkerUuid = jobworkerDetails.getUuid();
     final long capacity = 2000;
     final long remaining = 1900;
@@ -198,7 +220,8 @@ public class TestJobworkerNodeManager {
 
   @Test
   public void testJobworkerHeartbeat() throws Exception {
-    JobworkerDetails jobworkerDetails = registerJobworker();
+    JobworkerNodeManager nodeManager = getNodeManager(createNewTestPath());
+    JobworkerDetails jobworkerDetails = registerJobworker(nodeManager);
     UUID jobworkerUuid = jobworkerDetails.getUuid();
     SendHeartbeatRequest heartbeatRequest = createHeartbeatRequest(jobworkerDetails.getProtoBufMessage());
 
@@ -212,7 +235,335 @@ public class TestJobworkerNodeManager {
     assertTrue(heartbeatTime2 > heartbeatTime1);
   }
 
-  private JobworkerDetails registerJobworker() throws IOException {
+  @Test
+  public void testJobworkerNodeStateTransitionAfterHeartbeatTimeout()
+      throws Exception {
+    // GIVEN
+    OzoneConfiguration conf = createNewTestPath();
+    JobworkerServiceConfig jwConf = conf.getObject(JobworkerServiceConfig.class);
+    jwConf.setStaleNodeIntervalMs(500);
+    conf.setFromObject(jwConf);
+    JobworkerNodeManager nodeManager = getNodeManager(conf);
+
+    JobworkerDetails jobworker = registerJobworker(nodeManager);
+    UUID jobworkerUuid = jobworker.getUuid();
+    JobworkerInfo nodeInfo = nodeManager.getNodeStateManager()
+        .getNodeInfo(jobworkerUuid);
+    assertEquals(NodeState.HEALTHY, nodeInfo.getNodeStatus().getHealthState());
+    // WHEN
+    Thread.sleep(800); // Slightly longer than the stale interval
+
+    nodeManager.checkNodesHealth();
+
+    // THEN
+    // Verify the node has transitioned to STALE state
+    assertEquals(NodeState.STALE,
+        nodeManager.getNodeStateManager().getNodeInfo(jobworkerUuid)
+            .getNodeStatus().getHealthState());
+    assertEquals(1, nodeManager.getNodeStateManager().getNodeCount(
+        NodeState.STALE));
+    assertEquals(0, nodeManager.getNodeStateManager().getNodeCount(
+        NodeState.HEALTHY));
+  }
+
+  @Test
+  public void testNodeStateTransitionFromStaleToHealthy() throws Exception {
+    // GIVEN
+    OzoneConfiguration conf = createNewTestPath();
+    JobworkerServiceConfig jwConf = conf.getObject(JobworkerServiceConfig.class);
+    jwConf.setStaleNodeIntervalMs(500);
+    jwConf.setHeartbeatProcessIntervalMs(200);
+    conf.setFromObject(jwConf);
+    JobworkerNodeManager nodeManager = getNodeManager(conf);
+    JobworkerDetails jobworker = registerJobworker(nodeManager);
+    UUID jobworkerUuid = jobworker.getUuid();
+
+    // Make the node stale
+    Thread.sleep(800);
+    nodeManager.checkNodesHealth();
+
+    assertEquals(NodeState.STALE,
+        nodeManager.getNodeStateManager().getNodeInfo(jobworkerUuid)
+            .getNodeStatus().getHealthState());
+
+    // WHEN
+    nodeManager.processHeartbeat(jobworker);
+
+    // THEN
+    // Verify node transitions back to HEALTHY
+    assertEquals(NodeState.HEALTHY,
+        nodeManager.getNodeStateManager().getNodeInfo(jobworkerUuid)
+            .getNodeStatus().getHealthState());
+  }
+
+  @Test
+  public void testStaleJobworkerRemovalTimeout() throws Exception {
+    // GIVEN
+    OzoneConfiguration conf = createNewTestPath();
+    JobworkerServiceConfig jwConf = conf.getObject(JobworkerServiceConfig.class);
+    jwConf.setStaleNodeIntervalMs(100);
+    jwConf.setRemovalTimeoutMs(1000);
+    conf.setFromObject(jwConf);
+    JobworkerNodeManager nodeManager = getNodeManager(conf);
+
+    JobworkerDetails jobworker = registerJobworker(nodeManager);
+    UUID jobworkerUuid = jobworker.getUuid();
+    assertTrue(nodeManager.isJobworkerNodeRegistered(jobworkerUuid));
+    assertEquals(NodeState.HEALTHY,
+        nodeManager.getNodeStateManager().getNodeInfo(jobworkerUuid)
+            .getNodeStatus().getHealthState());
+
+    // WHEN
+    Thread.sleep(200);
+    nodeManager.checkNodesHealth();
+    assertEquals(NodeState.STALE,
+        nodeManager.getNodeStateManager().getNodeInfo(jobworkerUuid)
+            .getNodeStatus().getHealthState());
+    assertTrue(nodeManager.isJobworkerNodeRegistered(jobworkerUuid));
+
+    // Wait for removal timeout to pass
+    Thread.sleep(1000);
+    nodeManager.checkNodesHealth();
+
+    // THEN
+    assertFalse(nodeManager.isJobworkerNodeRegistered(jobworkerUuid));
+    assertEquals(0, nodeManager.getNodeStateManager().getTotalNodeCount());
+  }
+
+  @Test
+  public void testJobworkerNodeStateMachine() throws Exception {
+    // GIVEN
+    JobworkerNodeStateMachine stateMachine = new JobworkerNodeStateMachine();
+
+    // WHEN & THEN
+    // Test all valid transitions
+    assertEquals(NodeState.STALE,
+        stateMachine.getNextState(NodeState.HEALTHY,
+            JobworkerNodeStateMachine.NodeLifeCycleEvent.TIMEOUT));
+
+    assertEquals(NodeState.HEALTHY,
+        stateMachine.getNextState(NodeState.STALE,
+            JobworkerNodeStateMachine.NodeLifeCycleEvent.RESTORE));
+
+    // Test invalid transitions
+    try {
+      stateMachine.getNextState(NodeState.HEALTHY_READONLY,
+          JobworkerNodeStateMachine.NodeLifeCycleEvent.TIMEOUT);
+      fail("Expected InvalidStateTransitionException");
+    } catch (InvalidStateTransitionException e) {
+      // Expected, HEALTHY_READONLY state isn't supported for JobWorker
+    }
+  }
+
+  @Test
+  public void testConcurrentHeartbeats() throws Exception {
+    // GIVEN
+    OzoneConfiguration conf = createNewTestPath();
+    JobworkerServiceConfig jwConf = conf.getObject(JobworkerServiceConfig.class);
+    jwConf.setHeartbeatProcessIntervalMs(200);
+    jwConf.setStaleNodeIntervalMs(10000);
+    conf.setFromObject(jwConf);
+    JobworkerNodeManager nodeManager = getNodeManager(conf);
+    final int nodeCount = 20;
+    final CountDownLatch startSignal = new CountDownLatch(1);
+    final CountDownLatch doneSignal = new CountDownLatch(nodeCount);
+    final ConcurrentHashMap<UUID, JobworkerDetails> allNodes = new ConcurrentHashMap<>();
+    for (int i = 0; i < nodeCount; i++) {
+      JobworkerDetails jobworker = registerJobworker(nodeManager);
+      allNodes.put(jobworker.getUuid(), jobworker);
+    }
+
+    // WHEN
+    // Simulate concurrent heartbeats from multiple threads
+    ExecutorService executor = Executors.newFixedThreadPool(10);
+    for (JobworkerDetails jobworker : allNodes.values()) {
+      executor.submit(() -> {
+        try {
+          startSignal.await();
+          // Send multiple heartbeats for each node
+          for (int i = 0; i < 5; i++) {
+            nodeManager.processHeartbeat(jobworker);
+            Thread.sleep(5);
+          }
+        } catch (Exception e) {
+          fail("Unexpected exception: " + e.getMessage());
+        } finally {
+          doneSignal.countDown();
+        }
+      });
+    }
+
+    startSignal.countDown();
+    doneSignal.await(5, TimeUnit.SECONDS);
+    executor.shutdown();
+
+    // THEN
+    // Verify all nodes are still in HEALTHY state
+    for (UUID uuid : allNodes.keySet()) {
+      assertEquals(NodeState.HEALTHY,
+          nodeManager.getNodeStateManager().getNodeInfo(uuid)
+              .getNodeStatus().getHealthState());
+    }
+
+    // Do not send heartbeat for OM all nodes will be entry STALE state
+    GenericTestUtils.waitFor(() -> {
+      boolean allNodeStale = true;
+      for (UUID uuid : allNodes.keySet()) {
+        try {
+          if (!nodeManager.getNodeStateManager().getNodeInfo(uuid).getNodeStatus().isStale()) {
+            allNodeStale = false;
+          }
+        } catch (JobworkerNodeNotFoundException e) {
+          throw new RuntimeException(e);
+        }
+      }
+      return allNodeStale;
+    }, 1000, 30000);
+
+    for (JobworkerDetails jobworkerDetails : allNodes.values()) {
+      nodeManager.processHeartbeat(jobworkerDetails);
+    }
+    // Verify all nodes are recovery HEALTHY
+    for (UUID uuid : allNodes.keySet()) {
+      assertEquals(NodeState.HEALTHY,
+          nodeManager.getNodeStateManager().getNodeInfo(uuid)
+              .getNodeStatus().getHealthState());
+    }
+  }
+
+  @Test
+  public void testEventFiredWhenNodeBecomesStale() throws Exception {
+    // GIVEN
+    OzoneConfiguration conf = createNewTestPath();
+    JobworkerServiceConfig jwConf = conf.getObject(JobworkerServiceConfig.class);
+    jwConf.setStaleNodeIntervalMs(500);
+    conf.setFromObject(jwConf);
+
+    // Use a mock EventPublisher to track events
+    EventPublisher mockPublisher = mock(EventPublisher.class);
+    NetworkTopology clusterMap = new NetworkTopologyImpl(conf);
+    Function<String, String> nodeResolver = hostname -> null;
+
+    OMNodeDetails decommNodeDetails = new OMNodeDetails.Builder()
+        .setOMNodeId("decommNodeId")
+        .setOMServiceId("omServiceId1")
+        .setHostAddress("localhost")
+        .build();
+
+    JobworkerNodeManager nodeManager = new JobworkerNodeManager(
+        nodeResolver, clusterMap, new OMStorage(conf), decommNodeDetails,
+        conf, mockPublisher);
+
+    JobworkerDetails jobworker = MockJobworkerDetails.randomJobworkerDetails();
+    nodeManager.registerJobworker(jobworker);
+
+    // WHEN - Wait for stale interval and check health
+    Thread.sleep(600);
+    nodeManager.checkNodesHealth();
+
+    // THEN - STALE_JOBWORKER event should be fired
+    ArgumentCaptor<Event> eventCaptor = ArgumentCaptor.forClass(Event.class);
+    ArgumentCaptor<JobworkerDetails> nodeCaptor = ArgumentCaptor.forClass(JobworkerDetails.class);
+
+    verify(mockPublisher, times(2)).fireEvent(eventCaptor.capture(), nodeCaptor.capture());
+
+    List<Event> allEvents = eventCaptor.getAllValues();
+    List<JobworkerDetails> allNodes = nodeCaptor.getAllValues();
+
+    assertEquals(NEW_JOBWORKER, allEvents.get(0));
+    assertEquals(jobworker.getUuid(), allNodes.get(0).getUuid());
+
+    assertEquals(STALE_JOBWORKER, allEvents.get(1));
+    assertEquals(jobworker.getUuid(), allNodes.get(1).getUuid());
+
+    nodeManager.close();
+  }
+
+  @Test
+  public void testMultipleNodesInDifferentHealthStates() throws Exception {
+    // GIVEN
+    OzoneConfiguration conf = createNewTestPath();
+    JobworkerServiceConfig jwConf = conf.getObject(JobworkerServiceConfig.class);
+    jwConf.setStaleNodeIntervalMs(500);
+    jwConf.setRemovalTimeoutMs(1000);
+    conf.setFromObject(jwConf);
+    JobworkerNodeManager nodeManager = getNodeManager(conf);
+    // Create nodes - healthyNodes will remain healthy, staleNodes will become stale
+    List<JobworkerDetails> healthyNodes = new ArrayList<>();
+    List<JobworkerDetails> staleNodes = new ArrayList<>();
+
+    for (int i = 0; i < 3; i++) {
+      healthyNodes.add(registerJobworker(nodeManager));
+    }
+    for (int i = 0; i < 2; i++) {
+      staleNodes.add(registerJobworker(nodeManager));
+    }
+
+    assertEquals(5, nodeManager.getNodeStateManager().getTotalNodeCount());
+    assertEquals(5, nodeManager.getNodeStateManager().getNodeCount(NodeState.HEALTHY));
+
+    // Send heartbeats for all nodes
+    for (JobworkerDetails node : healthyNodes) {
+      nodeManager.processHeartbeat(node);
+    }
+    for (JobworkerDetails node : staleNodes) {
+      nodeManager.processHeartbeat(node);
+    }
+
+    // WHEN - Wait for a stale interval and keep sending heartbeats only for healthy nodes
+    Thread.sleep(300);
+    for (JobworkerDetails node : healthyNodes) {
+      nodeManager.processHeartbeat(node);
+    }
+
+    Thread.sleep(300);
+    nodeManager.checkNodesHealth();
+
+    assertEquals(3, nodeManager.getNodeStateManager().getNodeCount(NodeState.HEALTHY));
+    assertEquals(2, nodeManager.getNodeStateManager().getNodeCount(NodeState.STALE));
+
+    // WHEN - Wait for removal timeout
+    Thread.sleep(300);
+    for (JobworkerDetails node : healthyNodes) {
+      nodeManager.processHeartbeat(node);
+    }
+
+    Thread.sleep(800);
+    nodeManager.checkNodesHealth();
+
+    // THEN - the HEALTHY nodes have become to remain STALE and the STALE node have been removed.
+    assertEquals(3, nodeManager.getNodeStateManager().getTotalNodeCount());
+    for (JobworkerDetails node : healthyNodes) {
+      assertEquals(NodeState.STALE,
+          nodeManager.getNodeStateManager().getNodeInfo(node.getUuid()).getNodeStatus().getHealthState());
+    }
+  }
+
+  @Test
+  public void testJvmPauseHandling() throws Exception {
+    // GIVEN
+    OzoneConfiguration conf = createNewTestPath();
+    JobworkerServiceConfig jwConf = conf.getObject(JobworkerServiceConfig.class);
+    jwConf.setStaleNodeIntervalMs(500);
+    conf.setFromObject(jwConf);
+    JobworkerNodeManager nodeManager = getNodeManager(conf);
+
+    for (int i = 0; i < 3; i++) {
+      JobworkerDetails jobworker = registerJobworker(nodeManager);
+      nodeManager.processHeartbeat(jobworker);
+    }
+    assertEquals(3, nodeManager.getNodeStateManager().getNodeCount(NodeState.HEALTHY));
+
+    // WHEN - Simulate a JVM pause by manipulating lastHealthCheck
+    nodeManager.setLastHealthCheck(Time.monotonicNow() - (jwConf.getStaleNodeIntervalMs() * 2));
+    nodeManager.run();
+
+    // THEN - Check should be skipped and nodes should remain HEALTHY
+    assertEquals(3, nodeManager.getNodeStateManager().getNodeCount(NodeState.HEALTHY));
+    assertEquals(0, nodeManager.getNodeStateManager().getNodeCount(NodeState.STALE));
+  }
+
+  private JobworkerDetails registerJobworker(JobworkerNodeManager nodeManager) throws IOException {
     JobworkerDetails jobworkerDetails = MockJobworkerDetails.randomLocalJobworkerDetails();
     RegisterJobworkerResponse registerResponse = nodeManager.registerJobworker(
         jobworkerDetails);

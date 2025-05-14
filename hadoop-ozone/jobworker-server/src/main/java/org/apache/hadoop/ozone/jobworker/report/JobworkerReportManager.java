@@ -60,8 +60,10 @@ public final class JobworkerReportManager {
    * Construction of {@link JobworkerReportManager} should be done via
    * {@link JobworkerReportManager.Builder}.
    *
-   * @param context    StateContext which holds the report
-   * @param publishers List of publishers which generates report
+   * @param context    StateContext, which holds the report
+   * @param publishers List of publishers which generates a report
+   * @param threadNamePrefix Thread name prefix
+   * @param conf Ozone Config
    */
   private JobworkerReportManager(JobworkerStateContext context, List<JobworkerReportPublisher> publishers,
                                  String threadNamePrefix, ConfigurationSource conf) {

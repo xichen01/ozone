@@ -28,7 +28,7 @@ import org.apache.hadoop.hdds.protocol.proto.HddsProtos;
 
 /**
  * This class is used to capture the current status of a jobworker.
- * This includes its health (HEALTHY, STALE, or DEAD)
+ * This includes its health (HEALTHY or STALE)
  * and its operation status (IN_SERVICE, DECOMMISSIONING, or DECOMMISSIONED)
  */
 @Immutable
@@ -55,12 +55,12 @@ public final class JobworkerNodeStatus {
   }
 
   private final HddsProtos.NodeOperationalState operationalState;
-  private final HddsProtos.NodeState health;
+  private final HddsProtos.NodeState healthState;
 
   public JobworkerNodeStatus(HddsProtos.NodeOperationalState operationalState,
-      HddsProtos.NodeState health) {
+      HddsProtos.NodeState healthState) {
     this.operationalState = operationalState;
-    this.health = health;
+    this.healthState = healthState;
   }
 
   public static JobworkerNodeStatus inServiceHealthy() {
@@ -105,34 +105,21 @@ public final class JobworkerNodeStatus {
   }
 
   /**
-   * Returns true if the nodeStatus is healthy or healthy_readonly (ie not stale
-   * or dead) and false otherwise.
+   * Returns true if the nodeStatus is HEALTHY and false otherwise.
    *
-   * @return True if the node is healthy or healthy_readonly, false otherwise.
+   * @return True if the node is HEALTHY, false otherwise.
    */
   public boolean isHealthy() {
-    return health == HddsProtos.NodeState.HEALTHY
-        || health == HddsProtos.NodeState.HEALTHY_READONLY;
+    return healthState == HddsProtos.NodeState.HEALTHY;
   }
 
   /**
-   * Returns true if the nodeStatus is either healthy or stale and false
-   * otherwise.
+   * Returns true if the nodeStatus is STALE and false otherwise.
    *
-   * @return True is the node is Healthy or Stale, false otherwise.
+   * @return True, the node is STALE, false otherwise.
    */
-  public boolean isAlive() {
-    return health == HddsProtos.NodeState.HEALTHY
-        || health == HddsProtos.NodeState.STALE;
-  }
-
-  /**
-   * Returns true if the nodeStatus is dead and false otherwise.
-   *
-   * @return True is the node is Dead, false otherwise.
-   */
-  public boolean isDead() {
-    return health == HddsProtos.NodeState.DEAD;
+  public boolean isStale() {
+    return healthState == HddsProtos.NodeState.STALE;
   }
 
   @Override
@@ -148,20 +135,24 @@ public final class JobworkerNodeStatus {
     }
     JobworkerNodeStatus other = (JobworkerNodeStatus) obj;
     if (this.operationalState == other.operationalState &&
-        this.health == other.health) {
+        this.healthState == other.healthState) {
       return true;
     }
     return false;
   }
 
+  public HddsProtos.NodeState getHealthState() {
+    return healthState;
+  }
+
   @Override
   public int hashCode() {
-    return Objects.hash(health, operationalState);
+    return Objects.hash(healthState, operationalState);
   }
 
   @Override
   public String toString() {
-    return "OperationalState: " + operationalState + " Health: " + health;
+    return "OperationalState: " + operationalState + " Health: " + healthState;
   }
 
 }

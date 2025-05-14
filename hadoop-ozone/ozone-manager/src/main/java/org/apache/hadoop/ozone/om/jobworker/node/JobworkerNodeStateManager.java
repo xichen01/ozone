@@ -22,6 +22,8 @@ import static org.apache.hadoop.hdds.protocol.proto.HddsProtos.NodeState.HEALTHY
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -54,12 +56,12 @@ public class JobworkerNodeStateManager implements Closeable {
     nodeMap = new ConcurrentHashMap<>();
   }
 
-
   /**
    * Returns JobworkerInfo for the given node id.
    * @param uuid Node Id
    * @return JobworkerInfo of the node
-   * @throws JobworkerNodeNotFoundException if the node is not present
+   * @throws JobworkerNodeNotFoundException - if datanode is not known. For new datanode
+   *                               use addNode call.
    */
   public JobworkerInfo getNodeInfo(UUID uuid) throws JobworkerNodeNotFoundException {
     lock.readLock().lock();
@@ -83,23 +85,39 @@ public class JobworkerNodeStateManager implements Closeable {
     addNodeInternal(jobworkerDetails, newNodeStatus);
   }
 
+  /**
+   * Removes a JobWorker node from the state manager.
+   * @param uuid The UUID of the node to remove
+   * @throws JobworkerNodeNotFoundException if the node doesn't exist
+   */
+  public void removeNode(UUID uuid) throws JobworkerNodeNotFoundException {
+    lock.writeLock().lock();
+    try {
+      if (!nodeMap.containsKey(uuid)) {
+        throw new JobworkerNodeNotFoundException("Jobworker UUID: " + uuid);
+      }
+      nodeMap.remove(uuid);
+    } finally {
+      lock.writeLock().unlock();
+    }
+  }
 
   /**
    * @param jobworker JobworkerDetails reported by the jobworker
    */
   private JobworkerNodeStatus newNodeStatus(JobworkerDetails jobworker) {
-    HddsProtos.NodeOperationalState opState = jobworker.getOperationalState();
-    NodeState state = HEALTHY;
+    HddsProtos.NodeOperationalState opState =
+        jobworker.getOperationalState() != null ?
+            jobworker.getOperationalState() : NodeOperationalState.IN_SERVICE;
 
     if (opState != NodeOperationalState.IN_SERVICE) {
       LOG.info("Updating nodeOperationalState on registration as the " +
-              "jobworker has a persisted state of {}", opState);
-      return new JobworkerNodeStatus(opState, state);
+          "jobworker has a persisted state of {}", opState);
+      return new JobworkerNodeStatus(opState, HEALTHY);
     } else {
-      return new JobworkerNodeStatus(NodeOperationalState.IN_SERVICE, state);
+      return new JobworkerNodeStatus(NodeOperationalState.IN_SERVICE, HEALTHY);
     }
   }
-
 
   /**
    * Adds a node to NodeStateMap.
@@ -121,7 +139,6 @@ public class JobworkerNodeStateManager implements Closeable {
     }
   }
 
-
   /**
    * Updates the last heartbeat time of the node.
    *
@@ -139,6 +156,48 @@ public class JobworkerNodeStateManager implements Closeable {
   }
 
   /**
+   * Returns all JobWorkerInfos in the cluster.
+   * @return List of all JobWorkerInfo objects
+   */
+  public List<JobworkerInfo> getAllJobworkerInfos() {
+    lock.readLock().lock();
+    try {
+      return new ArrayList<>(nodeMap.values());
+    } finally {
+      lock.readLock().unlock();
+    }
+  }
+
+  /**
+   * Returns the count of nodes with the specified health state.
+   * @param state NodeState (HEALTHY, STALE)
+   * @return number of nodes in that state
+   */
+  public int getNodeCount(NodeState state) {
+    lock.readLock().lock();
+    try {
+      return (int) nodeMap.values().stream()
+          .filter(info -> info.getNodeStatus().getHealthState() == state)
+          .count();
+    } finally {
+      lock.readLock().unlock();
+    }
+  }
+
+  /**
+   * Returns the total node count.
+   * @return node count
+   */
+  public int getTotalNodeCount() {
+    lock.readLock().lock();
+    try {
+      return nodeMap.size();
+    } finally {
+      lock.readLock().unlock();
+    }
+  }
+
+  /**
    * Throws NodeNotFoundException if the Node for given id doesn't exist.
    *
    * @param uuid Node UUID
@@ -150,8 +209,26 @@ public class JobworkerNodeStateManager implements Closeable {
     }
   }
 
+  /**
+   * Since we don't hold a global lock while constructing this string,
+   * the result might be inconsistent. If someone has changed the state of node
+   * while we are constructing the string, the result will be inconsistent.
+   * This should only be used for logging. We should not parse this string and
+   * use it for any critical calculations.
+   *
+   * @return current state of NodeStateMap
+   */
+  @Override
+  public String toString() {
+    StringBuilder builder = new StringBuilder();
+    builder.append("Total number of JobWorker nodes: ").append(getTotalNodeCount());
+    builder.append(", Healthy nodes: ").append(getNodeCount(HEALTHY));
+    builder.append(", Stale nodes: ").append(getNodeCount(NodeState.STALE));
+    return builder.toString();
+  }
+
   @Override
   public void close() throws IOException {
-
+    // No resources to close
   }
 }

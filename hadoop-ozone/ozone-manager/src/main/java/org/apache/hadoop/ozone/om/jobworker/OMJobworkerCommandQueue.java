@@ -82,6 +82,27 @@ public class OMJobworkerCommandQueue {
   }
 
   /**
+   * Clear all commands for a specific JobWorker.
+   * @param jobworkerId UUID of the JobWorker
+   * @return Number of commands that were cleared
+   */
+  public int clear(UUID jobworkerId) {
+    rwLock.writeLock().lock();
+    try {
+      Commands commands = commandMap.remove(jobworkerId);
+      if (commands != null) {
+        int commandCount = commands.getCommandCount();
+        commandsInQueue -= commandCount;
+        Preconditions.checkState(commandsInQueue >= 0);
+        return commandCount;
+      }
+      return 0;
+    } finally {
+      rwLock.writeLock().unlock();
+    }
+  }
+
+  /**
    * Returns a list of Commands for the jobworker to execute, if we have no
    * commands returns an empty list, otherwise the current set of
    * commands are returned, and a command map set to an empty list again.
@@ -165,6 +186,15 @@ public class OMJobworkerCommandQueue {
         summary.put(entry.getKey(), entry.getValue().size());
       }
       return summary;
+    }
+
+    /**
+     * Returns the total count of commands for this jobworker.
+     *
+     * @return command count
+     */
+    private int getCommandCount() {
+      return commands.size();
     }
 
     /**
