@@ -30,6 +30,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.apache.hadoop.hdds.conf.ConfigurationSource;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
 import org.apache.hadoop.ozone.jobworker.states.JobworkerStateHandler;
+import org.apache.hadoop.ozone.jobworker.commands.JobworkerCommand;
+import org.apache.hadoop.ozone.jobworker.commands.JobworkerCommandManager;
 import org.apache.hadoop.util.Time;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,6 +44,7 @@ public class JobworkerStateContext {
   private static final Logger LOG =
       LoggerFactory.getLogger(JobworkerStateContext.class);
 
+  private final JobworkerCommandManager commandManager;
   private final JobworkerStateMachine parentJobworkerStateMachine;
   private final AtomicLong stateExecutionCount;
   private final JobworkerClientConfiguration jwConf;
@@ -64,15 +67,18 @@ public class JobworkerStateContext {
    * @param stateMachine           Parent state machine
    * @param jobworkerDetails  Details of this jobworker
    * @param threadNamePrefix Thread name prefix
+   * @param commandManager   Command manager
    */
   public JobworkerStateContext(ConfigurationSource conf,
                                JobworkerStates state,
                                JobworkerDetails jobworkerDetails,
                                String threadNamePrefix,
-                               JobworkerStateMachine stateMachine) {
+                               JobworkerStateMachine stateMachine,
+                               JobworkerCommandManager commandManager) {
     this.jwConf = conf.getObject(JobworkerClientConfiguration.class);
     this.state = state;
     this.parentJobworkerStateMachine = stateMachine;
+    this.commandManager = commandManager;
     endpoints = new HashSet<>();
     stateExecutionCount = new AtomicLong(0);
     threadPoolNotAvailableCount = new AtomicLong(0);
@@ -176,6 +182,15 @@ public class JobworkerStateContext {
       // Register the endpoint with the report manager
       parentJobworkerStateMachine.getReportManager().registerEndpoint(endpoint);
     }
+  }
+
+  /**
+   * Get the command manager.
+   *
+   * @return command manager
+   */
+  public JobworkerCommandManager getCommandManager() {
+    return commandManager;
   }
 
   /**
@@ -301,5 +316,26 @@ public class JobworkerStateContext {
       return ex.getQueue().isEmpty();
     }
     return true;
+  }
+
+  /**
+   * Update the term of leader OM for a specific service ID.
+   * This is a convenience method that delegates to the command manager.
+   *
+   * @param omServiceId The OM service ID
+   * @param newTerm     New term value
+   */
+  public void updateTermOfLeaderOM(String omServiceId, long newTerm) {
+    commandManager.updateTermOfLeaderOM(omServiceId, newTerm);
+  }
+
+  /**
+   * Adds a command to the command queue.
+   * This is a convenience method that delegates to the command manager.
+   *
+   * @param command - JobworkerCommand
+   */
+  public void addCommand(JobworkerCommand command) {
+    commandManager.addCommand(command);
   }
 }

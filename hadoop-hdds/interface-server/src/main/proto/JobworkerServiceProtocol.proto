@@ -37,6 +37,9 @@ service JobworkerService {
   rpc submitRequest (JobworkerRequest) returns (JobworkerResponse);
 }
 
+/*
+ * These are commands send by jobworker to the OM to execute.
+ */
 enum JobworkerCommandType {
   UNKNOWN_COMMAND = 0;
   REGISTER_JOBWORKER = 1;
@@ -121,12 +124,14 @@ message OMJobworkerCommandProto {
   enum Type {
     unknownCommand = 0;
     reregisterCommand = 1;
+    mockCommand = 2; // Just for test
     // OM -> Jobworker Command
   }
   required Type commandType = 1;
   optional int64 term = 2;
   optional int64 expirationTimestampMs = 3;
   optional JobworkerReregisterCommandProto jobworkerReregisterCommandProto = 4;
+  optional JobworkerMockCommandProto jobworkerMockCommandProto = 5;
 }
 
 message JobworkerNodeReportProto {
@@ -142,4 +147,20 @@ message JobworkerStorageReportProto {
 }
 
 message JobworkerReregisterCommandProto {
+}
+
+message JobworkerMockCommandProto {
+}
+
+message CommandStatus {
+  enum Status {
+    UNKNOWN_STATUS = 0;
+    PENDING = 1;
+    EXECUTING = 2;
+    SUCCEEDED = 3;
+    FAILED = 4;
+  }
+  required int64 cmdId = 1;
+  required Status status = 2 [default = PENDING];
+  optional string msg = 3;
 }

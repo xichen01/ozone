@@ -140,4 +140,21 @@ public class JobworkerClientConfiguration {
   public void setMaxReportCount(int maxReportCount) {
     this.maxReportCount = maxReportCount;
   }
+
+  @Config(key = "command.queue.limit",
+      type = ConfigType.INT,
+      tags = {ConfigTag.JOBWORKER},
+      defaultValue = "100",
+      description = "Maximum number of commands that can be queued."
+  )
+  private int commandQueueLimit = 100;
+
+  public int getCommandQueueLimit() {
+    return commandQueueLimit;
+  }
+
+  public void setCommandQueueLimit(int commandQueueLimit) {
+    this.commandQueueLimit = commandQueueLimit;
+  }
+
 }

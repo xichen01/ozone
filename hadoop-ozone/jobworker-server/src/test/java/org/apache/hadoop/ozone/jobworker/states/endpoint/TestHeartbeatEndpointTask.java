@@ -23,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -45,12 +46,14 @@ import org.apache.hadoop.ozone.jobworker.JobworkerEndpointStateMachine.EndpointS
 import org.apache.hadoop.ozone.jobworker.JobworkerStateContext;
 import org.apache.hadoop.ozone.jobworker.JobworkerStateMachine;
 import org.apache.hadoop.ozone.jobworker.JobworkerStates;
+import org.apache.hadoop.ozone.jobworker.commands.JobworkerCommandManager;
 import org.apache.hadoop.ozone.jobworker.protocol.JobworkerProtocol;
 import org.apache.hadoop.ozone.jobworker.report.JobworkerReportManager;
 import org.apache.hadoop.util.ProtobufUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Mockito;
 
 /**
  * This class tests the functionality of Jobworker HeartbeatEndpointTask.
@@ -76,8 +79,9 @@ public class TestHeartbeatEndpointTask {
     JobworkerStateMachine stateMachine = mock(JobworkerStateMachine.class);
     when(jobworkerReportManager.getLimitedCountAvailableReports(any())).thenReturn(new ArrayList<>());
     when(stateMachine.getReportManager()).thenReturn(jobworkerReportManager);
-    context = new JobworkerStateContext(conf, JobworkerStates.RUNNING,
-        jobworkerDetails, "jobworker-test-", stateMachine);
+    JobworkerCommandManager commandManager = new JobworkerCommandManager(conf);
+    context = spy(new JobworkerStateContext(conf, JobworkerStates.RUNNING,
+        jobworkerDetails, "jobworker-test-", stateMachine, commandManager));
   }
 
   @Test
@@ -218,6 +222,36 @@ public class TestHeartbeatEndpointTask {
     endpointTask.call();
     // THEN - the endpoint should still be in HEARTBEAT state (no state change)
     assertEquals(EndpointStates.HEARTBEAT, endpointStateMachine.getState());
+  }
+
+  @Test
+  public void testHeartbeatWithTerm() throws Exception {
+    // GIVEN
+    JobworkerProtocol protocol = mock(JobworkerProtocol.class);
+    ArgumentCaptor<SendHeartbeatRequest> heartbeatCaptor =
+        ArgumentCaptor.forClass(SendHeartbeatRequest.class);
+
+    final long termInOM = 42L;
+    Mockito.when(protocol.sendHeartbeat(heartbeatCaptor.capture()))
+        .thenReturn(SendHeartbeatResponseProto.newBuilder()
+            .setJobworkerUUID(ProtobufUtils.toProtobuf(jobworkerDetails.getUuid()))
+            .setTerm(termInOM)
+            .setOmServiceId(OM_SERVICE_ID)
+            .build());
+
+    JobworkerEndpointStateMachine endpointStateMachine =
+        new JobworkerEndpointStateMachine(TEST_OM_ENDPOINT, protocol, conf,
+            "test-", OM_SERVICE_ID);
+    endpointStateMachine.setState(EndpointStates.HEARTBEAT);
+
+    // Run heartbeat task
+    HeartbeatEndpointTask task = getHeartbeatEndpointTask(context, endpointStateMachine);
+    task.call();
+
+    // Verify term update in context
+    Mockito.verify(context).updateTermOfLeaderOM(OM_SERVICE_ID, termInOM);
+    assertEquals(termInOM,
+        context.getCommandManager().getTermOfLeaderOMByServiceId(OM_SERVICE_ID).orElse(-1));
   }
 
   private HeartbeatEndpointTask getHeartbeatEndpointTask(

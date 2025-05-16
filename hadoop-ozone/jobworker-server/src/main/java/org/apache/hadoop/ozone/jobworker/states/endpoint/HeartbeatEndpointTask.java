@@ -147,7 +147,11 @@ public class HeartbeatEndpointTask implements Callable<EndpointStates> {
     Preconditions.checkState(response.getOmServiceId().equals(rpcEndpoint.getOMServiceId()),
         "Unexpected OM Service ID, expected %s but %s.",
         rpcEndpoint.getOMServiceId(), response.getOmServiceId());
-    LOG.info("HeartBeat from Service ID, {} ", rpcEndpoint.getOMServiceId());
+    LOG.info("heartbeat from Service ID, {} ", rpcEndpoint.getOMServiceId());
+    // Handle term if HA is being used
+    if (response.hasTerm()) {
+      context.updateTermOfLeaderOM(rpcEndpoint.getOMServiceId(), response.getTerm());
+    }
     // Process commands
     for (JobworkerServiceProtocolProtos.OMJobworkerCommandProto commandProto : response.getCommandsList()) {
       processCommandProto(commandProto);

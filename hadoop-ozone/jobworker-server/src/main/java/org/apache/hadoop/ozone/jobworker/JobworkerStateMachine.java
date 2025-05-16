@@ -32,6 +32,9 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.apache.hadoop.hdds.conf.ConfigurationSource;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos;
+import org.apache.hadoop.ozone.jobworker.commands.JobworkerCommandDispatcher;
+import org.apache.hadoop.ozone.jobworker.commands.JobworkerCommandManager;
+import org.apache.hadoop.ozone.jobworker.commands.JobworkerCommandProcessor;
 import org.apache.hadoop.ozone.jobworker.states.InitJobworkerState;
 import org.apache.hadoop.ozone.jobworker.states.JobworkerStateHandler;
 import org.apache.hadoop.ozone.jobworker.states.RunningJobworkerState;
@@ -55,6 +58,9 @@ public class JobworkerStateMachine implements Closeable {
   private final JobworkerConnectionManager connectionManager;
   private final JobworkerVolumeSet volumeSet;
   private final AtomicLong nextHB;
+  private final JobworkerCommandDispatcher commandDispatcher;
+  private final JobworkerCommandManager commandManager;
+  private final JobworkerCommandProcessor commandProcessor;
   private final JobworkerStopService jobworkerStopService;
   private JobworkerStateContext context;
   private volatile Thread stateMachineThread = null;
@@ -82,8 +88,9 @@ public class JobworkerStateMachine implements Closeable {
             .build());
     this.volumeSet = new VolatileJobworkerVolumeSet(jobworkerDetails.getUuidString(), conf, context);
     this.connectionManager = new JobworkerConnectionManager(conf);
+    this.commandManager = new JobworkerCommandManager(conf);
     this.context = new JobworkerStateContext(
-        this.conf, JobworkerStates.getInitState(), jobworkerDetails, threadNamePrefix, this);
+        this.conf, JobworkerStates.getInitState(), jobworkerDetails, threadNamePrefix, this, commandManager);
     this.nextHB = new AtomicLong(Time.monotonicNow());
     this.reportManager = JobworkerReportManager.newBuilder(conf)
         .setStateContext(context)
@@ -91,6 +98,14 @@ public class JobworkerStateMachine implements Closeable {
         .addPublisherFor(JobworkerServiceProtocolProtos.JobworkerNodeReportProto.class)
         .build();
     reportManager.init();
+
+    this.commandDispatcher = JobworkerCommandDispatcher.newBuilder()
+        // Add more handlers as they're implemented
+        .setConnectionManager(connectionManager)
+        .setContext(context)
+        .build();
+    this.commandProcessor = new JobworkerCommandProcessor(
+        context, commandManager, commandDispatcher, conf, threadNamePrefix, nextHB);
   }
 
   /**
@@ -152,6 +167,9 @@ public class JobworkerStateMachine implements Closeable {
    * Runs the state machine at a fixed frequency.
    */
   private void startStateMachineThread() throws IOException {
+    // Start the command processor
+    commandProcessor.start();
+
     long now;
     // TODO jobworker implement ReportManager
 
@@ -204,6 +222,14 @@ public class JobworkerStateMachine implements Closeable {
     }
 
     context.setState(JobworkerStates.getLastState());
+
+    if (commandProcessor != null) {
+      commandProcessor.close();
+    }
+
+    if (commandDispatcher != null) {
+      commandDispatcher.stop();
+    }
 
     if (executorService != null) {
       executorServiceShutdownGraceful(executorService);
