@@ -94,7 +94,7 @@ public class InitJobworkerState implements JobworkerStateHandler<JobworkerStates
                 String.format("omServiceID %s address (%s) can't be resolved.", omServiceId, address));
           }
           connectionManager.addOMEndpoint(address, context.getThreadNamePrefix(), omServiceId);
-          this.context.addEndpoint(address);
+          this.context.addEndpoint(address, omServiceId);
           anyAdded = true;
           LOG.info("Added OM endpoint: {} in OM serviceId: {}", address, omServiceId);
         }

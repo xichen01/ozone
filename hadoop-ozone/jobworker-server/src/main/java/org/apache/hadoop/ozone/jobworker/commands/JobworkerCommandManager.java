@@ -27,7 +27,10 @@ import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+
+import java.util.function.Consumer;
 import org.apache.hadoop.hdds.conf.ConfigurationSource;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatus;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto;
 import org.apache.hadoop.ozone.jobworker.JobworkerClientConfiguration;
 import org.slf4j.Logger;
@@ -42,7 +45,7 @@ public class JobworkerCommandManager {
   private static final Logger LOG = LoggerFactory.getLogger(JobworkerCommandManager.class);
 
   private final Queue<JobworkerCommand> commandQueue;
-  private final Map<Long, JobworkerCommandStatus> cmdStatusMap;
+  private final Map<String, Map<Long, JobworkerCommandStatus>> cmdStatusMap;
   private final Lock lock;
   private final int maxCommandQueueLimit;
 
@@ -55,12 +58,12 @@ public class JobworkerCommandManager {
    * @param conf Configuration source
    */
   public JobworkerCommandManager(ConfigurationSource conf) {
-    JobworkerClientConfiguration jwConf = conf.getObject(JobworkerClientConfiguration.class);
-    maxCommandQueueLimit = jwConf.getCommandQueueLimit();
-    commandQueue = new LinkedList<>();
-    cmdStatusMap = new ConcurrentHashMap<>();
-    lock = new ReentrantLock();
-    termOfLeaderOM = new ConcurrentHashMap<>();
+    this.maxCommandQueueLimit = conf.getObject(JobworkerClientConfiguration.class)
+        .getCommandQueueLimit();
+    this.commandQueue = new LinkedList<>();
+    this.cmdStatusMap = new ConcurrentHashMap<>();
+    this.lock = new ReentrantLock();
+    this.termOfLeaderOM = new ConcurrentHashMap<>();
   }
 
   /**
@@ -75,21 +78,15 @@ public class JobworkerCommandManager {
   /**
    * Returns the command status for a given command ID.
    *
-   * @param key command ID
+   * @param omServiceId The OM service ID
+   * @param key         The command ID
    * @return CommandStatus or null
    */
-  public JobworkerCommandStatus getCmdStatus(Long key) {
-    return cmdStatusMap.get(key);
-  }
-
-  /**
-   * Adds a command status to the manager.
-   *
-   * @param key    command ID
-   * @param status command status
-   */
-  public void addCmdStatus(Long key, JobworkerCommandStatus status) {
-    cmdStatusMap.put(key, status);
+  public JobworkerCommandStatus getCmdStatus(String omServiceId, Long key) {
+    if (cmdStatusMap.get(omServiceId) != null) {
+      return cmdStatusMap.get(omServiceId).get(key);
+    }
+    return null;
   }
 
   /**
@@ -98,8 +95,15 @@ public class JobworkerCommandManager {
    * @param cmd JobworkerCommand
    */
   public void addCmdStatus(JobworkerCommand cmd) {
-    // Implementation to add command status based on command type
-    // TODO: Implement proper command status tracking based on command type
+    String omServiceId = cmd.getOmServiceId();
+    JobworkerCommandStatus status = JobworkerCommandStatus.newBuilder()
+        .setCmdId(cmd.getId())
+        .setType(cmd.getType())
+        .setStatus(CommandStatus.Status.PENDING)
+        .setOmServiceId(omServiceId)
+        .build();
+    cmdStatusMap.computeIfAbsent(omServiceId, ignore -> new ConcurrentHashMap<>())
+        .put(cmd.getId(), status);
   }
 
   /**
@@ -107,7 +111,7 @@ public class JobworkerCommandManager {
    *
    * @return map of command statuses
    */
-  public Map<Long, JobworkerCommandStatus> getCommandStatusMap() {
+  public Map<String, Map<Long, JobworkerCommandStatus>> getCommandStatusMap() {
     return cmdStatusMap;
   }
 
@@ -164,6 +168,32 @@ public class JobworkerCommandManager {
     }
   }
 
+  public void updateCommand(JobworkerCommand command,
+                            CommandStatus.Status status, String message) {
+    long commandId = command.getId();
+    String omServiceId = command.getOmServiceId();
+    Map<Long, JobworkerCommandStatus> commands = cmdStatusMap.get(omServiceId);
+    if (commands != null && commands.get(commandId) != null) {
+      commands.get(commandId).updateStatusAndMessage(status, message);
+    } else {
+      LOG.warn("CommandStatus Type {} with ID: {} not found.", command.getType(),
+          command.getId());
+    }
+  }
+
+  public void updateCommand(JobworkerCommand command,
+                            Consumer<JobworkerCommandStatus> cmdStatusUpdater) {
+    long commandId = command.getId();
+    String omServiceId = command.getOmServiceId();
+    Map<Long, JobworkerCommandStatus> commands = cmdStatusMap.get(omServiceId);
+    if (commands != null && commands.get(commandId) != null) {
+      cmdStatusUpdater.accept(commands.get(commandId));
+    } else {
+      LOG.warn("CommandStatus Type {} with ID: {} not found.", command.getType(),
+          command.getId());
+    }
+  }
+
   /**
    * Returns the next command or null if queue is empty.
    *
@@ -199,6 +229,10 @@ public class JobworkerCommandManager {
         LOG.warn("Detect and drop a JobworkerCommand {} from stale leader OM for service {}," +
                 " stale term {}, latest term {}.",
             command, omServiceId, command.getTerm(), currentTerm.getAsLong());
+        Map<Long, JobworkerCommandStatus> commands = cmdStatusMap.get(command.getOmServiceId());
+        if (commands != null &&  commands.get(command.getId()) != null) {
+          commands.get(command.getId()).updateStatusAndMessage(CommandStatus.Status.FAILED, "Stale command");
+        }
       }
     } finally {
       lock.unlock();
@@ -217,16 +251,11 @@ public class JobworkerCommandManager {
         // TODO jobworker add metrics
         LOG.warn("Ignore command {} as command queue crosses max limit {}.",
             command.getType(), maxCommandQueueLimit);
+        // TODO jobworker add metrics set status to failure
         return;
       }
 
       String omServiceId = command.getOmServiceId();
-      if (omServiceId == null) {
-        LOG.warn("Ignore command {} as command OM ServiceId is null.",
-            command.getType());
-        return;
-      }
-
       if (!termOfLeaderOM.containsKey(omServiceId)) {
         initTermOfLeaderOM(omServiceId);
       }
@@ -258,7 +287,7 @@ public class JobworkerCommandManager {
   }
 
   /**
-   * Get the leader Term of the OM Group based on omServiceId
+   * Get the leader Term of the OM Group based on omServiceId.
    *
    * @param omServiceId
    * @return

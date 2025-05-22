@@ -205,6 +205,8 @@ import org.apache.hadoop.hdds.server.events.EventQueue;
 import org.apache.hadoop.net.CachedDNSToSwitchMapping;
 import org.apache.hadoop.net.DNSToSwitchMapping;
 import org.apache.hadoop.net.TableMapping;
+import org.apache.hadoop.ozone.om.jobworker.command.JobworkerCommandStatusReportHandler;
+import org.apache.hadoop.ozone.om.jobworker.command.OMJobworkerCommandManager;
 import org.apache.hadoop.ozone.om.jobworker.JobworkerGrpcServer;
 import org.apache.hadoop.ozone.om.jobworker.JobworkerProtocolServerImpl;
 import org.apache.hadoop.ozone.om.jobworker.OMJobworkerEvents;
@@ -375,6 +377,7 @@ import org.apache.hadoop.security.token.Token;
 import org.apache.hadoop.util.KMSUtil;
 import org.apache.hadoop.util.ReflectionUtils;
 import org.apache.hadoop.util.Time;
+ 
 import org.apache.ratis.grpc.GrpcTlsConfig;
 import org.apache.ratis.proto.RaftProtos.RaftPeerRole;
 import org.apache.ratis.protocol.RaftGroupId;
@@ -565,6 +568,7 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
   private DNSToSwitchMapping dnsToSwitchMapping;
   private NetworkTopology clusterMap;
   private EventQueue eventQueue;
+  private OMJobworkerCommandManager omJobworkerCommandManager;
 
   @SuppressWarnings("methodlength")
   private OzoneManager(OzoneConfiguration conf, StartupOption startupOption)
@@ -933,13 +937,17 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
   private void addEventQueue(EventQueue queue, JobworkerNodeManager nodeManager) {
     JobworkerNodeReportHandler nodeReportHandler =
         new JobworkerNodeReportHandler(nodeManager);
-    StaleJobworkerHandler staleJobworkerHandler =
-        new StaleJobworkerHandler(nodeManager);
     NewJobworkerHandler newJobworkerHandler =
         new NewJobworkerHandler(nodeManager);
+    omJobworkerCommandManager = new OMJobworkerCommandManager(nodeManager, omNodeDetails.getServiceId());
+    StaleJobworkerHandler staleJobworkerHandler =
+        new StaleJobworkerHandler(nodeManager, omJobworkerCommandManager);
+    JobworkerCommandStatusReportHandler commandStatusReportHandler =
+        new JobworkerCommandStatusReportHandler(omJobworkerCommandManager);
     queue.addHandler(OMJobworkerEvents.JW_NODE_REPORT, nodeReportHandler);
     queue.addHandler(OMJobworkerEvents.NEW_JOBWORKER, newJobworkerHandler);
     queue.addHandler(OMJobworkerEvents.STALE_JOBWORKER, staleJobworkerHandler);
+    queue.addHandler(OMJobworkerEvents.JW_COMMAND_STATUS_REPORT, commandStatusReportHandler);
   }
 
   public boolean isStopped() {
@@ -2689,7 +2697,6 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
         OMHAMetrics.unRegister();
       }
       omRatisServer = null;
-
       if (volumeUtilizationMetrics != null) {
         volumeUtilizationMetrics.unRegister();
       }
@@ -2707,6 +2714,9 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
       }
       if (revokedSTSTokenCleanupService != null) {
         revokedSTSTokenCleanupService.shutdown();
+      }
+      if (omJobworkerCommandManager != null) {
+        omJobworkerCommandManager.close();
       }
       return true;
     } catch (Exception e) {

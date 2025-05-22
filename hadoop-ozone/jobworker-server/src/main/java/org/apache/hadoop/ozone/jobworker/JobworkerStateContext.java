@@ -20,8 +20,7 @@
 package org.apache.hadoop.ozone.jobworker;
 
 import java.net.InetSocketAddress;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -29,6 +28,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.hadoop.hdds.conf.ConfigurationSource;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatusReportsProto;
 import org.apache.hadoop.ozone.jobworker.states.JobworkerStateHandler;
 import org.apache.hadoop.ozone.jobworker.commands.JobworkerCommand;
 import org.apache.hadoop.ozone.jobworker.commands.JobworkerCommandManager;
@@ -48,7 +48,6 @@ public class JobworkerStateContext {
   private final JobworkerStateMachine parentJobworkerStateMachine;
   private final AtomicLong stateExecutionCount;
   private final JobworkerClientConfiguration jwConf;
-  private final Set<InetSocketAddress> endpoints;
   private final AtomicLong threadPoolNotAvailableCount;
   private final AtomicLong lastHeartbeatSent;
   private final long initializeHeartbeatFrequencyMs = 2000;
@@ -79,10 +78,9 @@ public class JobworkerStateContext {
     this.state = state;
     this.parentJobworkerStateMachine = stateMachine;
     this.commandManager = commandManager;
-    endpoints = new HashSet<>();
-    stateExecutionCount = new AtomicLong(0);
-    threadPoolNotAvailableCount = new AtomicLong(0);
-    lastHeartbeatSent = new AtomicLong(0);
+    this.stateExecutionCount = new AtomicLong(0);
+    this.threadPoolNotAvailableCount = new AtomicLong(0);
+    this.lastHeartbeatSent = new AtomicLong(0);
     this.threadNamePrefix = threadNamePrefix;
     this.jobworkerDetails = jobworkerDetails;
   }
@@ -176,12 +174,8 @@ public class JobworkerStateContext {
    * Add a new endpoint to track.
    * This method is updated to register the endpoint with the report manager.
    */
-  public void addEndpoint(InetSocketAddress endpoint) {
-    if (!endpoints.contains(endpoint)) {
-      this.endpoints.add(endpoint);
-      // Register the endpoint with the report manager
-      parentJobworkerStateMachine.getReportManager().registerEndpoint(endpoint);
-    }
+  public void addEndpoint(InetSocketAddress endpoint, String omServiceId) {
+    parentJobworkerStateMachine.getReportManager().registerEndpoint(endpoint, omServiceId);
   }
 
   /**
@@ -337,5 +331,13 @@ public class JobworkerStateContext {
    */
   public void addCommand(JobworkerCommand command) {
     commandManager.addCommand(command);
+  }
+
+  public void putBackCommandStatusReports(String omServiceId, InetSocketAddress address,
+                                          List<CommandStatusReportsProto> reports) {
+    for (CommandStatusReportsProto report : reports) {
+      parentJobworkerStateMachine.getReportManager()
+          .addCommandStatusReport(omServiceId, address, report);
+    }
   }
 }

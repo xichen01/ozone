@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -29,8 +30,14 @@ import java.io.IOException;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
+import org.apache.hadoop.hdds.protocol.JobworkerDetails;
+import org.apache.hadoop.hdds.protocol.MockJobworkerDetails;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatus;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto.Type;
+import org.apache.hadoop.ozone.jobworker.JobworkerConnectionManager;
 import org.apache.hadoop.ozone.jobworker.JobworkerStateContext;
+import org.apache.hadoop.ozone.jobworker.JobworkerStateMachine;
 import org.apache.hadoop.ozone.jobworker.JobworkerStates;
 import org.apache.ozone.test.GenericTestUtils;
 import org.junit.jupiter.api.AfterEach;
@@ -56,7 +63,12 @@ public class TestJobworkerCommandProcessor {
     context = mock(JobworkerStateContext.class);
     when(context.getState()).thenReturn(JobworkerStates.RUNNING);
     commandManager = mock(JobworkerCommandManager.class);
-    commandDispatcher = mock(JobworkerCommandDispatcher.class);
+    commandDispatcher =
+        spy(JobworkerCommandDispatcher
+            .newBuilder()
+            .setContext(context)
+            .setConnectionManager(mock(JobworkerConnectionManager.class))
+            .build());
     conf = new OzoneConfiguration();
     nextHB = new AtomicLong(0);
     processor = new JobworkerCommandProcessor(
@@ -136,4 +148,26 @@ public class TestJobworkerCommandProcessor {
     verify(commandManager, times(0)).getNextCommand();
   }
 
+  @Test
+  public void testUnhandledCommandStatusUpdate() throws InterruptedException {
+    OzoneConfiguration conf = new OzoneConfiguration();
+    JobworkerCommandManager commandManager = new JobworkerCommandManager(conf);
+    JobworkerDetails jobworkerDetails = MockJobworkerDetails.randomJobworkerDetails();
+    context = new JobworkerStateContext(conf, JobworkerStates.RUNNING,
+        jobworkerDetails, "test-", mock(JobworkerStateMachine.class), commandManager);
+
+    // The unknownCommand no handler, so we can use it to simulate a no handler case
+    JobworkerCommand<?> command = new MockJobworkerCommand(1L, "omServiceId",
+        OMJobworkerCommandProto.Type.unknownCommand);
+    commandManager.addCommand(command);
+    JobworkerCommandStatus cmdStatus = commandManager.getCmdStatus(command.getOmServiceId(), command.getId());
+    processor = new JobworkerCommandProcessor(
+        context, commandManager, commandDispatcher, conf, "test-", nextHB);
+
+    processor.start();
+
+    Thread.sleep(500);
+    assertEquals(CommandStatus.Status.FAILED, cmdStatus.getStatus());
+    assertEquals("Command cannot be handled", cmdStatus.getMessage());
+  }
 }

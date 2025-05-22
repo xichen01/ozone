@@ -20,6 +20,7 @@ package org.apache.hadoop.ozone.om.jobworker;
 
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
 import org.apache.hadoop.hdds.server.events.TypedEvent;
+import org.apache.hadoop.ozone.om.jobworker.JobworkerHeartbeatDispatcher.CommandStatusReportFromJobworker;
 import org.apache.hadoop.ozone.om.jobworker.JobworkerHeartbeatDispatcher.NodeReportFromJobworker;
 
 /**
@@ -33,6 +34,10 @@ public final class OMJobworkerEvents {
   public static final TypedEvent<NodeReportFromJobworker>
       JW_NODE_REPORT = new TypedEvent<>(NodeReportFromJobworker.class,
       "JW_Node_Report");
+
+  public static final TypedEvent<CommandStatusReportFromJobworker>
+      JW_COMMAND_STATUS_REPORT = new TypedEvent<>(CommandStatusReportFromJobworker.class,
+      "JW_Command_Status_Report");
 
   /**
    * Event for when a Jobworker node becomes stale.

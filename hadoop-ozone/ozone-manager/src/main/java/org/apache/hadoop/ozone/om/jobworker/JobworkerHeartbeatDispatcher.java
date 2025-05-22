@@ -20,6 +20,7 @@
 package org.apache.hadoop.ozone.om.jobworker;
 
 import static org.apache.hadoop.ozone.om.jobworker.OMJobworkerEvents.JW_NODE_REPORT;
+import static org.apache.hadoop.ozone.om.jobworker.OMJobworkerEvents.JW_COMMAND_STATUS_REPORT;
 
 import com.google.protobuf.Message;
 import java.util.List;
@@ -28,6 +29,7 @@ import org.apache.hadoop.ozone.jobworker.command.JobworkerReregisterCommand;
 import org.apache.hadoop.ozone.jobworker.command.OMJobworkerCommand;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.JobworkerNodeReportProto;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatusReportsProto;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.SendHeartbeatRequest;
 import org.apache.hadoop.ozone.om.jobworker.node.JobworkerNodeManager;
 import org.slf4j.Logger;
@@ -75,6 +77,17 @@ public class JobworkerHeartbeatDispatcher {
                 jobworkerDetails,
                 heartbeat.getJobworkerNodeReport()));
       }
+
+      // Process command status reports
+      for (CommandStatusReportsProto report : heartbeat.getCommandStatusReportsList()) {
+        LOG.debug("Dispatching Command Status Report from jobworker {}",
+            jobworkerDetails.getUuidString());
+        eventPublisher.fireEvent(
+            JW_COMMAND_STATUS_REPORT,
+            new CommandStatusReportFromJobworker(
+                jobworkerDetails,
+                report));
+      }
     }
     return nodeManager.pollJobworkerCommand(jobworkerDetails.getUuid());
   }
@@ -114,6 +127,19 @@ public class JobworkerHeartbeatDispatcher {
       extends ReportFromJobworker<JobworkerNodeReportProto> {
     public NodeReportFromJobworker(
         JobworkerDetails jobworkerDetails, JobworkerNodeReportProto report) {
+      super(jobworkerDetails, report);
+    }
+  }
+
+  /**
+   * Wrapper class for command status reports from JobWorker.
+   * Similar to CommandStatusReportFromDatanode in SCM.
+   */
+  public static class CommandStatusReportFromJobworker
+      extends ReportFromJobworker<CommandStatusReportsProto> {
+
+    public CommandStatusReportFromJobworker(JobworkerDetails jobworkerDetails,
+                                            CommandStatusReportsProto report) {
       super(jobworkerDetails, report);
     }
   }

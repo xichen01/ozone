@@ -106,7 +106,7 @@ public class JobworkerServiceConfig {
       defaultValue = "32M",
       type = ConfigType.SIZE,
       tags = {ConfigTag.JOBWORKER},
-      description = "Maximum inbound message size for gRPC in bytes.")
+      description = "Maximum inbound message size for gRPC.")
   private int grpcMaximumInboundLength;
 
   public int getGrpcMaximumInboundLength() {

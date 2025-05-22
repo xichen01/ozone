@@ -19,25 +19,25 @@ package org.apache.hadoop.ozone.jobworker.commands;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
+import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatus;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto;
+import org.apache.hadoop.hdds.server.ServerUtils;
 import org.apache.hadoop.ozone.jobworker.JobworkerConnectionManager;
 import org.apache.hadoop.ozone.jobworker.JobworkerStateContext;
 import org.apache.ozone.test.GenericTestUtils;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.slf4j.Logger;
 
 /**
  * Tests for AbstractJobworkerCommandHandler class.
@@ -48,21 +48,34 @@ public class TestAbstractJobworkerCommandHandler {
   private JobworkerConnectionManager connectionManager;
   private MockCommandHandler handler;
   private JobworkerCommandManager commandManager;
+  private ExecutorService executorService;
 
   @BeforeEach
   public void setUp() {
     context = mock(JobworkerStateContext.class);
     connectionManager = mock(JobworkerConnectionManager.class);
-    commandManager = mock(JobworkerCommandManager.class);
-    handler = new MockCommandHandler(OMJobworkerCommandProto.Type.mockCommand);
+    OzoneConfiguration conf = new OzoneConfiguration();
+    commandManager = new JobworkerCommandManager(conf);
+    executorService = Executors.newSingleThreadScheduledExecutor();
+    handler = new MockCommandHandler(OMJobworkerCommandProto.Type.mockCommand, executorService);
+  }
+
+  @AfterEach
+  public void tearDown() {
+    ServerUtils.executorServiceShutdownGraceful(executorService);
   }
 
   @Test
   public void testBasicHandling() throws ExecutionException, InterruptedException, TimeoutException {
     handler.setProcessDelayMs(2);
     handler.enablePause();
-    JobworkerCommand<?> command =
-        new MockJobworkerCommand(1L, OMJobworkerCommandProto.Type.mockCommand);
+    MockJobworkerCommand command =
+        new MockJobworkerCommand(1L, "omServiceId", OMJobworkerCommandProto.Type.mockCommand);
+
+    commandManager.addCommand(command);
+    JobworkerCommandStatus cmdStatus = commandManager.getCmdStatus(command.getOmServiceId(), command.getId());
+
+    when(context.getCommandManager()).thenReturn(commandManager);
 
     CompletableFuture<?> future = CompletableFuture.runAsync(() -> {
       handler.handle(command, context, connectionManager);
@@ -70,63 +83,66 @@ public class TestAbstractJobworkerCommandHandler {
     GenericTestUtils.waitFor(() -> handler.getQueuedCount() == 1, 50, 1000);
     handler.releasePause();
     future.get();
-    assertEquals(0, handler.getQueuedCount());
+    GenericTestUtils.waitFor(() -> handler.getQueuedCount() == 0, 50, 1000);
     assertTrue(handler.wasProcessCommandCalled());
     assertEquals(1, handler.getInvocationCount());
     assertTrue(handler.getTotalRunTime() > 0);
+
+    assertEquals(CommandStatus.Status.SUCCEEDED, cmdStatus.getStatus());
   }
 
   @Test
   public void testExpiredCommand() {
     // Create a command with an expired deadline
-    MockJobworkerCommand command =
-        new MockJobworkerCommand(1L, OMJobworkerCommandProto.Type.mockCommand);
-    command.setDeadline(System.currentTimeMillis() - 1000); // Expired
-    JobworkerCommandStatus mockStatus = mock(JobworkerCommandStatus.class);
+    MockJobworkerCommand command = new MockJobworkerCommand(1L, "omServiceId", 0L,
+        System.currentTimeMillis() - 1000, OMJobworkerCommandProto.Type.mockCommand);
+
+    commandManager.addCommand(command);
+    JobworkerCommandStatus cmdStatus = commandManager.getCmdStatus(command.getOmServiceId(), command.getId());
+
     when(context.getCommandManager()).thenReturn(commandManager);
-    when(commandManager.getCmdStatus(anyLong())).thenReturn(mockStatus);
 
     handler.handle(command, context, connectionManager);
     assertFalse(handler.wasProcessCommandCalled());
-
-    verify(mockStatus).setStatus(eq(CommandStatus.Status.FAILED));
-    verify(mockStatus).setMessage(any(String.class));
+    assertEquals(CommandStatus.Status.FAILED, cmdStatus.getStatus());
   }
 
   @Test
-  public void testExceptionHandling() {
-    JobworkerCommand<?> command =
-        new MockJobworkerCommand(1L, OMJobworkerCommandProto.Type.mockCommand);
+  public void testExceptionHandling() throws InterruptedException, TimeoutException {
+    MockJobworkerCommand command =
+        new MockJobworkerCommand(1L, "omServiceId", OMJobworkerCommandProto.Type.mockCommand);
+
     Exception testException = new RuntimeException("Test exception");
     handler.setExceptionToThrow(testException);
-    JobworkerCommandStatus mockStatus = mock(JobworkerCommandStatus.class);
+
+    commandManager.addCommand(command);
+    JobworkerCommandStatus cmdStatus = commandManager.getCmdStatus(command.getOmServiceId(), command.getId());
+
     when(context.getCommandManager()).thenReturn(commandManager);
-    when(commandManager.getCmdStatus(anyLong())).thenReturn(mockStatus);
 
     handler.handle(command, context, connectionManager);
-
-    assertTrue(handler.wasProcessCommandCalled());
-    verify(mockStatus).setStatus(eq(CommandStatus.Status.FAILED));
-    verify(mockStatus).setMessage(any(String.class));
+    GenericTestUtils.waitFor(() -> handler.wasProcessCommandCalled(), 50, 1000);
+    assertEquals(CommandStatus.Status.FAILED, cmdStatus.getStatus());
     assertEquals(1, handler.getInvocationCount());
   }
 
   @Test
   public void testUpdateCommandStatus() {
-    JobworkerCommandStatus mockStatus = mock(JobworkerCommandStatus.class);
-    JobworkerCommand<?> command =
-        new MockJobworkerCommand(1L, OMJobworkerCommandProto.Type.mockCommand);
+    MockJobworkerCommand command =
+        new MockJobworkerCommand(1L, "omServiceId", OMJobworkerCommandProto.Type.mockCommand);
+
+    commandManager.addCommand(command);
+    JobworkerCommandStatus cmdStatus = commandManager.getCmdStatus(command.getOmServiceId(), command.getId());
+
     when(context.getCommandManager()).thenReturn(commandManager);
-    when(commandManager.getCmdStatus(eq(1L))).thenReturn(mockStatus);
+
     Consumer<JobworkerCommandStatus> statusUpdater = status -> {
-      status.setStatus(CommandStatus.Status.SUCCEEDED);
-      status.setMessage("Success");
+      status.updateStatusAndMessage(CommandStatus.Status.SUCCEEDED, "Success");
     };
 
-    handler.updateCommandStatus(context, command, statusUpdater, mock(Logger.class));
+    handler.updateCommandStatus(context, command, statusUpdater);
     // Command should be updated normally
-    verify(mockStatus).setStatus(CommandStatus.Status.SUCCEEDED);
-    verify(mockStatus).setMessage("Success");
-
+    assertEquals(CommandStatus.Status.SUCCEEDED, cmdStatus.getStatus());
+    assertEquals("Success", cmdStatus.getMessage());
   }
 }

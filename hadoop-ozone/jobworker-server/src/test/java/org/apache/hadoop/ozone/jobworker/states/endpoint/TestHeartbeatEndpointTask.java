@@ -77,7 +77,7 @@ public class TestHeartbeatEndpointTask {
     conf.setFromObject(jwConf);
     JobworkerReportManager jobworkerReportManager = mock(JobworkerReportManager.class);
     JobworkerStateMachine stateMachine = mock(JobworkerStateMachine.class);
-    when(jobworkerReportManager.getLimitedCountAvailableReports(any())).thenReturn(new ArrayList<>());
+    when(jobworkerReportManager.getLimitedCountAvailableReports(any(), any())).thenReturn(new ArrayList<>());
     when(stateMachine.getReportManager()).thenReturn(jobworkerReportManager);
     JobworkerCommandManager commandManager = new JobworkerCommandManager(conf);
     context = spy(new JobworkerStateContext(conf, JobworkerStates.RUNNING,

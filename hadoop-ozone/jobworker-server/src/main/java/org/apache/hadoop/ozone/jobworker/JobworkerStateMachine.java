@@ -96,6 +96,7 @@ public class JobworkerStateMachine implements Closeable {
         .setStateContext(context)
         .addThreadNamePrefix(context.getThreadNamePrefix())
         .addPublisherFor(JobworkerServiceProtocolProtos.JobworkerNodeReportProto.class)
+        .addPublisherFor(JobworkerServiceProtocolProtos.CommandStatusReportsProto.class)
         .build();
     reportManager.init();
 

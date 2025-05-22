@@ -141,7 +141,6 @@ public class JobworkerProtocolServerImpl implements JobworkerProtocol {
     OMJobworkerCommandProto.Builder builder =
         OMJobworkerCommandProto
             .newBuilder()
-            .setTerm(command.getTerm())
             .setExpirationTimestampMs(command.getExpirationTimestampMs());
 
     switch (command.getType()) {

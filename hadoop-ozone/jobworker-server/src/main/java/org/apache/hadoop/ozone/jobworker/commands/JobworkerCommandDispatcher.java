@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatus;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto;
 import org.apache.hadoop.ozone.jobworker.JobworkerConnectionManager;
 import org.apache.hadoop.ozone.jobworker.JobworkerStateContext;
@@ -98,15 +99,16 @@ public final class JobworkerCommandDispatcher {
    * Dispatch the command to the correct handler.
    *
    * @param command - Jobworker Command
+   * @return Whether the command has been handled
    */
-  public void handle(JobworkerCommand<?> command) {
+  public boolean handle(JobworkerCommand<?> command) {
     if (command == null) {
       LOG.error("Command cannot be null");
-      return;
+      return false;
     }
     if (command.getType() == null) {
       LOG.error("Command type cannot be null");
-      return;
+      return false;
     }
     JobworkerCommandHandler handler = handlerMap.get(command.getType());
 
@@ -114,13 +116,18 @@ public final class JobworkerCommandDispatcher {
       try {
         handler.handle(command, context, connectionManager);
       } catch (Exception ex) {
-        LOG.error("Exception while handling command {}: {}",
-            command.getType().name(), ex.getMessage(), ex);
+        handler.updateCommandStatus(context, command, status -> {
+          status.updateStatusAndMessage(CommandStatus.Status.FAILED, ex.getMessage());
+        });
+        LOG.error("Exception while handling command Id {} type {}: {}",
+            command.getId(), command.getType().name(), ex.getMessage(), ex);
       }
     } else {
-      LOG.error("Unknown Jobworker Command queued. There is no handler for " +
+      LOG.error("Unknown Jobworker Command. There is no handler for " +
           "command type: {}", command.getType().name());
+      return false;
     }
+    return true;
   }
 
   /**

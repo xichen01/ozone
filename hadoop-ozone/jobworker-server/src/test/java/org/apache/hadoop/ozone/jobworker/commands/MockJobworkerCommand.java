@@ -26,14 +26,25 @@ import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolP
 public class MockJobworkerCommand extends JobworkerCommand<JobworkerMockCommandProto> {
   private final OMJobworkerCommandProto.Type type;
   private final JobworkerMockCommandProto proto;
+  private final static String OM_SERVICE_ID = "omServiceId";
 
   public MockJobworkerCommand(long id, OMJobworkerCommandProto.Type type) {
-    this(id, type, JobworkerMockCommandProto.getDefaultInstance());
+    this(id, OM_SERVICE_ID, type);
   }
 
-  public MockJobworkerCommand(
-      long id, OMJobworkerCommandProto.Type type, JobworkerMockCommandProto proto) {
-    super(id);
+  public MockJobworkerCommand(long id, String omServiceId, OMJobworkerCommandProto.Type type) {
+    this(id, omServiceId, 0, 0, type, JobworkerMockCommandProto.getDefaultInstance());
+  }
+
+  public MockJobworkerCommand(long id, String omServiceId, long term, long expirationTimestampMs,
+                              OMJobworkerCommandProto.Type type) {
+    this(id, omServiceId, term, expirationTimestampMs, type, JobworkerMockCommandProto.getDefaultInstance());
+
+  }
+
+  public MockJobworkerCommand(long id, String omServiceId, long term, long expirationTimestampMs,
+                              OMJobworkerCommandProto.Type type, JobworkerMockCommandProto proto) {
+    super(id, omServiceId, term, expirationTimestampMs);
     this.type = type;
     this.proto = proto;
   }

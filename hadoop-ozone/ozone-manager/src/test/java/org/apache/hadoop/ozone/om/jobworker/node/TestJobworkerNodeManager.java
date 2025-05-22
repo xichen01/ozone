@@ -18,11 +18,13 @@
 
 package org.apache.hadoop.ozone.om.jobworker.node;
 
+import static org.apache.hadoop.ozone.OzoneConsts.OM_SERVICE_ID_DEFAULT;
 import static org.apache.hadoop.ozone.om.jobworker.OMJobworkerEvents.NEW_JOBWORKER;
 import static org.apache.hadoop.ozone.om.jobworker.OMJobworkerEvents.STALE_JOBWORKER;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.Mockito.mock;
@@ -52,6 +54,7 @@ import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolP
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.RegisterJobworkerResponse;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.RegisterJobworkerResponse.ReturnCode;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.SendHeartbeatRequest;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.SendHeartbeatResponseProto;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerDetailsProto;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerPortType;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.NodeState;
@@ -68,6 +71,7 @@ import org.apache.hadoop.ozone.om.OzoneManager;
 import org.apache.hadoop.ozone.om.helpers.OMNodeDetails;
 import org.apache.hadoop.ozone.om.jobworker.states.JobworkerNodeNotFoundException;
 import org.apache.hadoop.ozone.util.RemoteAddressInterceptor;
+import org.apache.hadoop.util.ProtobufUtils;
 import org.apache.hadoop.util.Time;
 import org.apache.ozone.test.GenericTestUtils;
 import org.junit.jupiter.api.AfterEach;
@@ -229,7 +233,11 @@ public class TestJobworkerNodeManager {
         .getNodeInfo(jobworkerUuid).getLastHeartbeatTime();
     assertTrue(nodeManager.isJobworkerNodeRegistered(jobworkerUuid));
 
-    ozoneManager.getJobworkerServerProtocol().sendHeartbeat(heartbeatRequest);
+    SendHeartbeatResponseProto responseProto =
+        ozoneManager.getJobworkerServerProtocol().sendHeartbeat(heartbeatRequest);
+    assertTrue(responseProto.getTerm() > 0);
+    assertEquals(jobworkerUuid, ProtobufUtils.fromProtobuf(responseProto.getJobworkerUUID()));
+    assertEquals(OM_SERVICE_ID_DEFAULT, responseProto.getOmServiceId());
     long heartbeatTime2 = nodeManager.getNodeStateManager()
         .getNodeInfo(jobworkerUuid).getLastHeartbeatTime();
     assertTrue(heartbeatTime2 > heartbeatTime1);

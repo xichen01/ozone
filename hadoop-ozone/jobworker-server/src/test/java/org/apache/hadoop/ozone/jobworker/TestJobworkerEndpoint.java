@@ -255,7 +255,7 @@ public class TestJobworkerEndpoint {
       JobworkerStateContext context = mock(JobworkerStateContext.class);
       JobworkerReportManager jobworkerReportManager = mock(JobworkerReportManager.class);
       JobworkerStateMachine stateMachine = mock(JobworkerStateMachine.class);
-      when(jobworkerReportManager.getLimitedCountAvailableReports(any())).thenReturn(new ArrayList<>());
+      when(jobworkerReportManager.getLimitedCountAvailableReports(any(), any())).thenReturn(new ArrayList<>());
       when(stateMachine.getReportManager()).thenReturn(jobworkerReportManager);
       when(context.getParent()).thenReturn(stateMachine);
       when(context.getJobworkerDetails()).thenReturn(jobworkerDetails);

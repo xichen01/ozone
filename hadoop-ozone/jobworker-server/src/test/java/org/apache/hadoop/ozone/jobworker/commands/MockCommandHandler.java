@@ -18,6 +18,7 @@
 package org.apache.hadoop.ozone.jobworker.commands;
 
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto;
 import org.apache.hadoop.ozone.jobworker.JobworkerConnectionManager;
@@ -33,8 +34,8 @@ public class MockCommandHandler extends AbstractJobworkerCommandHandler {
   private volatile CountDownLatch pauseLatch;
   private JobworkerCommand<?> lastCommand;
 
-  public MockCommandHandler(OMJobworkerCommandProto.Type type) {
-    super(type);
+  public MockCommandHandler(OMJobworkerCommandProto.Type type, ExecutorService executorService) {
+    super(type, executorService);
   }
 
   @Override

@@ -99,7 +99,8 @@ message RegisterJobworkerResponse {
 message SendHeartbeatRequest {
   required hadoop.hdds.JobworkerDetailsProto jobworkerDetails = 1;
   required string omServiceId = 2;
-  optional JobworkerNodeReportProto jobworkerNodeReport = 6;
+  optional JobworkerNodeReportProto jobworkerNodeReport = 3;
+  repeated CommandStatusReportsProto commandStatusReports = 4;
   // Add Task report at here
 }
 
@@ -128,10 +129,9 @@ message OMJobworkerCommandProto {
     // OM -> Jobworker Command
   }
   required Type commandType = 1;
-  optional int64 term = 2;
-  optional int64 expirationTimestampMs = 3;
-  optional JobworkerReregisterCommandProto jobworkerReregisterCommandProto = 4;
-  optional JobworkerMockCommandProto jobworkerMockCommandProto = 5;
+  optional int64 expirationTimestampMs = 2;
+  optional JobworkerReregisterCommandProto jobworkerReregisterCommandProto = 3;
+  optional JobworkerMockCommandProto jobworkerMockCommandProto = 4;
 }
 
 message JobworkerNodeReportProto {
@@ -152,6 +152,10 @@ message JobworkerReregisterCommandProto {
 message JobworkerMockCommandProto {
 }
 
+message CommandStatusReportsProto {
+  repeated CommandStatus cmdStatus = 1;
+}
+
 message CommandStatus {
   enum Status {
     UNKNOWN_STATUS = 0;
@@ -163,4 +167,6 @@ message CommandStatus {
   required int64 cmdId = 1;
   required Status status = 2 [default = PENDING];
   optional string msg = 3;
+  required string omServiceId = 4;
+  required OMJobworkerCommandProto.Type type = 5;
 }

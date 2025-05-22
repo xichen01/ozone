@@ -28,7 +28,6 @@ import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ThreadLocalRandom;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
-import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.SendHeartbeatRequest;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.SendHeartbeatResponseProto;
@@ -109,16 +108,16 @@ public class HeartbeatEndpointTask implements Callable<EndpointStates> {
   @Override
   public EndpointStates call() throws Exception {
     rpcEndpoint.lock();
-    SendHeartbeatRequest.Builder requestBuilder = null;
+    SendHeartbeatRequest request = null;
     try {
       Preconditions.checkState(this.jobworkerDetailsProto != null);
 
-      requestBuilder = SendHeartbeatRequest.newBuilder()
+      SendHeartbeatRequest.Builder requestBuilder = SendHeartbeatRequest.newBuilder()
           .setJobworkerDetails(jobworkerDetailsProto.getProtoBufMessage())
           .setOmServiceId(rpcEndpoint.getOMServiceId());
-      addReports(requestBuilder);
+      addLimitedReports(requestBuilder);
 
-      SendHeartbeatRequest request = requestBuilder.build();
+      request = requestBuilder.build();
       LOG.debug("Sending heartbeat message to {}: {}",
           rpcEndpoint.getAddress(), request);
       SendHeartbeatResponseProto response = rpcEndpoint.getEndPoint()
@@ -127,11 +126,19 @@ public class HeartbeatEndpointTask implements Callable<EndpointStates> {
       rpcEndpoint.setLastSuccessfulHeartbeat(ZonedDateTime.now());
       rpcEndpoint.zeroMissedCount();
     } catch (Exception ex) {
+      if (request != null) {
+        putBackCommandStatusReports(request);
+      }
       rpcEndpoint.logIfNeeded(ex);
     } finally {
       rpcEndpoint.unlock();
     }
     return rpcEndpoint.getState();
+  }
+
+  private void putBackCommandStatusReports(SendHeartbeatRequest request) {
+    context.putBackCommandStatusReports(request.getOmServiceId(), rpcEndpoint.getAddress(),
+        request.getCommandStatusReportsList());
   }
 
   /**
@@ -153,8 +160,8 @@ public class HeartbeatEndpointTask implements Callable<EndpointStates> {
       context.updateTermOfLeaderOM(rpcEndpoint.getOMServiceId(), response.getTerm());
     }
     // Process commands
-    for (JobworkerServiceProtocolProtos.OMJobworkerCommandProto commandProto : response.getCommandsList()) {
-      processCommandProto(commandProto);
+    for (OMJobworkerCommandProto commandProto : response.getCommandsList()) {
+      processCommandProto(commandProto, response.getOmServiceId());
     }
   }
 
@@ -163,18 +170,19 @@ public class HeartbeatEndpointTask implements Callable<EndpointStates> {
    *
    * @param commandProto the command proto
    */
-  private void processCommandProto(OMJobworkerCommandProto commandProto) {
+  private void processCommandProto(OMJobworkerCommandProto commandProto, String omServiceId) {
     OMJobworkerCommandProto.Type cmdType = commandProto.getCommandType();
     try {
       switch (cmdType) {
+      // use context.addCommand(cmd); to add command if you need
       case reregisterCommand:
         processReregisterCommand();
         break;
       default:
-        LOG.warn("Unknown command type: {}", cmdType);
+        LOG.warn("Unknown command type: {} omServiceId {}", cmdType, omServiceId);
       }
     } catch (Exception e) {
-      LOG.error("Error processing command type {}", cmdType, e);
+      LOG.error("Error processing command type {} omServiceId {}", cmdType, omServiceId, e);
     }
   }
 
@@ -276,13 +284,13 @@ public class HeartbeatEndpointTask implements Callable<EndpointStates> {
   }
 
   /**
-   * Adds all the available reports to heartbeat.
+   * Add a limited number of reports to heartbeat.
    *
    * @param requestBuilder builder to which the report has to be added.
    */
-  private void addReports(SendHeartbeatRequest.Builder requestBuilder) {
+  private void addLimitedReports(SendHeartbeatRequest.Builder requestBuilder) {
     for (Message report : context.getParent().getReportManager()
-        .getLimitedCountAvailableReports(rpcEndpoint.getAddress())) {
+        .getLimitedCountAvailableReports(rpcEndpoint.getOMServiceId(), rpcEndpoint.getAddress())) {
       String reportName = report.getDescriptorForType().getFullName();
       Descriptors.FieldDescriptor descriptor = REPORT_TYPE_TO_FIELD_MAP.get(reportName);
 

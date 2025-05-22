@@ -19,8 +19,10 @@
 
 package org.apache.hadoop.ozone.jobworker.commands;
 
+import com.google.common.base.Preconditions;
 import com.google.protobuf.Message;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * Base class for all jobworker commands.
@@ -30,17 +32,31 @@ import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolP
 public abstract class JobworkerCommand<T extends Message> {
   private final long id;
   private long term;
-  private String omServiceId;
-  private String encodedToken;
-  private long deadline;
+  private final String omServiceId;
+  private long expirationTimestampMs;
 
   /**
    * Constructor with command ID.
    *
    * @param id Command ID
    */
-  public JobworkerCommand(long id) {
+  public JobworkerCommand(long id, String omServiceId) {
+    Preconditions.checkNotNull(omServiceId, "omServiceId cannot be null");
     this.id = id;
+    this.omServiceId = omServiceId;
+  }
+
+  /**
+   * Constructor with command ID.
+   *
+   * @param id Command ID
+   */
+  public JobworkerCommand(long id, String omServiceId, long term, long expirationTimestampMs) {
+    Preconditions.checkNotNull(omServiceId, "omServiceId cannot be null");
+    this.id = id;
+    this.omServiceId = omServiceId;
+    this.term = term;
+    this.expirationTimestampMs = expirationTimestampMs;
   }
 
   /**
@@ -76,48 +92,13 @@ public abstract class JobworkerCommand<T extends Message> {
   }
 
   /**
-   * Sets the term of the OM leader.
-   *
-   * @param term OM leader term
-   */
-  public void setTerm(long term) {
-    this.term = term;
-  }
-
-  /**
    * Returns the OM service ID this command was sent from.
    *
    * @return OM service ID
    */
+  @NotNull
   public String getOmServiceId() {
     return omServiceId;
-  }
-
-  /**
-   * Sets the OM service ID.
-   *
-   * @param omServiceId OM service ID
-   */
-  public void setOmServiceId(String omServiceId) {
-    this.omServiceId = omServiceId;
-  }
-
-  /**
-   * Returns the encoded security token if any.
-   *
-   * @return encoded token
-   */
-  public String getEncodedToken() {
-    return encodedToken;
-  }
-
-  /**
-   * Sets the encoded security token.
-   *
-   * @param encodedToken security token
-   */
-  public void setEncodedToken(String encodedToken) {
-    this.encodedToken = encodedToken;
   }
 
   /**
@@ -125,17 +106,8 @@ public abstract class JobworkerCommand<T extends Message> {
    *
    * @return deadline timestamp
    */
-  public final long getDeadline() {
-    return deadline;
-  }
-
-  /**
-   * Sets the deadline for command execution.
-   *
-   * @param deadline timestamp
-   */
-  public final void setDeadline(long deadline) {
-    this.deadline = deadline;
+  public final long getExpirationTimestampMs() {
+    return expirationTimestampMs;
   }
 
   /**
@@ -145,6 +117,6 @@ public abstract class JobworkerCommand<T extends Message> {
    * @return true if expired, false otherwise
    */
   public boolean hasExpired(long currentTimeMillis) {
-    return getDeadline() > 0 && currentTimeMillis > getDeadline();
+    return getExpirationTimestampMs() > 0 && currentTimeMillis > getExpirationTimestampMs();
   }
 }

@@ -22,6 +22,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.util.Map;
 import java.util.OptionalLong;
@@ -47,10 +49,8 @@ public class TestJobworkerCommandManager {
 
   @Test
   public void testAddCommand() {
-    JobworkerCommand<?> command = new MockJobworkerCommand(1L,
+    JobworkerCommand<?> command = new MockJobworkerCommand(1L, TEST_SERVICE_ID, 5L, 0L,
         Type.mockCommand);
-    command.setOmServiceId(TEST_SERVICE_ID);
-    command.setTerm(5L);
     commandManager.addCommand(command);
     // Verify command was added by checking the queue summary
     Map<Type, Integer> summary = commandManager.getCommandQueueSummary();
@@ -62,18 +62,8 @@ public class TestJobworkerCommandManager {
   }
 
   @Test
-  public void testAddCommandWithoutOmServiceId() {
-    JobworkerCommand<?> command = new MockJobworkerCommand(1L, Type.mockCommand);
-    command.setTerm(5L);
-    commandManager.addCommand(command);
-    // We do not add the command which OM serviceID is null to the command queue
-    assertNull(commandManager.getNextCommand());
-  }
-
-  @Test
   public void testAddCommandWithoutTerm() {
-    JobworkerCommand<?> command = new MockJobworkerCommand(1L, Type.mockCommand);
-    command.setOmServiceId(TEST_SERVICE_ID);
+    JobworkerCommand<?> command = new MockJobworkerCommand(1L, TEST_SERVICE_ID, Type.mockCommand);
     commandManager.addCommand(command);
     // It is Ok for the 0-term value (non-HA cluster)
     assertNextCommand(1L, TEST_SERVICE_ID, Type.mockCommand);
@@ -212,7 +202,8 @@ public class TestJobworkerCommandManager {
     commandManager.addCommand(command);
 
     // Try to get command status (depends on command implementation)
-    JobworkerCommandStatus status = commandManager.getCmdStatus(commandId);
+    JobworkerCommandStatus status = commandManager.getCmdStatus(
+        command.getOmServiceId(), commandId);
 
     // Depending on implementation, status might be null or initialized
     if (status != null) {
@@ -227,9 +218,7 @@ public class TestJobworkerCommandManager {
 
   private void createAndAddCommand(JobworkerCommandManager commandManager,
                                    long id, String omServiceId, long term, Type type) {
-    JobworkerCommand<?> initCommand = new MockJobworkerCommand(id, type);
-    initCommand.setOmServiceId(omServiceId);
-    initCommand.setTerm(term);
+    JobworkerCommand<?> initCommand = new MockJobworkerCommand(id, omServiceId, term, 0L, type);
     commandManager.addCommand(initCommand);
   }
 

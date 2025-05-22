@@ -29,6 +29,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.hadoop.hdds.conf.ConfigurationSource;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatus;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatusReportsProto;
 import org.apache.hadoop.ozone.jobworker.JobworkerClientConfiguration;
 import org.apache.hadoop.ozone.jobworker.JobworkerStateContext;
 import org.apache.hadoop.util.concurrent.HadoopExecutors;
@@ -53,8 +55,9 @@ public final class JobworkerReportManager {
   private final List<JobworkerReportPublisher> publishers;
   private final ScheduledExecutorService executorService;
   // Store all reports to be sent to endpoints
-  private final Map<InetSocketAddress, List<Message>> reportQueue;
+  private final Map<String, Map<InetSocketAddress, List<Message>>> reportQueue;
   private final int maxReportCount;
+  private final int maxReportInBytes;
 
   /**
    * Construction of {@link JobworkerReportManager} should be done via
@@ -77,6 +80,7 @@ public final class JobworkerReportManager {
     this.reportQueue = Collections.synchronizedMap(new HashMap<>());
     JobworkerClientConfiguration jwConf = conf.getObject(JobworkerClientConfiguration.class);
     maxReportCount = jwConf.getMaxReportCount();
+    maxReportInBytes = jwConf.getMaxReportSizeInBytes();
   }
 
   /**
@@ -107,17 +111,18 @@ public final class JobworkerReportManager {
    *
    * @param endpoint The endpoint to register
    */
-  public void registerEndpoint(InetSocketAddress endpoint) {
+  public void registerEndpoint(InetSocketAddress endpoint, String omServiceId) {
+    reportQueue.computeIfAbsent(omServiceId, ignore -> new HashMap<>());
     synchronized (reportQueue) {
-      if (!reportQueue.containsKey(endpoint)) {
-        reportQueue.put(endpoint, new LinkedList<>());
-        LOG.debug("Registered endpoint {} for report queuing", endpoint);
+      if (!reportQueue.get(omServiceId).containsKey(endpoint)) {
+        reportQueue.get(omServiceId).put(endpoint, new LinkedList<>());
+        LOG.info("Registered endpoint {} omServiceId {} for report queuing", endpoint, omServiceId);
       }
     }
   }
 
   /**
-   * Adds a report to the queue for all registered endpoints.
+   * Adds a report to the state context.
    *
    * @param report report to be added
    */
@@ -134,17 +139,75 @@ public final class JobworkerReportManager {
 
     final String reportType = descriptor.getFullName();
     if (reportType == null) {
-      LOG.warn("Invalid report with the null report type");
+      LOG.warn("Invalid report with a null report type");
       return;
     }
 
-    // Queue the report for each endpoint
+    if (report instanceof CommandStatusReportsProto) {
+      // Command status reports only need to report to the OM group that send the command.
+      addCommandStatusReportForOMGroup(report);
+    } else {
+      addReportForAllOMGroup(report);
+    }
+  }
+
+  /**
+   * Adds a CommandStatusReportsProto report to a specific endpoint for a given OM service ID.
+   *
+   * @param omServiceId The target OM service ID
+   * @param endpoint The target endpoint address
+   * @param report CommandStatusReportsProto to be added
+   */
+  public void addCommandStatusReport(String omServiceId, InetSocketAddress endpoint,
+                                     CommandStatusReportsProto report) {
+    if (report == null) {
+      return;
+    }
+
+    if (reportQueue.get(omServiceId) == null ||
+        reportQueue.get(omServiceId).get(endpoint) == null) {
+      LOG.warn("Invalid endpoint {} for omServiceId {}", endpoint, omServiceId);
+      return;
+    }
+
     synchronized (reportQueue) {
-      for (List<Message> queue : reportQueue.values()) {
+      reportQueue.get(omServiceId).get(endpoint).add(report);
+      LOG.debug("Added report {} for omServiceId {} and endpoint {}",
+          report.getDescriptorForType().getFullName(), omServiceId, endpoint);
+    }
+  }
+
+  private void addCommandStatusReportForOMGroup(Message report) {
+    Map<String, CommandStatusReportsProto.Builder> omServiceIdToReports = new HashMap<>();
+    for (CommandStatus commandStatus : ((CommandStatusReportsProto) report).getCmdStatusList()) {
+      String omServiceId = commandStatus.getOmServiceId();
+      omServiceIdToReports.computeIfAbsent(omServiceId,
+              ignore -> CommandStatusReportsProto.newBuilder())
+          .addCmdStatus(commandStatus);
+    }
+    for (String omServiceId : omServiceIdToReports.keySet()) {
+      if (reportQueue.get(omServiceId) == null) {
+        LOG.warn("Invalid report with null endpoint for omServiceId {}", omServiceId);
+        continue;
+      }
+      // Queue the report for specific OM group endpoint
+      synchronized (reportQueue) {
+        for (List<Message> queue : reportQueue.get(omServiceId).values()) {
+          queue.add(omServiceIdToReports.get(omServiceId).build());
+        }
+        LOG.debug("Added report {} for omServiceId {}",
+            report.getDescriptorForType().getFullName(), omServiceId);
+      }
+    }
+  }
+
+  private void addReportForAllOMGroup(Message report) {
+    for (String omServiceId : reportQueue.keySet()) {
+      for (List<Message> queue : reportQueue.get(omServiceId).values()) {
         queue.add(report);
       }
-      LOG.debug("Added report of type {} to queue for {} endpoints",
-          reportType, reportQueue.size());
+      LOG.debug("Added report {} for omServiceId {}",
+          report.getDescriptorForType().getFullName(), omServiceId);
     }
   }
 
@@ -154,31 +217,58 @@ public final class JobworkerReportManager {
    * @param endpoint the endpoint
    * @return A limited number of lists of reports
    */
-  public List<Message> getLimitedCountAvailableReports(InetSocketAddress endpoint) {
-    return getAllAvailableReportsUpToLimit(endpoint, maxReportCount);
+  public List<Message> getLimitedCountAvailableReports(String omServiceId, InetSocketAddress endpoint) {
+    return getAllAvailableReportsUpToLimit(omServiceId, endpoint, maxReportCount, maxReportInBytes);
   }
 
   /**
-   * Gets all available reports for a specific endpoint up to a specified limit.
+   * Gets all available reports for a specific endpoint up to a specified count limit
+   * and size limit.
    *
-   * @param endpoint the endpoint
-   * @param limit    maximum number of reports to return
-   * @return List of reports
+   * @param omServiceId The target OM service ID
+   * @param endpoint The target endpoint address
+   * @param countLimit Maximum number of reports to return
+   * @param sizeLimitInBytes Maximum total size in bytes of all returned reports
+   * @return List of reports within the given limits
    */
   public List<Message> getAllAvailableReportsUpToLimit(
-      InetSocketAddress endpoint, int limit) {
+      String omServiceId, InetSocketAddress endpoint,
+      int countLimit, int sizeLimitInBytes) {
+
     List<Message> reportsToReturn = new ArrayList<>();
+    if (reportQueue.get(omServiceId) == null) {
+      LOG.warn("Invalid report with null endpoint for omServiceId {}", omServiceId);
+      return reportsToReturn;
+    }
 
     synchronized (reportQueue) {
-      List<Message> reportsForEndpoint = reportQueue.get(endpoint);
-      if (reportsForEndpoint != null) {
-        int numReportsToGet = Math.min(reportsForEndpoint.size(), limit);
-        if (numReportsToGet > 0) {
-          List<Message> tempList = reportsForEndpoint.subList(0, numReportsToGet);
-          reportsToReturn.addAll(tempList);
-          tempList.clear();
-          LOG.debug("Retrieved {} reports for endpoint {}", reportsToReturn.size(), endpoint);
+      List<Message> reportsForEndpoint = reportQueue.get(omServiceId).get(endpoint);
+      if (reportsForEndpoint == null || reportsForEndpoint.isEmpty()) {
+        return reportsToReturn;
+      }
+
+      long totalSize = 0;
+      int index = 0;
+
+      while (index < reportsForEndpoint.size() && reportsToReturn.size() < countLimit) {
+        Message report = reportsForEndpoint.get(index);
+        int reportSize = report.getSerializedSize();
+
+        if (totalSize + reportSize > sizeLimitInBytes) {
+          LOG.warn("Adding report would exceed the total size limit: {} + {} > {} bytes",
+              totalSize, reportSize, sizeLimitInBytes);
+          break;
         }
+
+        reportsToReturn.add(report);
+        totalSize += reportSize;
+        index++;
+      }
+
+      if (!reportsToReturn.isEmpty()) {
+        reportsForEndpoint.subList(0, reportsToReturn.size()).clear();
+        LOG.debug("Retrieved {} reports (total size: {} bytes) for endpoint {}",
+            reportsToReturn.size(), totalSize, endpoint);
       }
     }
 

@@ -18,9 +18,12 @@
 
 package org.apache.hadoop.ozone.om.jobworker.node;
 
+import java.util.List;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
 import org.apache.hadoop.hdds.server.events.EventHandler;
 import org.apache.hadoop.hdds.server.events.EventPublisher;
+import org.apache.hadoop.ozone.jobworker.command.OMJobworkerCommand;
+import org.apache.hadoop.ozone.om.jobworker.command.OMJobworkerCommandManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,9 +37,12 @@ public class StaleJobworkerHandler implements EventHandler<JobworkerDetails> {
       LoggerFactory.getLogger(StaleJobworkerHandler.class);
 
   private final JobworkerNodeManager nodeManager;
+  private final OMJobworkerCommandManager omJobworkerCommandManager;
 
-  public StaleJobworkerHandler(JobworkerNodeManager nodeManager) {
+  public StaleJobworkerHandler(JobworkerNodeManager nodeManager,
+                               OMJobworkerCommandManager omJobworkerCommandManager) {
     this.nodeManager = nodeManager;
+    this.omJobworkerCommandManager = omJobworkerCommandManager;
   }
 
   @Override
@@ -47,6 +53,11 @@ public class StaleJobworkerHandler implements EventHandler<JobworkerDetails> {
 
     // For any pending commands targeted at this JobWorker, we can clear them
     // since the JobWorker is no longer reachable
-    nodeManager.pollJobworkerCommand(jobworkerDetails.getUuid());
+    List<OMJobworkerCommand> commands =
+        nodeManager.pollJobworkerCommand(jobworkerDetails.getUuid());
+    omJobworkerCommandManager.markCommandsFailedForJobworker(commands, jobworkerDetails);
+
+    LOG.info("JobWorker {} marked as stale: updated {} commands to FAILED state",
+        jobworkerDetails.getUuidString(), commands.size());
   }
 }

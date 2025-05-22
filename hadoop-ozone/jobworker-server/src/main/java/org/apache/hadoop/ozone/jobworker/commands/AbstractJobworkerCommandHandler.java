@@ -20,6 +20,8 @@
 package org.apache.hadoop.ozone.jobworker.commands;
 
 import com.google.common.annotations.VisibleForTesting;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatus;
@@ -31,6 +33,8 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Abstract base class for JobworkerCommandHandler implementations.
+ * Handles command status tracking and transitions with support for
+ * concurrent command execution.
  */
 public abstract class AbstractJobworkerCommandHandler implements JobworkerCommandHandler {
 
@@ -39,15 +43,64 @@ public abstract class AbstractJobworkerCommandHandler implements JobworkerComman
   private final AtomicInteger invocationCount = new AtomicInteger(0);
   private final AtomicLong totalTime = new AtomicLong(0);
   private final AtomicInteger queuedCount = new AtomicInteger(0);
+  private final ExecutorService executorService;
   private final OMJobworkerCommandProto.Type type;
 
   /**
-   * Create a new command handler for the specified type.
+   * Create a new command handler for the specified type using the provided executor service.
    *
    * @param type The command type this handler processes
+   * @param executorService The executor service to use for command processing
    */
-  protected AbstractJobworkerCommandHandler(OMJobworkerCommandProto.Type type) {
+  protected AbstractJobworkerCommandHandler(OMJobworkerCommandProto.Type type,
+                                            ExecutorService executorService) {
     this.type = type;
+    this.executorService = executorService;
+  }
+
+  /**
+   * Validates whether a state transition is allowed.
+   */
+  private boolean isValidStateTransition(CommandStatus.Status currentStatus,
+                                         CommandStatus.Status newStatus) {
+    if (currentStatus == newStatus) {
+      return true;
+    }
+
+    switch (currentStatus) {
+    case PENDING:
+      return newStatus == CommandStatus.Status.EXECUTING ||
+          newStatus == CommandStatus.Status.FAILED;
+
+    case EXECUTING:
+      return newStatus == CommandStatus.Status.SUCCEEDED ||
+          newStatus == CommandStatus.Status.FAILED;
+
+    case SUCCEEDED:
+    case FAILED:
+      // Terminal states cannot transition
+      return false;
+
+    default:
+      LOG.warn("Unknown command status: {}", currentStatus);
+      return false;
+    }
+  }
+
+  /**
+   * Update command status with validation.
+   */
+  public void updateCommandStatus(JobworkerStateContext context, JobworkerCommand<?> command,
+                                   CommandStatus.Status newStatus, String message) {
+    updateCommandStatus(context, command, status -> {
+      CommandStatus.Status currentStatus = status.getStatus();
+      if (isValidStateTransition(currentStatus, newStatus)) {
+        status.updateStatusAndMessage(newStatus, message);
+      } else {
+        LOG.warn("Invalid state transition attempted for command {} from {} to {}",
+            command.getId(), currentStatus, newStatus);
+      }
+    });
   }
 
   @Override
@@ -57,34 +110,43 @@ public abstract class AbstractJobworkerCommandHandler implements JobworkerComman
     if (command.getType() != getCommandType()) {
       LOG.warn("Command type mismatch: got {}, expected {}",
           command.getType(), getCommandType());
+      updateCommandStatus(context, command, CommandStatus.Status.FAILED,
+          "Command type mismatch");
       return;
     }
 
     if (command.hasExpired(System.currentTimeMillis())) {
       LOG.warn("Command {} has expired and will not be processed", command.getId());
-      updateCommandStatus(context, command, status -> {
-        status.setStatus(CommandStatus.Status.FAILED);
-        status.setMessage("Command expired before processing");
-      }, LOG);
+      updateCommandStatus(context, command, CommandStatus.Status.FAILED,
+          "Command expired");
       return;
     }
 
-    long startTime = System.currentTimeMillis();
     invocationCount.incrementAndGet();
     queuedCount.incrementAndGet();
+    Runnable task = () -> {
+      long startTime = System.currentTimeMillis();
+      try {
+        updateCommandStatus(context, command, CommandStatus.Status.EXECUTING, null);
+        processCommand(command, context, connectionManager);
+        updateCommandStatus(context, command, CommandStatus.Status.SUCCEEDED, null);
+      } catch (Exception e) {
+        LOG.error("Error processing command {} of type {}",
+            command.getId(), command.getType(), e);
+        updateCommandStatus(context, command, CommandStatus.Status.FAILED, e.getMessage());
+      } finally {
+        long endTime = System.currentTimeMillis();
+        totalTime.addAndGet(endTime - startTime);
+        queuedCount.decrementAndGet();
+      }
+    };
     try {
-      processCommand(command, context, connectionManager);
-    } catch (Exception e) {
-      LOG.error("Error processing command {} of type {}",
-          command.getId(), command.getType(), e);
-      updateCommandStatus(context, command, status -> {
-        status.setStatus(CommandStatus.Status.FAILED);
-        status.setMessage("Error: " + e.getMessage());
-      }, LOG);
-    } finally {
-      long endTime = System.currentTimeMillis();
-      totalTime.addAndGet(endTime - startTime);
-      queuedCount.decrementAndGet();
+      executorService.submit(task);
+    } catch (RejectedExecutionException e) {
+      LOG.error("Command execution rejected: {}", e.getMessage());
+      updateCommandStatus(context, command, CommandStatus.Status.FAILED,
+          "Command execution rejected");
+      queuedCount.decrementAndGet(); // Decrement counter if task wasn't accepted
     }
   }
 

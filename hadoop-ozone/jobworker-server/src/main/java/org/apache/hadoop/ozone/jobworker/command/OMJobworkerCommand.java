@@ -32,10 +32,11 @@ import org.apache.hadoop.hdds.server.events.IdentifiableEventPayload;
 public abstract class OMJobworkerCommand<T extends Message> implements
     IdentifiableEventPayload {
   private final long id;
-  private long term;
   private long expirationTimestampMs = 0;
 
   public OMJobworkerCommand() {
+    // TODO jobworker Replace this with SequenceIdGenerator which base on the Ratis to generate id,
+    //  so we can support HA mode
     this.id = HddsIdFactory.getLongId();
   }
 
@@ -62,21 +63,6 @@ public abstract class OMJobworkerCommand<T extends Message> implements
   @Override
   public long getId() {
     return id;
-  }
-
-  /**
-   * Get term of this command.
-   * @return term
-   */
-  public long getTerm() {
-    return term;
-  }
-
-  /**
-   * Set the term of this command.
-   */
-  public void setTerm(long term) {
-    this.term = term;
   }
 
   /**

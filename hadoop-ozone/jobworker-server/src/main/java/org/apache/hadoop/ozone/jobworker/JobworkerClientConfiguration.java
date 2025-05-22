@@ -51,7 +51,7 @@ public class JobworkerClientConfiguration {
       defaultValue = "32M",
       type = ConfigType.SIZE,
       tags = {ConfigTag.JOBWORKER},
-      description = "Maximum inbound message size for gRPC in bytes.")
+      description = "Maximum inbound message size for gRPC.")
   private int grpcMaximumInboundLength;
 
   public int getGrpcMaximumInboundLength() {
@@ -129,7 +129,7 @@ public class JobworkerClientConfiguration {
       type = ConfigType.INT,
       tags = {ConfigTag.JOBWORKER},
       defaultValue = "4096",
-      description = "The maximum number of reports that a JobWorker can send to OM at one time.")
+      description = "The maximum number of reports that a Jobworker can send to OM at one time.")
   private int maxReportCount = 4096;
 
 
@@ -139,6 +139,23 @@ public class JobworkerClientConfiguration {
 
   public void setMaxReportCount(int maxReportCount) {
     this.maxReportCount = maxReportCount;
+  }
+
+
+  @Config(key = "max.report.size",
+      type = ConfigType.SIZE,
+      tags = {ConfigTag.JOBWORKER},
+      defaultValue = "8M",
+      description = "The maximum size of reports that a Jobworker can send to OM at one time.")
+  private int maxReportSizeInBytes = 8 * 1024 * 1024;
+
+
+  public int getMaxReportSizeInBytes() {
+    return maxReportSizeInBytes;
+  }
+
+  public void setMaxReportSizeInBytes(int maxReportSizeInBytes) {
+    this.maxReportSizeInBytes = maxReportSizeInBytes;
   }
 
   @Config(key = "command.queue.limit",
@@ -155,6 +172,22 @@ public class JobworkerClientConfiguration {
 
   public void setCommandQueueLimit(int commandQueueLimit) {
     this.commandQueueLimit = commandQueueLimit;
+  }
+
+  @Config(key = "command.status.report.interval",
+      type = ConfigType.TIME,
+      tags = {ConfigTag.JOBWORKER},
+      defaultValue = "30s",
+      description = "Interval for sending command status reports from JobWorker to OM."
+  )
+  private Duration commandStatusReportInterval = Duration.ofSeconds(30);
+
+  public Duration getCommandStatusReportInterval() {
+    return commandStatusReportInterval;
+  }
+
+  public void setCommandStatusReportInterval(Duration commandStatusReportInterval) {
+    this.commandStatusReportInterval = commandStatusReportInterval;
   }
 
 }

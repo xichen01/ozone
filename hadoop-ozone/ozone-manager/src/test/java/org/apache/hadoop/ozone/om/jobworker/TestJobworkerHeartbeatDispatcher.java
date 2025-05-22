@@ -17,6 +17,7 @@
 
 package org.apache.hadoop.ozone.om.jobworker;
 
+import static org.apache.hadoop.ozone.om.jobworker.OMJobworkerEvents.JW_COMMAND_STATUS_REPORT;
 import static org.apache.hadoop.ozone.om.jobworker.OMJobworkerEvents.JW_NODE_REPORT;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
@@ -31,8 +32,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
 import org.apache.hadoop.hdds.protocol.MockJobworkerDetails;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatus;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatusReportsProto;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.JobworkerNodeReportProto;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.JobworkerStorageReportProto;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.SendHeartbeatRequest;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerDetailsProto;
 import org.apache.hadoop.hdds.server.events.Event;
@@ -55,6 +59,7 @@ public class TestJobworkerHeartbeatDispatcher {
   private EventPublisher mockEventPublisher;
   private JobworkerHeartbeatDispatcher dispatcher;
   private UUID jobworkerUuid;
+  private final String OM_SERVICE_ID_1 = "om-service-1";
 
   @BeforeEach
   public void setup() {
@@ -146,6 +151,56 @@ public class TestJobworkerHeartbeatDispatcher {
     assertEquals(1, eventCount.get());
   }
 
+  @Test
+  public void testHeartbeatWithCommandStatusReports() {
+    // GIVEN
+    JobworkerDetailsProto jobworkerProto = MockJobworkerDetails.createJobworkerDetails(jobworkerUuid.toString()).getProtoBufMessage();
+    JobworkerDetails jobworkerDetails = JobworkerDetails.getFromProtoBuf(jobworkerProto);
+    JobworkerNodeReportProto nodeReport = createNodeReportProto();
+    CommandStatusReportsProto statusReport = createCommandStatusReportProto();
+
+    // Create heartbeat with both node report and command status report
+    SendHeartbeatRequest heartbeat = SendHeartbeatRequest.newBuilder()
+        .setJobworkerDetails(jobworkerProto)
+        .setJobworkerNodeReport(nodeReport)
+        .addCommandStatusReports(statusReport)
+        .setOmServiceId(OM_SERVICE_ID_1)
+        .build();
+
+    when(mockNodeManager.isJobworkerNodeRegistered(jobworkerUuid)).thenReturn(true);
+    List<OMJobworkerCommand> commands = new ArrayList<>();
+    when(mockNodeManager.pollJobworkerCommand(jobworkerUuid)).thenReturn(commands);
+
+    // WHEN
+    List<OMJobworkerCommand> returnedCommands = dispatcher.dispatch(heartbeat);
+
+    // THEN
+    verify(mockNodeManager).isJobworkerNodeRegistered(jobworkerUuid);
+    verify(mockNodeManager).processHeartbeat(jobworkerDetails);
+    verify(mockNodeManager).pollJobworkerCommand(jobworkerUuid);
+
+    // Verify the event was fired for the node report
+    ArgumentCaptor<NodeReportFromJobworker> nodeReportCaptor =
+        ArgumentCaptor.forClass(NodeReportFromJobworker.class);
+    verify(mockEventPublisher).fireEvent(
+        Mockito.eq(JW_NODE_REPORT), nodeReportCaptor.capture());
+
+    NodeReportFromJobworker capturedNodeReport = nodeReportCaptor.getValue();
+    assertEquals(jobworkerDetails, capturedNodeReport.getJobworkerDetails());
+    assertEquals(nodeReport, capturedNodeReport.getReport());
+
+    // Verify the event was fired for the command status report
+    ArgumentCaptor<JobworkerHeartbeatDispatcher.CommandStatusReportFromJobworker> statusReportCaptor =
+        ArgumentCaptor.forClass(JobworkerHeartbeatDispatcher.CommandStatusReportFromJobworker.class);
+    verify(mockEventPublisher).fireEvent(
+        Mockito.eq(JW_COMMAND_STATUS_REPORT), statusReportCaptor.capture());
+
+    JobworkerHeartbeatDispatcher.CommandStatusReportFromJobworker capturedStatusReport = statusReportCaptor.getValue();
+    assertEquals(jobworkerDetails, capturedStatusReport.getJobworkerDetails());
+    assertEquals(statusReport, capturedStatusReport.getReport());
+    assertEquals(commands, returnedCommands);
+  }
+
   private JobworkerNodeReportProto createNodeReportProto() {
     JobworkerStorageReportProto storageReport = JobworkerStorageReportProto.newBuilder()
         .setStorageUuid(UUID.randomUUID().toString())
@@ -160,11 +215,22 @@ public class TestJobworkerHeartbeatDispatcher {
         .build();
   }
 
+  private CommandStatusReportsProto createCommandStatusReportProto() {
+    return CommandStatusReportsProto.newBuilder()
+        .addCmdStatus(CommandStatus.newBuilder()
+            .setCmdId(1L)
+            .setType(OMJobworkerCommandProto.Type.mockCommand)
+            .setStatus(CommandStatus.Status.PENDING)
+            .setOmServiceId(OM_SERVICE_ID_1)
+            .build()
+        ).build();
+  }
+
   private SendHeartbeatRequest createHeartbeatRequest(JobworkerDetailsProto jobworkerProto) {
     return SendHeartbeatRequest.newBuilder()
         .setJobworkerDetails(jobworkerProto)
         .setJobworkerNodeReport(createNodeReportProto())
-        .setOmServiceId("om-service-1")
+        .setOmServiceId(OM_SERVICE_ID_1)
         .build();
   }
 
@@ -173,7 +239,7 @@ public class TestJobworkerHeartbeatDispatcher {
     return SendHeartbeatRequest.newBuilder()
         .setJobworkerDetails(jobworkerProto)
         .setJobworkerNodeReport(nodeReportProto)
-        .setOmServiceId("om-service-1")
+        .setOmServiceId(OM_SERVICE_ID_1)
         .build();
   }
 }

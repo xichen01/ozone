@@ -21,7 +21,6 @@ import java.util.function.Consumer;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos;
 import org.apache.hadoop.ozone.jobworker.JobworkerConnectionManager;
 import org.apache.hadoop.ozone.jobworker.JobworkerStateContext;
-import org.slf4j.Logger;
 
 /**
  * Generic interface for jobworker command handlers.
@@ -74,20 +73,12 @@ public interface JobworkerCommandHandler {
    * @param context          Context containing the command status
    * @param command          Command to update status for
    * @param cmdStatusUpdater Function to update the status
-   * @param log              Logger to use for reporting issues
    */
   default void updateCommandStatus(JobworkerStateContext context,
                                    JobworkerCommand<?> command,
-                                   Consumer<JobworkerCommandStatus> cmdStatusUpdater,
-                                   Logger log) {
+                                   Consumer<JobworkerCommandStatus> cmdStatusUpdater) {
     JobworkerCommandManager commandManager = context.getCommandManager();
-    JobworkerCommandStatus status = commandManager.getCmdStatus(command.getId());
-    if (status != null) {
-      cmdStatusUpdater.accept(status);
-    } else {
-      log.warn("{} with Id:{} not found.", command.getType(),
-          command.getId());
-    }
+    commandManager.updateCommand(command, cmdStatusUpdater);
   }
 
   /**

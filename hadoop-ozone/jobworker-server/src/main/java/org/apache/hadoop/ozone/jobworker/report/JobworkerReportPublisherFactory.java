@@ -21,6 +21,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.apache.hadoop.hdds.conf.ConfigurationSource;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatusReportsProto;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.JobworkerNodeReportProto;
 
 import com.google.protobuf.Message;
@@ -45,6 +46,7 @@ public class JobworkerReportPublisherFactory {
 
     // Register all report types and their publishers
     report2publisher.put(JobworkerNodeReportProto.class, JobworkerNodeReportPublisher.class);
+    report2publisher.put(CommandStatusReportsProto.class, JobworkerCommandStatusReportPublisher.class);
     // Add more report types at here
   }
 
