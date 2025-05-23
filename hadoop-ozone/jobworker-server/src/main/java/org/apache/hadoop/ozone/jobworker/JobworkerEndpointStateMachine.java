@@ -51,7 +51,8 @@ public class JobworkerEndpointStateMachine implements Closeable {
   private final Lock lock;
   private final ConfigurationSource conf;
   private final ExecutorService executorService;
-  private String serviceId;
+  private final String configuredOmServiceId;
+  private String omServiceId;
   private EndpointStates state;
   private GetOMVersionResponse version;
   private ZonedDateTime lastSuccessfulHeartbeat;
@@ -64,18 +65,18 @@ public class JobworkerEndpointStateMachine implements Closeable {
    * @param endPoint         - The RPC endpoint
    * @param conf             - Configuration
    * @param threadNamePrefix - Prefix for thread names
-   * @param serviceId        - OM service ID
+   * @param configuredOmServiceId  - OM service ID in the current jobworker configuration
    */
   public JobworkerEndpointStateMachine(InetSocketAddress address,
                                        JobworkerProtocol endPoint, ConfigurationSource conf,
-                                       String threadNamePrefix, String serviceId) {
+                                       String threadNamePrefix, String configuredOmServiceId) {
     this.endPoint = endPoint;
     this.missedCount = new AtomicLong(0);
     this.address = address;
     this.state = EndpointStates.getInitState();
     this.lock = new ReentrantLock();
     this.conf = conf;
-    this.serviceId = serviceId;
+    this.configuredOmServiceId = configuredOmServiceId;
     executorService = Executors.newSingleThreadExecutor(new ThreadFactoryBuilder()
         .setNameFormat(threadNamePrefix + "JobworkerEndpointStateMachineTaskThread-"
             + this.address + "-%d ")
@@ -215,7 +216,16 @@ public class JobworkerEndpointStateMachine implements Closeable {
    * @return OM service ID
    */
   public String getOMServiceId() {
-    return serviceId;
+    return omServiceId;
+  }
+
+  /**
+   * Get the OM service ID in the current jobworker configuration for this endpoint.
+   *
+   * @return OM service ID
+   */
+  public String getConfiguredOmServiceId() {
+    return configuredOmServiceId;
   }
 
   /**
@@ -223,8 +233,8 @@ public class JobworkerEndpointStateMachine implements Closeable {
    *
    * @param serviceId the OM service ID
    */
-  public void setServiceId(String serviceId) {
-    this.serviceId = serviceId;
+  public void setOmServiceId(String serviceId) {
+    this.omServiceId = serviceId;
   }
 
   /**
@@ -284,7 +294,8 @@ public class JobworkerEndpointStateMachine implements Closeable {
         ", term=" + term +
         ", version=" + version +
         ", state=" + state +
-        ", serviceId='" + serviceId + '\'' +
+        ", omServiceId='" + omServiceId + '\'' +
+        ", configuredOmServiceId='" + configuredOmServiceId + '\'' +
         ", address=" + address +
         '}';
   }

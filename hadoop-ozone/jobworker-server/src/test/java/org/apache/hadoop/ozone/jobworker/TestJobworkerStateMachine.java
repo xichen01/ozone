@@ -245,7 +245,6 @@ public class TestJobworkerStateMachine {
       task.execute(executorService);
       JobworkerStates newState = task.await(2, TimeUnit.SECONDS);
       assertEquals(OM_SERVER_COUNT * OM_GROUP_COUNT, stateMachine.getConnectionManager().getAllEndpoints().size());
-      assertEquals(OM_GROUP_COUNT, stateMachine.getConnectionManager().getAllOMServiceIds().size());
 
       // Set to the next State for JobworkerStateMachine just likeJobworkerStateContext.execute
       stateMachine.getContext().setState(newState);

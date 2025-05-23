@@ -82,21 +82,21 @@ public class InitJobworkerState implements JobworkerStateHandler<JobworkerStates
       boolean anyAdded = false;
       // This omServiceId is the omServiceId in the current jobworker configuration and
       // may be different from the omServiceId on the OM side.
-      for (String omServiceId : oMsAddress.keySet()) {
-        if (oMsAddress.get(omServiceId).isEmpty()) {
-          LOG.error("No OM endpoints are found in the configuration for the OM serviceId {}.", omServiceId);
+      for (String configuredOmServiceId : oMsAddress.keySet()) {
+        if (oMsAddress.get(configuredOmServiceId).isEmpty()) {
+          LOG.error("No OM endpoints are found in the configuration for the OM serviceId {}.", configuredOmServiceId);
           return JobworkerStates.SHUTDOWN;
         }
 
-        for (InetSocketAddress address : oMsAddress.get(omServiceId)) {
+        for (InetSocketAddress address : oMsAddress.get(configuredOmServiceId)) {
           if (address.isUnresolved()) {
             throw new IllegalStateException(
-                String.format("omServiceID %s address (%s) can't be resolved.", omServiceId, address));
+                String.format("omServiceID (in configuration) %s address (%s) can't be resolved.",
+                    configuredOmServiceId, address));
           }
-          connectionManager.addOMEndpoint(address, context.getThreadNamePrefix(), omServiceId);
-          this.context.addEndpoint(address, omServiceId);
+          connectionManager.addOMEndpoint(address, context.getThreadNamePrefix(), configuredOmServiceId);
           anyAdded = true;
-          LOG.info("Added OM endpoint: {} in OM serviceId: {}", address, omServiceId);
+          LOG.info("Added OM endpoint: {} in OM serviceId (in configuration): {}", address, configuredOmServiceId);
         }
       }
 

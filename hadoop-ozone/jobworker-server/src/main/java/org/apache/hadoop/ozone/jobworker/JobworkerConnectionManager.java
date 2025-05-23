@@ -25,7 +25,6 @@ import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -47,14 +46,12 @@ public class JobworkerConnectionManager implements Closeable {
 
   private final ReadWriteLock mapLock;
   private final Map<InetSocketAddress, JobworkerEndpointStateMachine> omMachines;
-  private final Map<String, Map<InetSocketAddress, JobworkerEndpointStateMachine>> omServiceIdEndpoints;
   private final ConfigurationSource conf;
   private final OzoneConfiguration ozoneConf;
 
   public JobworkerConnectionManager(ConfigurationSource conf) {
     this.mapLock = new ReentrantReadWriteLock();
     this.omMachines = new HashMap<>();
-    this.omServiceIdEndpoints = new HashMap<>();
     this.conf = conf;
     this.ozoneConf = (OzoneConfiguration) conf;
   }
@@ -101,11 +98,11 @@ public class JobworkerConnectionManager implements Closeable {
    *
    * @param omAddress        - Address of the OM machine
    * @param threadNamePrefix - Prefix for thread names
-   * @param omServiceId      - ID of the OM service
+   * @param configuredOmServiceId  - OM service ID in the current jobworker configuration
    * @throws IOException if error occurs
    */
   public void addOMEndpoint(InetSocketAddress omAddress, String threadNamePrefix,
-                            String omServiceId) throws IOException {
+                            String configuredOmServiceId) throws IOException {
     writeLock();
     try {
       if (omMachines.containsKey(omAddress)) {
@@ -114,29 +111,12 @@ public class JobworkerConnectionManager implements Closeable {
 
       JobworkerProtocol rpcClient =
           new JobworkerProtocolClientSideTranslatorPB(omAddress.getHostName(), omAddress.getPort(), ozoneConf);
-
       JobworkerEndpointStateMachine endpoint = new JobworkerEndpointStateMachine(
-          omAddress, rpcClient, this.conf, threadNamePrefix, omServiceId);
-
+          omAddress, rpcClient, this.conf, threadNamePrefix, configuredOmServiceId);
       omMachines.put(omAddress, endpoint);
-      omServiceIdEndpoints.computeIfAbsent(omServiceId, k -> new HashMap<>()).put(omAddress, endpoint);
-      LOG.info("Added OM endpoint at {} for OM ServiceId: {}", omAddress, omServiceId);
+      LOG.info("Added OM endpoint at {}", omAddress);
     } finally {
       writeUnlock();
-    }
-  }
-
-  /**
-   * Returns all known OM Service.
-   *
-   * @return Collection of OM Services
-   */
-  public Collection<String> getAllOMServiceIds() {
-    readLock();
-    try {
-      return new ArrayList<>(omServiceIdEndpoints.keySet());
-    } finally {
-      readUnlock();
     }
   }
 
@@ -152,26 +132,6 @@ public class JobworkerConnectionManager implements Closeable {
     } finally {
       readUnlock();
     }
-  }
-
-  /**
-   * Get all endpoints for a specific OM Service ID.
-   *
-   * @param omServiceId the OM service ID
-   * @return List of endpoints for the given OM Service ID.
-   */
-  public List<JobworkerEndpointStateMachine> getEndpointsForOMServiceId(
-      String omServiceId) {
-    List<JobworkerEndpointStateMachine> endpoints = new ArrayList<>();
-    readLock();
-    try {
-      if (omServiceIdEndpoints.containsKey(omServiceId)) {
-        endpoints.addAll(omServiceIdEndpoints.get(omServiceId).values());
-      }
-    } finally {
-      readUnlock();
-    }
-    return endpoints;
   }
 
   @Override

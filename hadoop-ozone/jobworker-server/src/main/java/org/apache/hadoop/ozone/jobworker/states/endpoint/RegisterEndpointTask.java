@@ -122,7 +122,7 @@ public final class RegisterEndpointTask implements Callable<EndpointStates> {
         Preconditions.checkState(!StringUtils.isBlank(response.getOmServiceId()),
             "Invalid OmService ID in the response.");
         Preconditions.checkArgument(response.getOmServiceId().equals(rpcEndPoint.getOMServiceId()),
-            "Response OmService ID " + response.getOmServiceId() + " mismatch current OmService ID " +
+            "Response OmService ID: " + response.getOmServiceId() + " mismatch current OmService ID: " +
                 rpcEndPoint.getOMServiceId());
         if (response.hasHostname()) {
           jobworkerDetails.setHostName(response.getHostname());
@@ -136,6 +136,7 @@ public final class RegisterEndpointTask implements Callable<EndpointStates> {
         if (response.hasNetworkLocation()) {
           jobworkerDetails.setNetworkLocation(response.getNetworkLocation());
         }
+        stateContext.addEndpoint(rpcEndPoint.getAddress(), rpcEndPoint.getOMServiceId());
         EndpointStates nextState = rpcEndPoint.getState().getNextState();
         rpcEndPoint.setState(nextState);
         rpcEndPoint.zeroMissedCount();

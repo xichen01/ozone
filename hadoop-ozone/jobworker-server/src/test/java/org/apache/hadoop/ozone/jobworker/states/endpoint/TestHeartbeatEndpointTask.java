@@ -102,6 +102,7 @@ public class TestHeartbeatEndpointTask {
     JobworkerEndpointStateMachine endpointStateMachine =
         new JobworkerEndpointStateMachine(TEST_OM_ENDPOINT, protocol, conf,
             "test-", OM_SERVICE_ID);
+    endpointStateMachine.setOmServiceId(OM_SERVICE_ID);
     endpointStateMachine.setState(EndpointStates.HEARTBEAT);
 
     HeartbeatEndpointTask endpointTask = getHeartbeatEndpointTask(
@@ -142,6 +143,7 @@ public class TestHeartbeatEndpointTask {
         new JobworkerEndpointStateMachine(TEST_OM_ENDPOINT, protocol, conf,
             "test-", OM_SERVICE_ID);
     endpointStateMachine.setState(EndpointStates.HEARTBEAT);
+    endpointStateMachine.setOmServiceId(OM_SERVICE_ID);
 
     HeartbeatEndpointTask endpointTask = getHeartbeatEndpointTask(
         context, endpointStateMachine);
@@ -181,6 +183,7 @@ public class TestHeartbeatEndpointTask {
     JobworkerEndpointStateMachine endpointStateMachine =
         new JobworkerEndpointStateMachine(TEST_OM_ENDPOINT, protocol, conf,
             "test-", OM_SERVICE_ID);
+    endpointStateMachine.setOmServiceId(OM_SERVICE_ID);
     endpointStateMachine.setState(EndpointStates.HEARTBEAT);
 
     HeartbeatEndpointTask endpointTask = getHeartbeatEndpointTask(
@@ -214,6 +217,7 @@ public class TestHeartbeatEndpointTask {
     JobworkerEndpointStateMachine endpointStateMachine =
         new JobworkerEndpointStateMachine(TEST_OM_ENDPOINT, protocol, conf,
             "test-", OM_SERVICE_ID);
+    endpointStateMachine.setOmServiceId(OM_SERVICE_ID);
     endpointStateMachine.setState(EndpointStates.HEARTBEAT);
 
     HeartbeatEndpointTask endpointTask = getHeartbeatEndpointTask(
@@ -242,6 +246,7 @@ public class TestHeartbeatEndpointTask {
     JobworkerEndpointStateMachine endpointStateMachine =
         new JobworkerEndpointStateMachine(TEST_OM_ENDPOINT, protocol, conf,
             "test-", OM_SERVICE_ID);
+    endpointStateMachine.setOmServiceId(OM_SERVICE_ID);
     endpointStateMachine.setState(EndpointStates.HEARTBEAT);
 
     // Run heartbeat task

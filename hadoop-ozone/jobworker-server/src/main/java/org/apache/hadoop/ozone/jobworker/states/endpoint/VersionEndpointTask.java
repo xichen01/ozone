@@ -135,7 +135,7 @@ public class VersionEndpointTask implements Callable<EndpointStates> {
    * @param reportedOMServiceId the OMServiceId as reported by the OM
    */
   private void validateAndSetOMServiceIdFromOM(String reportedOMServiceId) {
-    String configuredOMServiceId = rpcEndPoint.getOMServiceId();
+    String configuredOMServiceId = rpcEndPoint.getConfiguredOmServiceId();
     String existingMappedServiceId = OM_SERVICE_ID_MAPPING.putIfAbsent(configuredOMServiceId, reportedOMServiceId);
     if (existingMappedServiceId != null && !existingMappedServiceId.equals(reportedOMServiceId)) {
       String errorMsg = String.format(
@@ -147,7 +147,7 @@ public class VersionEndpointTask implements Callable<EndpointStates> {
       rpcEndPoint.setState(EndpointStates.SHUTDOWN);
       throw new IllegalStateException(errorMsg);
     }
-    rpcEndPoint.setServiceId(reportedOMServiceId);
+    rpcEndPoint.setOmServiceId(reportedOMServiceId);
   }
 
 }

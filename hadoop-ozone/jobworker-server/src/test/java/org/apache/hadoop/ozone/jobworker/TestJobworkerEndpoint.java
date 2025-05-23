@@ -383,8 +383,10 @@ public class TestJobworkerEndpoint {
     JobworkerProtocolClientSideTranslatorPB client =
         new JobworkerProtocolClientSideTranslatorPB(
             socketAddress.getHostName(), socketAddress.getPort(), localConf);
-    return new JobworkerEndpointStateMachine(
+    JobworkerEndpointStateMachine endpointStateMachine = new JobworkerEndpointStateMachine(
         socketAddress, client, localConf,
         "test-", "omServiceId1");
+    endpointStateMachine.setOmServiceId("omServiceId1");
+    return endpointStateMachine;
   }
 }

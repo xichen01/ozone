@@ -18,7 +18,6 @@
 
 package org.apache.hadoop.ozone;
 
-import static org.apache.hadoop.ozone.jobworker.utils.JobworkerUtils.DEFAULT_OM_SERVICE_ID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -26,13 +25,11 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeoutException;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
 import org.apache.hadoop.ozone.jobworker.JobworkerConnectionManager;
-import org.apache.hadoop.ozone.jobworker.JobworkerEndpointStateMachine;
 import org.apache.hadoop.ozone.jobworker.JobworkerStates;
 import org.apache.hadoop.ozone.om.OMConfigKeys;
 import org.apache.ozone.test.GenericTestUtils;
@@ -105,34 +102,7 @@ public class TestJobworkerService {
     GenericTestUtils.waitFor(() ->
             service.getJobworkerStateMachine().getContext().getState() == JobworkerStates.RUNNING,
         200, 10000);
-    assertEquals(omGroupCount, connManager.getAllOMServiceIds().size());
-
-    Set<String> actualServiceIds = new HashSet<>();
-    for (String serviceId : connManager.getAllOMServiceIds()) {
-      actualServiceIds.add(serviceId);
-      List<JobworkerEndpointStateMachine> serviceEndpoints =
-          connManager.getEndpointsForOMServiceId(serviceId);
-      assertEquals(omCountPerGroup, serviceEndpoints.size());
-    }
-    assertEquals(exceptedServiceIds, actualServiceIds);
-    service.stop();
-    service.join();
-  }
-
-  @Test
-  public void testConnectionSingleOM() throws InterruptedException, TimeoutException {
-    conf.set(OMConfigKeys.OZONE_OM_ADDRESS_KEY, PortAllocator.anyHostWithFreePort());
-    service.start(conf);
-
-    JobworkerConnectionManager connManager =
-        service.getJobworkerStateMachine().getConnectionManager();
-    GenericTestUtils.waitFor(() ->
-            service.getJobworkerStateMachine().getContext().getState() == JobworkerStates.RUNNING,
-        200, 10000);
-    assertEquals(1, connManager.getAllOMServiceIds().size());
-    assertEquals(DEFAULT_OM_SERVICE_ID, connManager.getAllOMServiceIds().iterator().next());
-    assertEquals(1, connManager.getEndpointsForOMServiceId(DEFAULT_OM_SERVICE_ID).size());
-
+    assertEquals(omCountPerGroup * omGroupCount, connManager.getAllEndpoints().size());
     service.stop();
     service.join();
   }

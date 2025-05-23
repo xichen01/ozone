@@ -70,7 +70,7 @@ public class TestVersionEndpointTask {
     when(endpointStateMachine.getEndPoint()).thenReturn(protocol);
     InetSocketAddress address = new InetSocketAddress("localhost", 9999);
     when(endpointStateMachine.getAddress()).thenReturn(address);
-    when(endpointStateMachine.getOMServiceId()).thenReturn(OM_SERVICE_ID_1);
+    when(endpointStateMachine.getConfiguredOmServiceId()).thenReturn(OM_SERVICE_ID_1);
   }
 
   private void resetStaticFields() throws Exception {
@@ -135,7 +135,7 @@ public class TestVersionEndpointTask {
     JobworkerProtocol protocol2 = mock(JobworkerProtocol.class);
     when(endpoint2.getState()).thenReturn(EndpointStates.GETVERSION);
     when(endpoint2.getEndPoint()).thenReturn(protocol2);
-    when(endpoint2.getOMServiceId()).thenReturn(OM_SERVICE_ID_1);
+    when(endpoint2.getConfiguredOmServiceId()).thenReturn(OM_SERVICE_ID_1);
 
     // Second OM response (same cluster)
     GetOMVersionResponse versionResponse2 = createVersionResponse(
@@ -169,7 +169,7 @@ public class TestVersionEndpointTask {
     JobworkerProtocol protocol2 = mock(JobworkerProtocol.class);
     when(endpoint2.getState()).thenReturn(EndpointStates.GETVERSION);
     when(endpoint2.getEndPoint()).thenReturn(protocol2);
-    when(endpoint2.getOMServiceId()).thenReturn("omServiceId2");
+    when(endpoint2.getConfiguredOmServiceId()).thenReturn("omServiceId2");
 
     // Second OM response (different cluster)
     GetOMVersionResponse versionResponse2 = createVersionResponse(
@@ -203,7 +203,7 @@ public class TestVersionEndpointTask {
     JobworkerProtocol protocol2 = mock(JobworkerProtocol.class);
     when(endpoint2.getState()).thenReturn(EndpointStates.GETVERSION);
     when(endpoint2.getEndPoint()).thenReturn(protocol2);
-    when(endpoint2.getOMServiceId()).thenReturn(OM_SERVICE_ID_1); // Same configured ID
+    when(endpoint2.getConfiguredOmServiceId()).thenReturn(OM_SERVICE_ID_1); // Same configured ID
 
     // Different reported OMServiceId but same cluster
     GetOMVersionResponse versionResponse2 = createVersionResponse(

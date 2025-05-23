@@ -27,7 +27,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.Collection;
-import java.util.List;
 
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.junit.jupiter.api.AfterEach;
@@ -68,29 +67,10 @@ public class TestJobworkerConnectionManager {
     // Verify the endpoint's properties
     JobworkerEndpointStateMachine endpoint = endpoints.iterator().next();
     assertEquals(omAddress, endpoint.getAddress());
-    assertEquals(OM_SERVICE_ID, endpoint.getOMServiceId());
+    assertEquals(OM_SERVICE_ID, endpoint.getConfiguredOmServiceId());
     // Verify trying to add the same endpoint throws an exception
     assertThrows(IllegalArgumentException.class, () ->
         connectionManager.addOMEndpoint(omAddress, THREAD_NAME_PREFIX, OM_SERVICE_ID));
-  }
-
-  @Test
-  public void testGetEndpointsForOMServiceId() throws Exception {
-    // Add multiple endpoints for the same OM service ID
-    InetSocketAddress omAddress1 = new InetSocketAddress("localhost", 9862);
-    InetSocketAddress omAddress2 = new InetSocketAddress("localhost", 9863);
-    connectionManager.addOMEndpoint(omAddress1, THREAD_NAME_PREFIX, OM_SERVICE_ID);
-    connectionManager.addOMEndpoint(omAddress2, THREAD_NAME_PREFIX, OM_SERVICE_ID);
-    // Get endpoints for the OM service ID
-    List<JobworkerEndpointStateMachine> endpoints =
-        connectionManager.getEndpointsForOMServiceId(OM_SERVICE_ID);
-    assertNotNull(endpoints);
-    assertEquals(2, endpoints.size());
-    // Verify getting endpoints for a non-existent service ID returns an empty list
-    List<JobworkerEndpointStateMachine> nonExistentEndpoints =
-        connectionManager.getEndpointsForOMServiceId("nonExistentServiceId");
-    assertNotNull(nonExistentEndpoints);
-    assertTrue(nonExistentEndpoints.isEmpty());
   }
 
   @Test
