@@ -237,7 +237,8 @@ public final class JobworkerReportManager {
 
     List<Message> reportsToReturn = new ArrayList<>();
     if (reportQueue.get(omServiceId) == null) {
-      LOG.warn("Invalid report with null endpoint for omServiceId {}", omServiceId);
+      LOG.warn("Invalid report with null endpoint for omServiceId {}, current reported omServiceId {}",
+          omServiceId, reportQueue.keySet());
       return reportsToReturn;
     }
 

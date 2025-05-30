@@ -274,8 +274,8 @@ public class TestOMJobworkerCommandManager {
 
     // Wait for the scheduled timeout checker to run
     waitAndAssert(testListener.timeoutLatch, testListener.timeoutCount, 1);
-    assertFalse(mockCommandInfoMap.containsKey(1L),
-        "Command should be removed from a tracking map after timeout");
+    // Command should be removed from a tracking map after timeout
+    GenericTestUtils.waitFor(() -> !mockCommandInfoMap.containsKey(1L), 200, 3000);
   }
 
   @Test

@@ -49,8 +49,15 @@ import org.slf4j.LoggerFactory;
 public class JobworkerProtocolClientSideTranslatorPB implements JobworkerProtocol {
   private static final Logger LOG =
       LoggerFactory.getLogger(JobworkerProtocolClientSideTranslatorPB.class);
-  private final JobworkerServiceBlockingStub rpcProxy;
+
+  // Store configuration for potential channel recreation
+  private final String omHostname;
+  private final int port;
+  private final Duration timeoutDuration;
+  private final int maxInboundLength;
+
   private ManagedChannel channel;
+  private JobworkerServiceBlockingStub rpcProxy;
 
   /**
    * Constructs a Client-side proxy for Jobworker gRPC Service.
@@ -71,36 +78,64 @@ public class JobworkerProtocolClientSideTranslatorPB implements JobworkerProtoco
    *                   from {@link JobworkerServiceConfig#getGrpcPort()} will be used.
    */
   public JobworkerProtocolClientSideTranslatorPB(String omHostname, int port, OzoneConfiguration conf) {
+    this.omHostname = omHostname;
     JobworkerClientConfiguration jobworkerServiceConfig = conf.getObject(JobworkerClientConfiguration.class);
-    Duration timeoutDuration = jobworkerServiceConfig.getRpcTimeout();
-    int maxInboundLength = jobworkerServiceConfig.getGrpcMaximumInboundLength();
+    this.timeoutDuration = jobworkerServiceConfig.getRpcTimeout();
+    this.maxInboundLength = jobworkerServiceConfig.getGrpcMaximumInboundLength();
+
     if (port < 0) {
       JobworkerServiceConfig jwsConf = conf.getObject(JobworkerServiceConfig.class);
-      port = jwsConf.getGrpcPort();
+      this.port = jwsConf.getGrpcPort();
+    } else {
+      this.port = port;
     }
+
+    // Create initial channel
+    createChannel();
+  }
+
+  /**
+   * Creates a new gRPC channel with optimized settings for long-running connections.
+   */
+  private void createChannel() {
     this.channel = NettyChannelBuilder
         .forAddress(omHostname, port)
         .usePlaintext()
         .maxInboundMessageSize(maxInboundLength)
         .build();
-    this.rpcProxy = JobworkerServiceGrpc
-        .newBlockingStub(channel).withDeadlineAfter(timeoutDuration.toMillis(), TimeUnit.MILLISECONDS);
+    this.rpcProxy = JobworkerServiceGrpc.newBlockingStub(channel);
   }
 
   /**
    * Submits a Jobworker request and returns a response.
+   * Handles channel recreation if needed.
    *
    * @param type            The type of Jobworker request.
    * @param builderConsumer Consumer to set request parameters.
    * @return The response from the server.
    */
   private JobworkerResponse submitRequest(JobworkerCommandType type,
-                                          Consumer<JobworkerRequest.Builder> builderConsumer) {
-    JobworkerRequest.Builder builder = JobworkerRequest.newBuilder().setCmdType(type);
-    builderConsumer.accept(builder);
-    JobworkerRequest request = builder.build();
+                                          Consumer<JobworkerRequest.Builder> builderConsumer)
+      throws IOException {
+    try {
+      if (isChannelUnhealthy()) {
+        LOG.warn("Channel to OM is unhealthy when sending request of the type {}, recreating it", type);
+        recreateChannel();
+        if (isChannelUnhealthy()) {
+          throw new IOException("This channel is not connected.");
+        }
+      }
 
-    return rpcProxy.submitRequest(request);
+      JobworkerRequest.Builder builder = JobworkerRequest.newBuilder().setCmdType(type);
+      builderConsumer.accept(builder);
+      JobworkerRequest request = builder.build();
+
+      return rpcProxy
+          .withDeadlineAfter(timeoutDuration.toMillis(), TimeUnit.MILLISECONDS)
+          .submitRequest(request);
+    } catch (Exception e) {
+      throw new IOException(e);
+    }
   }
 
   @Override
@@ -127,6 +162,21 @@ public class JobworkerProtocolClientSideTranslatorPB implements JobworkerProtoco
         .getSendHeartbeatResponseProto();
   }
 
+  /**
+   * Check if the channel is in an unhealthy state.
+   */
+  private boolean isChannelUnhealthy() {
+    return channel == null || channel.isShutdown() || channel.isTerminated();
+  }
+
+  /**
+   * Recreate the channel if it's in a bad state.
+   */
+  private void recreateChannel() throws IOException {
+    close();
+    createChannel();
+  }
+
   @Override
   public void close() throws IOException {
     if (channel == null) {
@@ -141,6 +191,9 @@ public class JobworkerProtocolClientSideTranslatorPB implements JobworkerProtoco
     } catch (InterruptedException e) {
       this.channel.shutdownNow();
       Thread.currentThread().interrupt();
+    } finally {
+      this.channel = null;
+      this.rpcProxy = null;
     }
   }
 }

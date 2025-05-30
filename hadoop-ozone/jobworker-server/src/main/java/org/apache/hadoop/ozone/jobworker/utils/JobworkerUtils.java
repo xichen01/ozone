@@ -20,7 +20,6 @@
 package org.apache.hadoop.ozone.jobworker.utils;
 
 import static org.apache.hadoop.hdds.HddsUtils.getHostNameFromConfigKeys;
-import static org.apache.hadoop.hdds.HddsUtils.getPortNumberFromConfigKeys;
 import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_OM_ADDRESS_KEY;
 import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_OM_DECOMMISSIONED_NODES_KEY;
 import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_OM_NODES_KEY;
@@ -34,7 +33,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.OptionalInt;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.hdds.conf.ConfigurationSource;
 import org.apache.hadoop.net.NetUtils;
@@ -67,8 +65,7 @@ public final class JobworkerUtils {
     for (String serviceId : conf.getTrimmedStringCollection(OZONE_OM_SERVICE_IDS_KEY)) {
       result.computeIfAbsent(serviceId, x -> new ArrayList<>());
       for (String nodeId : getActiveOMNodeIds(conf, serviceId)) {
-        String rpcAddr = getOmJobWorkerRpcAddress(conf,
-            ConfUtils.addKeySuffixes(OZONE_OM_ADDRESS_KEY, serviceId, nodeId));
+        String rpcAddr = getOmJobWorkerRpcAddress(conf, serviceId, nodeId);
         if (rpcAddr != null) {
           result.get(serviceId).add(NetUtils.createSocketAddr(rpcAddr));
         } else {
@@ -86,35 +83,36 @@ public final class JobworkerUtils {
    * Return null if the specified conf key is not set.
    *
    * @param conf    configuration
-   * @param confKey configuration key to lookup address from
+   * @param serviceId Service ID this OM belongs to
+   * @param nodeId Node ID of this OM.
    * @return Target InetSocketAddress for the OM RPC server.
    */
   public static String getOmJobWorkerRpcAddress(
-      ConfigurationSource conf, String confKey) throws IllegalStateException {
-    final Optional<String> host = getHostNameFromConfigKeys(conf, confKey);
+      ConfigurationSource conf, String serviceId, String nodeId) throws IllegalStateException {
+    final Optional<String> host = getHostNameFromConfigKeys(conf,
+        ConfUtils.addKeySuffixes(OZONE_OM_ADDRESS_KEY, serviceId, nodeId));
     if (!host.isPresent()) {
       return null;
     }
-    int port = getOmJobworkerRpcPortOrDefault(conf, confKey);
+    int port = getOmJobworkerRpcPortOrDefault(conf,
+        ConfUtils.addKeySuffixes(JobworkerServiceConfig.getGrpcPortKey(), serviceId, nodeId));
     return host.get() + ":" + port;
   }
 
   private static int getOmJobworkerRpcPortOrDefault(
       ConfigurationSource conf, String confKey) throws IllegalStateException {
-    OptionalInt portOpt = getPortNumberFromConfigKeys(conf, confKey);
-    int port;
-    if (portOpt.isPresent()) {
-      port = portOpt.getAsInt();
+    int port = conf.getInt(confKey, -1);
+    if (port > -1) {
+      return port;
     } else {
       // Use the default port
       String grpcPortStr = conf.get(JobworkerServiceConfig.getGrpcPortKey());
       try {
-        port = Integer.parseInt(grpcPortStr);
+        return Integer.parseInt(grpcPortStr);
       } catch (NumberFormatException e) {
         throw new IllegalStateException("Invalid default RPC port value: " + grpcPortStr, e);
       }
     }
-    return port;
   }
 
   /**
@@ -127,12 +125,15 @@ public final class JobworkerUtils {
   public static String getOmJobWorkerRpcAddress(ConfigurationSource conf) {
     final Optional<String> host = getHostNameFromConfigKeys(conf,
         OZONE_OM_ADDRESS_KEY);
+    int port;
+    String grpcPortStr = conf.get(JobworkerServiceConfig.getGrpcPortKey());
+    try {
+      port = Integer.parseInt(grpcPortStr);
+    } catch (NumberFormatException e) {
+      throw new IllegalStateException("Invalid default RPC port value: " + grpcPortStr, e);
+    }
 
-    return host.map(s -> s + ":" + getOmJobworkerRpcPort(conf)).orElse("");
-  }
-
-  public static int getOmJobworkerRpcPort(ConfigurationSource conf) {
-    return getOmJobworkerRpcPortOrDefault(conf, OZONE_OM_ADDRESS_KEY);
+    return host.map(s -> s + ":" + port).orElse("");
   }
 
   /**

@@ -88,8 +88,9 @@ public class MiniOzoneHAClusterImpl extends MiniOzoneClusterImpl {
       SCMHAService scmhaService,
       List<HddsDatanodeService> hddsDatanodes,
       String clusterPath,
-      List<Service> services) {
-    super(conf, scmConfigurator, hddsDatanodes, services);
+      List<Service> services,
+      List<JobworkerService> jobworkers) {
+    super(conf, scmConfigurator, hddsDatanodes, services, jobworkers);
     this.omhaService = omhaService;
     this.scmhaService = scmhaService;
     this.clusterMetaPath = clusterPath;
@@ -338,6 +339,7 @@ public class MiniOzoneHAClusterImpl extends MiniOzoneClusterImpl {
 
   @Override
   public void stop() {
+    shutdownJobworkers();
     for (OzoneManager ozoneManager : this.omhaService.getServices()) {
       if (ozoneManager != null) {
         LOG.info("Stopping the OzoneManager {}", ozoneManager.getOMNodeId());
@@ -495,9 +497,11 @@ public class MiniOzoneHAClusterImpl extends MiniOzoneClusterImpl {
       initOMRatisConf();
       SCMHAService scmService;
       OMHAService omService;
+      List<JobworkerService> jobworkers;
       try {
         scmService = createSCMService();
         omService = createOMService();
+        jobworkers = createJobworkers();
       } catch (AuthenticationException ex) {
         throw new IOException("Unable to build MiniOzoneCluster. ", ex);
       }
@@ -505,7 +509,8 @@ public class MiniOzoneHAClusterImpl extends MiniOzoneClusterImpl {
       final List<HddsDatanodeService> hddsDatanodes = createHddsDatanodes();
 
       MiniOzoneHAClusterImpl cluster = new MiniOzoneHAClusterImpl(conf,
-          scmConfigurator, omService, scmService, hddsDatanodes, path, getServices());
+          scmConfigurator, omService, scmService, hddsDatanodes, path,
+          getServices(), jobworkers);
       try {
         cluster.startServices();
       } catch (Exception e) {
@@ -514,6 +519,9 @@ public class MiniOzoneHAClusterImpl extends MiniOzoneClusterImpl {
 
       if (startDataNodes) {
         cluster.startHddsDatanodes();
+      }
+      if (startJobworkers) {
+        cluster.startJobworkers();
       }
       prepareForNextBuild();
       return cluster;

@@ -83,6 +83,7 @@ import org.apache.hadoop.ozone.conf.JobworkerServiceConfig;
 import org.apache.hadoop.ozone.container.common.DatanodeLayoutStorage;
 import org.apache.hadoop.ozone.container.common.utils.ContainerCache;
 import org.apache.hadoop.ozone.container.common.utils.DatanodeStoreCache;
+import org.apache.hadoop.ozone.jobworker.JobworkerClientConfiguration;
 import org.apache.hadoop.ozone.om.OMConfigKeys;
 import org.apache.hadoop.ozone.om.OMStorage;
 import org.apache.hadoop.ozone.om.OzoneManager;
@@ -120,6 +121,7 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
   private OzoneManager ozoneManager;
   private final List<HddsDatanodeService> hddsDatanodes;
   private final List<Service> services;
+  private final List<JobworkerService> jobworkers;
 
   // Timeout for the cluster to be ready
   private int waitForClusterToBeReadyTimeout = 120000; // 2 min
@@ -132,13 +134,15 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
       OzoneManager ozoneManager,
       StorageContainerManager scm,
       List<HddsDatanodeService> hddsDatanodes,
-      List<Service> services) {
+      List<Service> services,
+      List<JobworkerService> jobworkers) {
     this.conf = conf;
     this.ozoneManager = ozoneManager;
     this.scm = scm;
     this.hddsDatanodes = hddsDatanodes;
     this.scmConfigurator = scmConfigurator;
     this.services = services;
+    this.jobworkers = jobworkers;
   }
 
   /**
@@ -148,11 +152,13 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
    * OzoneManagers and StorageContainerManagers.
    */
   MiniOzoneClusterImpl(OzoneConfiguration conf, SCMConfigurator scmConfigurator,
-      List<HddsDatanodeService> hddsDatanodes, List<Service> services) {
+      List<HddsDatanodeService> hddsDatanodes, List<Service> services,
+      List<JobworkerService> jobworkers) {
     this.scmConfigurator = scmConfigurator;
     this.conf = conf;
     this.hddsDatanodes = hddsDatanodes;
     this.services = services;
+    this.jobworkers = jobworkers;
   }
 
   public SCMConfigurator getSCMConfigurator() {
@@ -184,11 +190,19 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
     waitForSCMToBeReady();
     GenericTestUtils.waitFor(() -> {
       StorageContainerManager activeScm = getActiveSCM();
+      int runningJobworkers = 0;
+      for (JobworkerService jobworker : jobworkers) {
+        if (jobworker.getJobworkerStateMachine().isJobworkerReady()) {
+          runningJobworkers++;
+        }
+      }
       final int healthy = activeScm.getNodeCount(HEALTHY);
       final boolean isNodeReady = healthy == hddsDatanodes.size();
       final boolean exitSafeMode = !activeScm.isInSafeMode();
       final boolean checkScmLeader = activeScm.checkLeader();
+      final boolean jobworkerReady = runningJobworkers == jobworkers.size();
 
+      LOG.info("Got {} of {} ready Jobworker", runningJobworkers, jobworkers.size());
       LOG.info("{}. Got {} of {} DN Heartbeats.",
           isNodeReady ? "Nodes are ready" : "Waiting for nodes to be ready",
           healthy, hddsDatanodes.size());
@@ -197,7 +211,7 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
       LOG.info(checkScmLeader ? "SCM became leader" :
           "SCM has not become leader");
 
-      return isNodeReady && exitSafeMode && checkScmLeader;
+      return isNodeReady && exitSafeMode && checkScmLeader && jobworkerReady;
     }, 1000, waitForClusterToBeReadyTimeout);
   }
 
@@ -413,6 +427,7 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
   @Override
   public void stop() {
     LOG.info("Stopping the Mini Ozone Cluster");
+    shutdownJobworkers();
     stopOM(ozoneManager);
     stopDatanodes(hddsDatanodes);
     stopSCM(scm);
@@ -508,6 +523,49 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
     }
   }
 
+  @Override
+  public List<JobworkerService> getJobworkers() {
+    return jobworkers;
+  }
+
+  @Override
+  public void startJobworker(int i) {
+    jobworkers.get(i).start();
+  }
+
+  @Override
+  public void restartJobworker(int i, boolean waitForJobworker)
+      throws InterruptedException, TimeoutException {
+    JobworkerService jobworker = jobworkers.get(i);
+    jobworker.stop();
+    jobworker.join();
+    startJobworker(i);
+    if (waitForJobworker) {
+      GenericTestUtils.waitFor(() ->
+              jobworkers.get(i).getJobworkerStateMachine().isJobworkerReady(),
+          1000, waitForClusterToBeReadyTimeout);
+    }
+  }
+
+  @Override
+  public void shutdownJobworker(int i) {
+    jobworkers.get(i).stop();
+  }
+
+  @Override
+  public void startJobworkers() {
+    LOG.info("Starting Jobworkers");
+    jobworkers.forEach(JobworkerService::start);
+  }
+
+  @Override
+  public void shutdownJobworkers() {
+    if (jobworkers != null) {
+      LOG.info("Shutting down the Jobworkers");
+      jobworkers.forEach(JobworkerService::stop);
+    }
+  }
+
   /**
    * Builder for configuring the MiniOzoneCluster to run.
    */
@@ -531,20 +589,25 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
       StorageContainerManager scm = null;
       OzoneManager om = null;
       List<HddsDatanodeService> hddsDatanodes = Collections.emptyList();
+      List<JobworkerService> jobworkers = Collections.emptyList();
       try {
         scm = createAndStartSingleSCM();
         om = createAndStartSingleOM();
         hddsDatanodes = createHddsDatanodes();
+        jobworkers = createJobworkers();
 
         MiniOzoneClusterImpl cluster = new MiniOzoneClusterImpl(conf,
             scmConfigurator, om, scm,
-            hddsDatanodes, getServices());
+            hddsDatanodes, getServices(), jobworkers);
         cluster.startServices();
 
         cluster.setCAClient(certClient);
         cluster.setSecretKeyClient(secretKeyClient);
         if (startDataNodes) {
           cluster.startHddsDatanodes();
+        }
+        if (startJobworkers) {
+          cluster.startJobworkers();
         }
 
         // Recreate the Ratis pipeline to prevent imbalanced node placement across racks
@@ -560,6 +623,9 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
         stopServices(getServices());
         if (startDataNodes) {
           stopDatanodes(hddsDatanodes);
+        }
+        if (startJobworkers) {
+          jobworkers.forEach(JobworkerService::stop);
         }
         stopSCM(scm);
         removeConfiguration();
@@ -895,6 +961,34 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
         conf.setIfUnset(OzoneConfigKeys.OZONE_HTTP_BASEDIR,
             omMetaDir.resolve(OZONE_METADATA_SUBDIR_NAME) + SERVER_DIR);
       }
+    }
+
+    /** Creates JobworkerService instances for the mini cluster. */
+    protected List<JobworkerService> createJobworkers() throws IOException {
+      if (numOfJobworkers == 0) {
+        return Collections.emptyList();
+      }
+      OzoneConfiguration jwConf = new OzoneConfiguration(conf);
+      JobworkerClientConfiguration jobworkerClientConfig =
+          jwConf.getObject(JobworkerClientConfiguration.class);
+      List<JobworkerService> jobworkers = new ArrayList<>();
+      for (int i = 0; i < numOfJobworkers; i++) {
+        List<String> volumeRoots = new ArrayList<>();
+        for (int j = 0; j < numOfVolumesPerJobworker; j++) {
+          Path volumeRoot = Paths.get(path, "jobworker" + i, String.valueOf(j));
+          volumeRoots.add(volumeRoot.toAbsolutePath().toString());
+          Files.createDirectories(volumeRoot);
+          LOG.info("Create Jobworker service at {}", volumeRoot);
+        }
+        if (!volumeRoots.isEmpty()) {
+          jobworkerClientConfig.setStorageVolumeDirs(String.join(", ", volumeRoots));
+        }
+        jwConf.setFromObject(jobworkerClientConfig);
+        JobworkerService jobworker = new JobworkerService(NO_ARGS);
+        jobworker.setConfiguration(jwConf);
+        jobworkers.add(jobworker);
+      }
+      return jobworkers;
     }
 
   }

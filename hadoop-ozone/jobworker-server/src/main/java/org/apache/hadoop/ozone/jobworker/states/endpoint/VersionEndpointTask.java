@@ -21,6 +21,7 @@ package org.apache.hadoop.ozone.jobworker.states.endpoint;
 
 import static org.apache.hadoop.ozone.jobworker.JobworkerEndpointStateMachine.EndpointStates.SHUTDOWN;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -80,8 +81,8 @@ public class VersionEndpointTask implements Callable<EndpointStates> {
         String omId = keys.get(OzoneConsts.OM_ID);
         String clusterId = keys.get(OzoneConsts.CLUSTER_ID);
         String serviceId = keys.get(OzoneConsts.OM_SERVICE_ID);
-        Preconditions.checkNotNull(clusterId,
-            "Reply from OM: clusterId cannot be null");
+        Preconditions.checkNotNull(omId,
+            "Reply from OM: omId cannot be null");
         Preconditions.checkNotNull(clusterId,
             "Reply from OM: clusterId cannot be null");
         Preconditions.checkNotNull(serviceId,
@@ -97,6 +98,8 @@ public class VersionEndpointTask implements Callable<EndpointStates> {
         EndpointStates nextState = rpcEndPoint.getState().getNextState();
         rpcEndPoint.setState(nextState);
         rpcEndPoint.zeroMissedCount();
+        LOG.info("Successfully get OzoneManager Version from {}, clusterId {}, serviceId {}, omId {}",
+            rpcEndPoint, clusterId, serviceId, omId);
       } else {
         LOG.debug("Cannot execute GetVersion task as endpoint state machine " +
             "is in {} state", rpcEndPoint.getState());
@@ -148,6 +151,11 @@ public class VersionEndpointTask implements Callable<EndpointStates> {
       throw new IllegalStateException(errorMsg);
     }
     rpcEndPoint.setOmServiceId(reportedOMServiceId);
+  }
+
+  @VisibleForTesting
+  public static void resetClusterId() {
+    verifiedClusterId = null;
   }
 
 }

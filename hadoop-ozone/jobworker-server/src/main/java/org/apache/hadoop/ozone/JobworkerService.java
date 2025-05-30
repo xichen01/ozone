@@ -39,6 +39,7 @@ import org.apache.hadoop.hdds.tracing.TracingUtil;
 import org.apache.hadoop.hdds.upgrade.JobworkerVersion;
 import org.apache.hadoop.hdds.utils.HddsServerUtil;
 import org.apache.hadoop.ozone.jobworker.JobworkerStateMachine;
+import org.apache.hadoop.ozone.jobworker.states.endpoint.VersionEndpointTask;
 import org.apache.hadoop.ozone.jobworker.version.JobworkerBuildVersionInfo;
 import org.apache.hadoop.ozone.util.OzoneNetUtils;
 import org.apache.hadoop.ozone.util.ShutdownHookManager;
@@ -146,6 +147,8 @@ public class JobworkerService extends GenericCli implements Callable<Void> {
    */
   public void start() {
     try {
+      // only for compatibility integration testing, reset the stop flag
+      isStopped.set(false);
       String hostname = HddsUtils.getHostName(conf);
       String ip = InetAddress.getByName(hostname).getHostAddress();
 
@@ -222,6 +225,9 @@ public class JobworkerService extends GenericCli implements Callable<Void> {
       if (jobworkerStateMachine != null) {
         jobworkerStateMachine.stopDaemon();
       }
+      // Only used for compatibility with integration tests
+      // that may create multiple different clusters in a JVM
+      VersionEndpointTask.resetClusterId();
       LOG.info("JobworkerService stopped");
     }
   }

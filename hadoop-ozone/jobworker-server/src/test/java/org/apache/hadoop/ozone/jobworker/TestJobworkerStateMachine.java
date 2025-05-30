@@ -18,6 +18,9 @@
 package org.apache.hadoop.ozone.jobworker;
 
 import static org.apache.hadoop.hdds.server.ServerUtils.executorServiceShutdownGraceful;
+import static org.apache.hadoop.ozone.conf.JobworkerServiceConfig.getGrpcPortKey;
+import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_OM_ADDRESS_KEY;
+import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_OM_NODES_KEY;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -64,80 +67,103 @@ public class TestJobworkerStateMachine {
   private static final String OM_SERVICE_ID = "omServiceId";
   private final int OM_SERVER_COUNT = 3;
   private final int OM_GROUP_COUNT = 2;
-  private List<String> serverAddresses;
   private List<Server> omServers;
   private List<JobworkerGrpcRequestHandlerMock> mockServers;
   private ExecutorService executorService;
   private OzoneConfiguration conf;
+  private static final ImmutableMap<String, String> OM_SERVICE1_HOST_ADDRESS;
+  private static final ImmutableMap<String, String> OM_SERVICE2_HOST_ADDRESS;
+
+  static {
+    OM_SERVICE1_HOST_ADDRESS = ImmutableMap.of(
+        OZONE_OM_ADDRESS_KEY + ".omServiceId1.om1", "localhost",
+        OZONE_OM_ADDRESS_KEY + ".omServiceId1.om2", "localhost",
+        OZONE_OM_ADDRESS_KEY + ".omServiceId1.om3", "localhost"
+    );
+    OM_SERVICE2_HOST_ADDRESS = ImmutableMap.of(
+        OZONE_OM_ADDRESS_KEY + ".omServiceId2.om1", "localhost",
+        OZONE_OM_ADDRESS_KEY + ".omServiceId2.om2", "localhost",
+        OZONE_OM_ADDRESS_KEY + ".omServiceId2.om3", "localhost"
+    );
+  }
 
   private static Stream<Arguments> invalidConfigProvider() {
     return Stream.of(
         Arguments.of("Empty OM service ID", ImmutableMap.of(
-            OMConfigKeys.OZONE_OM_ADDRESS_KEY, "",
+            OZONE_OM_ADDRESS_KEY, "",
             OMConfigKeys.OZONE_OM_SERVICE_IDS_KEY, ""
         )),
 
-        Arguments.of("Bad address in HA config", ImmutableMap.of(
-            OMConfigKeys.OZONE_OM_SERVICE_IDS_KEY, "omServiceId1",
-            OMConfigKeys.OZONE_OM_NODES_KEY + ".omServiceId1", "om1,om2,om3",
-            OMConfigKeys.OZONE_OM_ADDRESS_KEY + ".omServiceId1.om1", "localhost:xyz",
-            OMConfigKeys.OZONE_OM_ADDRESS_KEY + ".omServiceId1.om2", "localhost:1234",
-            OMConfigKeys.OZONE_OM_ADDRESS_KEY + ".omServiceId1.om3", "localhost:1235"
-        )),
+        Arguments.of("Bad address in HA config", ImmutableMap.<String, String>builder()
+            .put(OMConfigKeys.OZONE_OM_SERVICE_IDS_KEY, "omServiceId1")
+            .put(OZONE_OM_NODES_KEY + ".omServiceId1", "om1,om2,om3")
+            .putAll(OM_SERVICE1_HOST_ADDRESS)
+            .put(getGrpcPortKey() + ".omServiceId1.om1", "xyz")
+            .put(getGrpcPortKey() + ".omServiceId1.om2", "1234")
+            .put(getGrpcPortKey() + ".omServiceId1.om3", "1235")
+            .build()
+        ),
 
         Arguments.of("Cannot resolve address", ImmutableMap.of(
-            OMConfigKeys.OZONE_OM_ADDRESS_KEY, "om1234:1234"
-        )),
+            OZONE_OM_ADDRESS_KEY, "om1234:1234")
+        ),
 
         Arguments.of("Cannot resolve address in HA config", ImmutableMap.of(
             OMConfigKeys.OZONE_OM_SERVICE_IDS_KEY, "omServiceId1",
-            OMConfigKeys.OZONE_OM_NODES_KEY + ".omServiceId1", "om1,om2,om3",
-            OMConfigKeys.OZONE_OM_ADDRESS_KEY + ".omServiceId1.om1", "localhost:1234",
-            OMConfigKeys.OZONE_OM_ADDRESS_KEY + ".omServiceId1.om2", "localhost:1235",
-            OMConfigKeys.OZONE_OM_ADDRESS_KEY + ".omServiceId1.om3", "om1234:1236"
-        )),
+            OZONE_OM_NODES_KEY + ".omServiceId1", "om1,om2,om3",
+            OZONE_OM_ADDRESS_KEY + ".omServiceId1.om1", "localhost:1234",
+            OZONE_OM_ADDRESS_KEY + ".omServiceId1.om2", "localhost:1235",
+            OZONE_OM_ADDRESS_KEY + ".omServiceId1.om3", "om1234:1236")
+        ),
 
         Arguments.of("Missing all OZONE_OM_ADDRESS_KEY", ImmutableMap.of(
             OMConfigKeys.OZONE_OM_SERVICE_IDS_KEY, "omServiceId1",
-            OMConfigKeys.OZONE_OM_NODES_KEY + ".omServiceId1", "om1,om2,om3"
-        )),
+            OZONE_OM_NODES_KEY + ".omServiceId1", "om1,om2,om3")
+        ),
 
         Arguments.of("Missing some of OZONE_OM_ADDRESS_KEY", ImmutableMap.of(
             OMConfigKeys.OZONE_OM_SERVICE_IDS_KEY, "omServiceId1",
-            OMConfigKeys.OZONE_OM_NODES_KEY + ".omServiceId1", "om1,om2,om3",
-            OMConfigKeys.OZONE_OM_ADDRESS_KEY + ".omServiceId1.om1", "localhost:1234",
-            OMConfigKeys.OZONE_OM_ADDRESS_KEY + ".omServiceId1.om2", "localhost:1235"
-        )),
+            OZONE_OM_NODES_KEY + ".omServiceId1", "om1,om2,om3",
+            OZONE_OM_ADDRESS_KEY + ".omServiceId1.om1", "localhost",
+            OZONE_OM_ADDRESS_KEY + ".omServiceId1.om2", "localhost")
+        ),
 
-        Arguments.of("Missing omServiceId2 OZONE_OM_ADDRESS_KEY", ImmutableMap.of(
-            OMConfigKeys.OZONE_OM_SERVICE_IDS_KEY, "omServiceId1, omServiceId2",
-            OMConfigKeys.OZONE_OM_NODES_KEY + ".omServiceId1", "om1,om2,om3",
-            OMConfigKeys.OZONE_OM_ADDRESS_KEY + ".omServiceId1.om1", "localhost:1234",
-            OMConfigKeys.OZONE_OM_ADDRESS_KEY + ".omServiceId1.om2", "localhost:1235",
-            OMConfigKeys.OZONE_OM_ADDRESS_KEY + ".omServiceId1.om3", "localhost:1236",
-            OMConfigKeys.OZONE_OM_NODES_KEY + ".omServiceId2", "om1,om2,om3")),
+        Arguments.of("Missing omServiceId2 OZONE_OM_ADDRESS_KEY", ImmutableMap.<String, String>builder()
+            .put(OMConfigKeys.OZONE_OM_SERVICE_IDS_KEY, "omServiceId1, omServiceId2")
+            .put(OZONE_OM_NODES_KEY + ".omServiceId1", "om1,om2,om3")
+            .putAll(OM_SERVICE1_HOST_ADDRESS)
+            .put(OZONE_OM_NODES_KEY + ".omServiceId2", "om1,om2,om3")
+            .build()
+        ),
 
-        Arguments.of("Duplicate Address in an OM Group", ImmutableMap.of(
-            OMConfigKeys.OZONE_OM_SERVICE_IDS_KEY, "omServiceId1",
-            OMConfigKeys.OZONE_OM_NODES_KEY + ".omServiceId1", "om1,om2,om3",
-            OMConfigKeys.OZONE_OM_ADDRESS_KEY + ".omServiceId1.om1", "localhost:1234",
-            OMConfigKeys.OZONE_OM_ADDRESS_KEY + ".omServiceId1.om2", "localhost:1235",
-            OMConfigKeys.OZONE_OM_ADDRESS_KEY + ".omServiceId1.om3", "localhost:1234"  // Duplicate
-        )),
+        Arguments.of("Duplicate Address in an OM Group", ImmutableMap.<String, String>builder()
+            .put(OMConfigKeys.OZONE_OM_SERVICE_IDS_KEY, "omServiceId1")
+            .put(OZONE_OM_NODES_KEY + ".omServiceId1", "om1,om2,om3")
+            .putAll(OM_SERVICE1_HOST_ADDRESS)
+            .put(getGrpcPortKey() + ".omServiceId1.om1", "1233")
+            .put(getGrpcPortKey() + ".omServiceId1.om2", "1234")
+            .put(getGrpcPortKey() + ".omServiceId1.om3", "1233") // Duplicate Address
+            .build()
+        ),
 
-        Arguments.of("Duplicate Address in different OM Group", ImmutableMap.of(
-            OMConfigKeys.OZONE_OM_SERVICE_IDS_KEY, "omServiceId1, omServiceId2",
-            OMConfigKeys.OZONE_OM_NODES_KEY + ".omServiceId1", "om1,om2,om3",
-            OMConfigKeys.OZONE_OM_ADDRESS_KEY + ".omServiceId1.om1", "localhost:1234",
-            OMConfigKeys.OZONE_OM_ADDRESS_KEY + ".omServiceId1.om2", "localhost:1235",
-            OMConfigKeys.OZONE_OM_ADDRESS_KEY + ".omServiceId1.om3", "localhost:1236",
-            OMConfigKeys.OZONE_OM_NODES_KEY + ".omServiceId2", "om1,om2,om3",
-            OMConfigKeys.OZONE_OM_ADDRESS_KEY + ".omServiceId2.om1", "localhost:1237",
-            OMConfigKeys.OZONE_OM_ADDRESS_KEY + ".omServiceId2.om2", "localhost:1238",
-            OMConfigKeys.OZONE_OM_ADDRESS_KEY + ".omServiceId2.om3", "localhost:1234" // Duplicate
-        ))
+        Arguments.of("Duplicate Address in different OM Group", ImmutableMap.<String, String>builder()
+            .put(OMConfigKeys.OZONE_OM_SERVICE_IDS_KEY, "omServiceId1, omServiceId2")
+            .put(OZONE_OM_NODES_KEY + ".omServiceId1", "om1,om2,om3")
+            .putAll(OM_SERVICE1_HOST_ADDRESS)
+            .put(getGrpcPortKey() + ".omServiceId1.om1", "1233")
+            .put(getGrpcPortKey() + ".omServiceId1.om2", "1234")
+            .put(getGrpcPortKey() + ".omServiceId1.om3", "1235")
+            .put(OZONE_OM_NODES_KEY + ".omServiceId2", "om1,om2,om3")
+            .putAll(OM_SERVICE2_HOST_ADDRESS)
+            .put(getGrpcPortKey() + ".omServiceId2.om1", "1236")
+            .put(getGrpcPortKey() + ".omServiceId2.om2", "1237")
+            .put(getGrpcPortKey() + ".omServiceId2.om3", "1233") // Duplicate Address
+            .build()
+        )
     );
   }
+
+
 
   @BeforeEach
   public void setUp() throws Exception {
@@ -153,7 +179,8 @@ public class TestJobworkerStateMachine {
     conf.set(OMConfigKeys.OZONE_OM_SERVICE_IDS_KEY, String.join(",", omServiceIds));
 
     for (int i = 0; i < OM_GROUP_COUNT; i++) {
-      serverAddresses = new ArrayList<>();
+      List<String> serverAddresses = new ArrayList<>();
+      List<Integer> serverPort = new ArrayList<>();
       String omServiceId = OM_SERVICE_ID + i;
       for (int x = 0; x < OM_SERVER_COUNT; x++) {
         int port = 0; // Use ephemeral port for test
@@ -164,7 +191,8 @@ public class TestJobworkerStateMachine {
             .build()
             .start();
         port = server.getPort(); // Get the actual port assigned
-        serverAddresses.add(address + ":" + port);
+        serverAddresses.add(address);
+        serverPort.add(port);
         omServers.add(server);
         mockServers.add(mock);
       }
@@ -173,10 +201,12 @@ public class TestJobworkerStateMachine {
       for (int x = 0; x < OM_SERVER_COUNT; x++) {
         String omId = "om" + x;
         omIds.add(omId);
-        conf.setStrings(OMConfigKeys.OZONE_OM_ADDRESS_KEY + "." + omServiceId + "." + omId,
+        conf.setStrings(OZONE_OM_ADDRESS_KEY + "." + omServiceId + "." + omId,
             serverAddresses.get(x));
+        conf.setInt(getGrpcPortKey() + "." + omServiceId + "." + omId,
+            serverPort.get(x));
       }
-      conf.setStrings(OMConfigKeys.OZONE_OM_NODES_KEY + "." + omServiceId, String.join(", ", omIds));
+      conf.setStrings(OZONE_OM_NODES_KEY + "." + omServiceId, String.join(", ", omIds));
     }
 
     executorService = HadoopExecutors.newCachedThreadPool(

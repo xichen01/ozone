@@ -32,6 +32,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.apache.hadoop.hdds.conf.ConfigurationSource;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos;
+import org.apache.hadoop.ozone.jobworker.JobworkerEndpointStateMachine.EndpointStates;
 import org.apache.hadoop.ozone.jobworker.commands.JobworkerCommandDispatcher;
 import org.apache.hadoop.ozone.jobworker.commands.JobworkerCommandManager;
 import org.apache.hadoop.ozone.jobworker.commands.JobworkerCommandProcessor;
@@ -82,7 +83,7 @@ public class JobworkerStateMachine implements Closeable {
 
     String threadNamePrefix = "JobWorker-" + jobworkerDetails.getUuidString() + "-";
     this.executorService = Executors.newFixedThreadPool(
-        1, // TODO From configuration
+        1, // TODO Jobworker From configuration
         new ThreadFactoryBuilder()
             .setNameFormat(threadNamePrefix + "TaskThread-%d")
             .build());
@@ -320,6 +321,19 @@ public class JobworkerStateMachine implements Closeable {
   public boolean isDaemonStopped() {
     return this.executorService.isShutdown()
         && this.getContext().getState() == JobworkerStates.SHUTDOWN;
+  }
+
+  @VisibleForTesting
+  public boolean isJobworkerReady() {
+    if (context.getState() != JobworkerStates.RUNNING) {
+      return false;
+    }
+    for (JobworkerEndpointStateMachine endpoint : connectionManager.getAllEndpoints()) {
+      if (endpoint.getState() != EndpointStates.HEARTBEAT) {
+        return false;
+      }
+    }
+    return true;
   }
 
 }

@@ -227,6 +227,29 @@ public interface MiniOzoneCluster extends AutoCloseable {
    */
   void shutdownHddsDatanodes();
 
+  /**
+   * Returns the Jobworkers which are part of this cluster.
+   *
+   * @return Jobworker services
+   */
+  List<JobworkerService> getJobworkers();
+
+  /** Start a particular Jobworker. */
+  void startJobworker(int i);
+
+  /** Restart a particular Jobworker. */
+  void restartJobworker(int i, boolean waitForJobworker)
+      throws InterruptedException, TimeoutException;
+
+  /** Shutdown a particular Jobworker. */
+  void shutdownJobworker(int i);
+
+  /** Start all Jobworkers. */
+  void startJobworkers();
+
+  /** Shutdown all Jobworkers. */
+  void shutdownJobworkers();
+
   String getClusterId();
 
   default String getName() {
@@ -262,6 +285,9 @@ public interface MiniOzoneCluster extends AutoCloseable {
 
     protected int numOfDatanodes = 3;
     protected boolean  startDataNodes = true;
+    protected int numOfJobworkers = 0;
+    protected int numOfVolumesPerJobworker = 0;
+    protected boolean startJobworkers = true;
     protected CertificateClient certClient;
     protected SecretKeyClient secretKeyClient;
     protected DatanodeFactory dnFactory = UniformDatanodesFactory.newBuilder().build();
@@ -374,6 +400,24 @@ public interface MiniOzoneCluster extends AutoCloseable {
      */
     public Builder setNumDatanodes(int val) {
       numOfDatanodes = val;
+      return this;
+    }
+
+    /** Sets the number of Jobworkers to start. */
+    public Builder setNumOfJobworkers(int val) {
+      numOfJobworkers = val;
+      return this;
+    }
+
+    /** Sets the number of storage volumes per Jobworker. */
+    public Builder setNumOfVolumesPerJobworker(int val) {
+      numOfVolumesPerJobworker = val;
+      return this;
+    }
+
+    /** Sets whether Jobworkers should be started automatically. */
+    public Builder setStartJobworkers(boolean start) {
+      startJobworkers = start;
       return this;
     }
 

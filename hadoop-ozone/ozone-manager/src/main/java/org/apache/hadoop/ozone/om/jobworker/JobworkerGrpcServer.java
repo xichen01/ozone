@@ -150,7 +150,7 @@ public class JobworkerGrpcServer {
     if (server != null) {
       try {
         server.shutdown();
-        if (server.awaitTermination(10, TimeUnit.SECONDS)) {
+        if (!server.awaitTermination(10, TimeUnit.SECONDS)) {
           LOG.warn("Netty server did not terminate gracefully within 10 seconds");
           server.shutdownNow();
         }

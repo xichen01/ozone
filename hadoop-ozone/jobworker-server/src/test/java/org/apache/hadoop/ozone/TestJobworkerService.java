@@ -18,6 +18,8 @@
 
 package org.apache.hadoop.ozone;
 
+import static org.apache.hadoop.ozone.conf.JobworkerServiceConfig.getGrpcPortKey;
+import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_OM_ADDRESS_KEY;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -121,7 +123,8 @@ public class TestJobworkerService {
         String omId = "om" + j;
         omIds.add(omId);
         // This OM address will not be really used, so we can configure any port
-        conf.set(OMConfigKeys.OZONE_OM_ADDRESS_KEY + "." + serviceId + "." + omId, PortAllocator.anyHostWithFreePort());
+        conf.set(getGrpcPortKey() + "." + serviceId + "." + omId, String.valueOf(PortAllocator.getFreePort()));
+        conf.set(OZONE_OM_ADDRESS_KEY + "." + serviceId + "." + omId, "localhost");
       }
       conf.set(OMConfigKeys.OZONE_OM_NODES_KEY + "." + serviceId, String.join(", ", omIds));
     }

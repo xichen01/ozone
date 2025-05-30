@@ -28,8 +28,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import org.apache.hadoop.hdds.HddsConfigKeys;
 import org.apache.hadoop.hdds.client.StandaloneReplicationConfig;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
@@ -45,6 +47,9 @@ import org.apache.hadoop.ozone.container.common.SCMTestUtils;
 import org.apache.hadoop.ozone.container.common.statemachine.DatanodeStateMachine;
 import org.apache.hadoop.ozone.container.common.statemachine.EndpointStateMachine;
 import org.apache.hadoop.ozone.container.common.volume.StorageVolume;
+import org.apache.hadoop.ozone.jobworker.JobworkerEndpointStateMachine;
+import org.apache.hadoop.ozone.jobworker.JobworkerStates;
+import org.apache.ozone.test.GenericTestUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -277,6 +282,57 @@ public class TestMiniOzoneCluster {
     volumeList.forEach(storageVolume -> assertEquals(
             (long) StorageSize.parse(reservedSpace).getValue(),
             storageVolume.getVolumeUsage().getReservedInBytes()));
+  }
+
+  @Test
+  public void testJobworkerBasicOperations() throws Exception {
+    cluster = MiniOzoneCluster.newBuilder(conf)
+        .setNumOfJobworkers(1)
+        .build();
+
+    cluster.waitForClusterToBeReady();
+    String omServiceId = cluster.getOzoneManager().getOMServiceId();
+    List<JobworkerService> jobworkers = cluster.getJobworkers();
+    assertEquals(1, jobworkers.size());
+    assertJobworkerRunningState(jobworkers, 1,
+        new HashSet<>(Collections.singletonList(omServiceId)));
+
+    cluster.shutdownJobworker(0);
+    GenericTestUtils.waitFor(() ->
+        jobworkers.get(0).getJobworkerStateMachine().getContext().getState()
+            == JobworkerStates.SHUTDOWN, 100, 5000);
+    assertEquals(JobworkerStates.SHUTDOWN,
+        jobworkers.get(0).getJobworkerStateMachine().getContext().getState());
+
+    cluster.startJobworker(0);
+    cluster.waitForClusterToBeReady();
+    assertJobworkerRunningState(jobworkers, 1,
+        new HashSet<>(Collections.singletonList(omServiceId)));
+
+    cluster.restartJobworker(0, true);
+    assertJobworkerRunningState(jobworkers, 1,
+        new HashSet<>(Collections.singletonList(omServiceId)));
+  }
+
+  private static void assertJobworkerRunningState(
+      List<JobworkerService> jobworkers, int expectedEndpointCount,
+      Set<String> expectedOmServiceIds) {
+    for (JobworkerService jobworker : jobworkers) {
+      assertEquals(JobworkerStates.RUNNING,
+          jobworker.getJobworkerStateMachine().getContext().getState());
+      assertEquals(expectedEndpointCount,
+          jobworker.getJobworkerStateMachine().getConnectionManager()
+              .getAllEndpoints().size());
+      Set<String> omServiceIds = new HashSet<>();
+      for (JobworkerEndpointStateMachine endpointStateMachine :
+          jobworker.getJobworkerStateMachine().getConnectionManager()
+              .getAllEndpoints()) {
+        assertEquals(JobworkerEndpointStateMachine.EndpointStates.HEARTBEAT,
+            endpointStateMachine.getState());
+        omServiceIds.add(endpointStateMachine.getOMServiceId());
+      }
+      assertEquals(expectedOmServiceIds, omServiceIds);
+    }
   }
 
 }

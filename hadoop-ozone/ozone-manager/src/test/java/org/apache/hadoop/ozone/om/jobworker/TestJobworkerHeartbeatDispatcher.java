@@ -59,7 +59,7 @@ public class TestJobworkerHeartbeatDispatcher {
   private EventPublisher mockEventPublisher;
   private JobworkerHeartbeatDispatcher dispatcher;
   private UUID jobworkerUuid;
-  private final String OM_SERVICE_ID_1 = "om-service-1";
+  private static final String OM_SERVICE_ID_1 = "om-service-1";
 
   @BeforeEach
   public void setup() {

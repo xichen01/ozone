@@ -31,7 +31,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import io.grpc.StatusRuntimeException;
 import java.io.IOException;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.GetOMVersionResponse;
@@ -94,7 +93,7 @@ public class TestJobworkerGrpcServer {
     GetOMVersionResponse response = client.getOMVersion();
     assertNotNull(response);
     server.stop();
-    Exception exception = assertThrows(StatusRuntimeException.class, () -> {
+    Exception exception = assertThrows(IOException.class, () -> {
       client.getOMVersion();
     });
     assertTrue(exception.getMessage().contains("UNAVAILABLE") ||
@@ -108,7 +107,7 @@ public class TestJobworkerGrpcServer {
     // Set up mock to throw exception for getOMVersion
     doThrow(new IOException("Simulated server error"))
         .when(jobworkerProtocolServer).getOMVersion(any());
-    Exception exception = assertThrows(StatusRuntimeException.class, () -> {
+    Exception exception = assertThrows(IOException.class, () -> {
       client.getOMVersion();
     });
 
