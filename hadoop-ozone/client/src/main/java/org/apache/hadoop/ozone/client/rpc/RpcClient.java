@@ -1453,6 +1453,15 @@ public class RpcClient implements ClientProtocol {
   public OzoneOutputStream rewriteKey(String volumeName, String bucketName, String keyName,
       long size, long existingKeyGeneration, ReplicationConfig replicationConfig,
       Map<String, String> metadata, ObjectAttributes objectAttributes) throws IOException {
+    return rewriteKey(volumeName, bucketName, keyName, size, existingKeyGeneration,
+        replicationConfig, metadata, Collections.emptyMap(), objectAttributes);
+  }
+
+  @Override
+  public OzoneOutputStream rewriteKey(String volumeName, String bucketName, String keyName,
+      long size, long existingKeyGeneration, ReplicationConfig replicationConfig,
+      Map<String, String> metadata, Map<String, String> tags,
+      ObjectAttributes objectAttributes) throws IOException {
     if (omVersion.compareTo(OzoneManagerVersion.ATOMIC_REWRITE_KEY) < 0) {
       throw new IOException("OzoneManager does not support atomic key rewrite.");
     }
@@ -1461,7 +1470,7 @@ public class RpcClient implements ClientProtocol {
         existingKeyGeneration);
     OmKeyArgs.Builder builder = createWriteKeyArgsBuilder(volumeName,
         bucketName, keyName, size, replicationConfig, metadata,
-        Collections.emptyMap());
+        tags);
     builder.setExpectedDataGeneration(existingKeyGeneration)
         .setObjectAttributes(objectAttributes);
     return openOutputStream(builder.build(), size);

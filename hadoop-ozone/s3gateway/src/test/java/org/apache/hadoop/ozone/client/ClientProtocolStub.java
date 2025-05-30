@@ -365,7 +365,16 @@ public class ClientProtocolStub implements ClientProtocol {
       Map<String, String> metadata, ObjectAttributes objectAttributes)
       throws IOException {
     return getBucket(volumeName, bucketName).rewriteKey(keyName, size, existingKeyGeneration,
-        replicationConfig, metadata, objectAttributes);
+        replicationConfig, metadata, Collections.emptyMap(), objectAttributes);
+  }
+
+  @Override
+  public OzoneOutputStream rewriteKey(String volumeName, String bucketName, String keyName,
+      long size, long existingKeyGeneration, ReplicationConfig replicationConfig,
+      Map<String, String> metadata, Map<String, String> tags, ObjectAttributes objectAttributes)
+      throws IOException {
+    return getBucket(volumeName, bucketName).rewriteKey(keyName, size, existingKeyGeneration,
+        replicationConfig, metadata, tags, objectAttributes);
   }
 
   public OzoneInputStream getKey(String volumeName, String bucketName,

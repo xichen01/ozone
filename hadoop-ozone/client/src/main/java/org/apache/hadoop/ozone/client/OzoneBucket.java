@@ -647,7 +647,8 @@ public class OzoneBucket extends WithMetadata {
    */
   public OzoneOutputStream rewriteKey(String keyName, long size, long existingKeyGeneration,
       ReplicationConfig replicationConfig, Map<String, String> metadata) throws IOException {
-    return rewriteKey(keyName, size, existingKeyGeneration, replicationConfig, metadata, null);
+    return rewriteKey(keyName, size, existingKeyGeneration, replicationConfig, metadata,
+        Collections.emptyMap(), null);
   }
 
   /**
@@ -690,7 +691,7 @@ public class OzoneBucket extends WithMetadata {
       ReplicationConfig replicationConfig, Map<String, String> metadata,
       ObjectAttributes objectAttributes) throws IOException {
     return proxy.rewriteKey(volumeName, name, keyName, size, existingKeyGeneration,
-        replicationConfig, metadata, objectAttributes, null);
+        replicationConfig, metadata, Collections.emptyMap(), objectAttributes);
   }
 
   /**
@@ -707,11 +708,19 @@ public class OzoneBucket extends WithMetadata {
    *                              and commit time.
    * @param replicationConfig The replication configuration for the key to be rewritten.
    * @param metadata custom key value metadata
+   * @param tags custom key tags (used for S3 object tag)
    * @param objectAttributes Attributes to set for the rewritten key, such as owner or modification time.
    * @param storagePolicy The storagePolicy of the Key
    * @return OzoneOutputStream to which the data has to be written.
    * @throws IOException
    */
+  @SuppressWarnings("checkstyle:ParameterNumber")
+  public OzoneOutputStream rewriteKey(String keyName, long size, long existingKeyGeneration,
+      ReplicationConfig replicationConfig, Map<String, String> metadata, Map<String, String> tags,
+      ObjectAttributes objectAttributes) throws IOException {
+    return proxy.rewriteKey(volumeName, name, keyName, size, existingKeyGeneration,
+        replicationConfig, metadata, tags, objectAttributes);
+  }
   /**
    * Creates a new key in the bucket.
    *

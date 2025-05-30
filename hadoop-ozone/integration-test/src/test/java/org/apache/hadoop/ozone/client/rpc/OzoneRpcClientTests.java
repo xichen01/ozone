@@ -902,6 +902,62 @@ abstract class OzoneRpcClientTests extends OzoneTestBase {
     assertEquals(userName4, keyDetails4.getOwnerName());
   }
 
+  @ParameterizedTest
+  @MethodSource("bucketLayouts")
+  public void testRewriteKeyWithTags(BucketLayout bucketLayout) throws Exception {
+    String volumeName = UUID.randomUUID().toString();
+    String bucketName = UUID.randomUUID().toString();
+    String keyName = UUID.randomUUID().toString();
+    String originalValue = "original value";
+    String rewrittenValue = "rewritten value with tags";
+
+    store.createVolume(volumeName);
+    OzoneVolume volume = store.getVolume(volumeName);
+    BucketArgs bucketArgs = BucketArgs.newBuilder().setBucketLayout(bucketLayout).build();
+    volume.createBucket(bucketName, bucketArgs);
+    OzoneBucket ozoneBucket = volume.getBucket(bucketName);
+
+    // Create original key
+    Map<String, String> originalMetadata = new HashMap<>();
+    originalMetadata.put("original-key", "original-value");
+
+    writeKey(ozoneBucket, keyName, ONE, originalValue, originalValue.length());
+
+    OzoneKeyDetails originalKeyDetails = ozoneBucket.getKey(keyName);
+    long generation = originalKeyDetails.getGeneration();
+    Map<String, String> tags = new HashMap<>();
+    tags.put("tag-key1", "tag-value1");
+    tags.put("tag-key2", "tag-value2");
+    Map<String, String> rewriteMetadata = new HashMap<>();
+    rewriteMetadata.put("rewrite-key", "rewrite-value");
+
+    // Rewrite key with tags
+    OzoneOutputStream rewriteOut = ozoneBucket.rewriteKey(keyName, rewrittenValue.length(),
+        generation, ReplicationConfig.fromTypeAndFactor(RATIS, ONE), rewriteMetadata,
+        tags, null, null);
+    rewriteOut.write(rewrittenValue.getBytes(UTF_8));
+    rewriteOut.close();
+
+    OzoneKeyDetails rewrittenKeyDetails = ozoneBucket.getKey(keyName);
+    assertNotEquals(originalKeyDetails.getGeneration(), rewrittenKeyDetails.getGeneration());
+    Map<String, String> keyTags = rewrittenKeyDetails.getTags();
+    assertNotNull(keyTags);
+    assertEquals("tag-value1", keyTags.get("tag-key1"));
+    assertEquals("tag-value2", keyTags.get("tag-key2"));
+    assertEquals(2, keyTags.size());
+    Map<String, String> keyMetadata = rewrittenKeyDetails.getMetadata();
+    assertNotNull(keyMetadata);
+    assertEquals("rewrite-value", keyMetadata.get("rewrite-key"));
+
+    // Verify content
+    OzoneInputStream inputStream = ozoneBucket.readKey(keyName);
+    byte[] readContent = new byte[rewrittenValue.length()];
+    int bytesRead = inputStream.read(readContent);
+    inputStream.close();
+    assertEquals(rewrittenValue.length(), bytesRead);
+    assertEquals(rewrittenValue, new String(readContent, UTF_8));
+  }
+
   @Test
   public void testCreateBucket()
       throws IOException {
