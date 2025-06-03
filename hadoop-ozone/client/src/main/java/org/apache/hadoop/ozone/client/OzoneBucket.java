@@ -629,6 +629,104 @@ public class OzoneBucket extends WithMetadata {
   }
 
   /**
+   * This API allows to atomically update an existing key. The key read before invoking this API
+   * should remain unchanged for this key to be written. This is controlled by the generation
+   * field in the existing Key param. If the key is replaced or updated the generation will change. If the
+   * generation has changed since the existing Key was read, either the initial key create will fail,
+   * or the key will fail to commit after the data has been written as the checks are carried out
+   * both at key open and commit time.
+   *
+   * @param keyName Existing key to rewrite. This must exist in the bucket.
+   * @param size The size of the new key
+   * @param existingKeyGeneration The generation of the existing key which is checked for changes at key create
+   *                              and commit time.
+   * @param replicationConfig The replication configuration for the key to be rewritten.
+   * @param metadata custom key value metadata
+   * @return OzoneOutputStream to which the data has to be written.
+   * @throws IOException
+   */
+  public OzoneOutputStream rewriteKey(String keyName, long size, long existingKeyGeneration,
+      ReplicationConfig replicationConfig, Map<String, String> metadata) throws IOException {
+    return rewriteKey(keyName, size, existingKeyGeneration, replicationConfig, metadata, null);
+  }
+
+  /**
+   * This API allows to atomically update an existing key. The key read before invoking this API
+   * should remain unchanged for this key to be written. This is controlled by the generation
+   * field in the existing Key param. If the key is replaced or updated the generation will change. If the
+   * generation has changed since the existing Key was read, either the initial key create will fail,
+   * or the key will fail to commit after the data has been written as the checks are carried out
+   * both at key open and commit time.
+   *
+   * @param keyName Existing key to rewrite. This must exist in the bucket.
+   * @param size The size of the new key
+   * @param existingKeyGeneration The generation of the existing key which is checked for changes at key create
+   *                              and commit time.
+   * @param replicationConfig The replication configuration for the key to be rewritten.
+   * @param metadata custom key value metadata
+   * @param storagePolicy The storagePolicy of the Key
+   * @return OzoneOutputStream to which the data has to be written.
+   * @throws IOException
+   */
+  /**
+   * This API allows to atomically update an existing key. The key read before invoking this API
+   * should remain unchanged for this key to be written. This is controlled by the generation
+   * field in the existing Key param. If the key is replaced or updated the generation will change. If the
+   * generation has changed since the existing Key was read, either the initial key create will fail,
+   * or the key will fail to commit after the data has been written as the checks are carried out
+   * both at key open and commit time.
+   *
+   * @param keyName Existing key to rewrite. This must exist in the bucket.
+   * @param size The size of the new key
+   * @param existingKeyGeneration The generation of the existing key which is checked for changes at key create
+   *                              and commit time.
+   * @param replicationConfig The replication configuration for the key to be rewritten.
+   * @param metadata custom key value metadata
+   * @param objectAttributes Attributes to set for the rewritten key, such as owner or modification time.
+   * @return OzoneOutputStream to which the data has to be written.
+   * @throws IOException
+   */
+  public OzoneOutputStream rewriteKey(String keyName, long size, long existingKeyGeneration,
+      ReplicationConfig replicationConfig, Map<String, String> metadata,
+      ObjectAttributes objectAttributes) throws IOException {
+    return proxy.rewriteKey(volumeName, name, keyName, size, existingKeyGeneration,
+        replicationConfig, metadata, objectAttributes, null);
+  }
+
+  /**
+   * This API allows to atomically update an existing key. The key read before invoking this API
+   * should remain unchanged for this key to be written. This is controlled by the generation
+   * field in the existing Key param. If the key is replaced or updated the generation will change. If the
+   * generation has changed since the existing Key was read, either the initial key create will fail,
+   * or the key will fail to commit after the data has been written as the checks are carried out
+   * both at key open and commit time.
+   *
+   * @param keyName Existing key to rewrite. This must exist in the bucket.
+   * @param size The size of the new key
+   * @param existingKeyGeneration The generation of the existing key which is checked for changes at key create
+   *                              and commit time.
+   * @param replicationConfig The replication configuration for the key to be rewritten.
+   * @param metadata custom key value metadata
+   * @param objectAttributes Attributes to set for the rewritten key, such as owner or modification time.
+   * @param storagePolicy The storagePolicy of the Key
+   * @return OzoneOutputStream to which the data has to be written.
+   * @throws IOException
+   */
+  /**
+   * Creates a new key in the bucket.
+   *
+   * @param key               Name of the key to be created.
+   * @param size              Size of the data the key will point to.
+   * @param replicationConfig Replication configuration.
+   * @param keyMetadata       Custom key metadata
+   * @param tags              Custom key tags (used for S3 object tag)
+   * @param objectAttributes  Attributes to set for the created key,
+   *                          such as owner or modification time.
+   * @param storagePolicy     The storagePolicy of the Key
+   * @return OzoneOutputStream to which the data has to be written.
+   * @throws IOException
+   */
+  /**
    * Creates a new key in the bucket, with default replication type RATIS and
    * with replication factor THREE.
    *

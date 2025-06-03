@@ -803,6 +803,105 @@ abstract class OzoneRpcClientTests extends OzoneTestBase {
     assertEquals(userName4, keyDetails4.getOwnerName());
   }
 
+  @ParameterizedTest
+  @MethodSource("bucketLayouts")
+  public void testRewriteKeyWithObjectAttributes(BucketLayout bucketLayout) throws Exception {
+    // Only support Object/Legacy Bucket
+    Assumptions.assumeTrue(!bucketLayout.isFileSystemOptimized());
+    // ENV
+    String volumeName = UUID.randomUUID().toString();
+    String bucketName = UUID.randomUUID().toString();
+    String value = "sample value";
+    OzoneVolume volume;
+    store.createVolume(volumeName);
+    volume = store.getVolume(volumeName);
+    BucketArgs bucketArgs =
+        BucketArgs.newBuilder().setBucketLayout(bucketLayout).build();
+    volume.createBucket(bucketName, bucketArgs);
+    OzoneBucket ozoneBucket = volume.getBucket(bucketName);
+
+    // Create original key first
+    String keyName = UUID.randomUUID().toString();
+    writeKey(ozoneBucket, keyName, ONE, value, value.length());
+    OzoneKeyDetails originalKeyDetails = ozoneBucket.getKey(keyName);
+
+    // Test rewriting with creation time attribute
+    ObjectAttributes objectAttributes0 = new ObjectAttributes();
+    long ctime0 = System.currentTimeMillis();
+    objectAttributes0.setCtime(ctime0);
+    String rewriteValue = "rewritten value";
+    try (OzoneOutputStream out = ozoneBucket.rewriteKey(keyName, rewriteValue.length(),
+        originalKeyDetails.getGeneration(),
+        ReplicationConfig.fromTypeAndFactor(RATIS, ONE),
+        Collections.emptyMap(), objectAttributes0)) {
+      out.write(rewriteValue.getBytes(UTF_8));
+    }
+    OzoneKeyDetails keyDetails0 = ozoneBucket.getKey(keyName);
+    assertEquals(ctime0, keyDetails0.getCreationTime().toEpochMilli());
+    assertEquals(UserGroupInformation.getCurrentUser().getShortUserName(), keyDetails0.getOwnerName());
+
+    // Test rewriting with modification time attribute
+    ObjectAttributes objectAttributes1 = new ObjectAttributes();
+    long mTime1 = System.currentTimeMillis();
+    objectAttributes1.setMtime(mTime1);
+    try (OzoneOutputStream out = ozoneBucket.rewriteKey(keyName, rewriteValue.length(),
+        keyDetails0.getGeneration(),
+        ReplicationConfig.fromTypeAndFactor(RATIS, ONE),
+        Collections.emptyMap(), objectAttributes1)) {
+      out.write(rewriteValue.getBytes(UTF_8));
+    }
+    OzoneKeyDetails keyDetails1 = ozoneBucket.getKey(keyName);
+    assertEquals(mTime1, keyDetails1.getModificationTime().toEpochMilli());
+    assertEquals(UserGroupInformation.getCurrentUser().getShortUserName(), keyDetails1.getOwnerName());
+
+    // Test rewriting with username attribute
+    ObjectAttributes objectAttributes2 = new ObjectAttributes();
+    String userName2 = UUID.randomUUID().toString();
+    objectAttributes2.setUsername(userName2);
+    try (OzoneOutputStream out = ozoneBucket.rewriteKey(keyName, rewriteValue.length(),
+        keyDetails1.getGeneration(),
+        ReplicationConfig.fromTypeAndFactor(RATIS, ONE),
+        Collections.emptyMap(), objectAttributes2)) {
+      out.write(rewriteValue.getBytes(UTF_8));
+    }
+    OzoneKeyDetails keyDetails2 = ozoneBucket.getKey(keyName);
+    assertEquals(userName2, keyDetails2.getOwnerName());
+
+    // Test rewriting with multiple attributes
+    String userName3 = UUID.randomUUID().toString();
+    long mTime3 = System.currentTimeMillis();
+    ObjectAttributes objectAttributes3 = new ObjectAttributes();
+    objectAttributes3.setUsername(userName3);
+    objectAttributes3.setMtime(mTime3);
+    String newValue3 = "rewritten value with multiple attributes";
+    try (OzoneOutputStream out = ozoneBucket.rewriteKey(keyName, newValue3.length(),
+        keyDetails2.getGeneration(),
+        ReplicationConfig.fromTypeAndFactor(RATIS, ONE),
+        Collections.emptyMap(), objectAttributes3)) {
+      out.write(newValue3.getBytes(UTF_8));
+    }
+    OzoneKeyDetails keyDetails3 = ozoneBucket.getKey(keyName);
+    assertEquals(mTime3, keyDetails3.getModificationTime().toEpochMilli());
+    assertEquals(userName3, keyDetails3.getOwnerName());
+
+    // Test overwrite with different attributes
+    String userName4 = UUID.randomUUID().toString();
+    long mTime4 = System.currentTimeMillis();
+    ObjectAttributes objectAttributes4 = new ObjectAttributes();
+    objectAttributes4.setUsername(userName4);
+    objectAttributes4.setMtime(mTime4);
+    String newValue4 = "rewritten value final";
+    try (OzoneOutputStream out = ozoneBucket.rewriteKey(keyName, newValue4.length(),
+        keyDetails3.getGeneration(),
+        ReplicationConfig.fromTypeAndFactor(RATIS, ONE),
+        Collections.emptyMap(), objectAttributes4)) {
+      out.write(newValue4.getBytes(UTF_8));
+    }
+    OzoneKeyDetails keyDetails4 = ozoneBucket.getKey(keyName);
+    assertEquals(mTime4, keyDetails4.getModificationTime().toEpochMilli());
+    assertEquals(userName4, keyDetails4.getOwnerName());
+  }
+
   @Test
   public void testCreateBucket()
       throws IOException {

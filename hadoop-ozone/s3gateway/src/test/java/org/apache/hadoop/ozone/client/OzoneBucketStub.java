@@ -203,6 +203,13 @@ public final class OzoneBucketStub extends OzoneBucket {
   @Override
   public OzoneOutputStream rewriteKey(String keyName, long size, long existingKeyGeneration,
       ReplicationConfig rConfig, Map<String, String> metadata) throws IOException {
+    return rewriteKey(keyName, size, existingKeyGeneration, rConfig, metadata, null);
+  }
+
+  @Override
+  public OzoneOutputStream rewriteKey(String keyName, long size, long existingKeyGeneration,
+      ReplicationConfig rConfig, Map<String, String> metadata, ObjectAttributes objectAttributes)
+      throws IOException {
     final ReplicationConfig repConfig;
     if (rConfig == null) {
       repConfig = getReplicationConfig();
