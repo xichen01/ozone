@@ -131,7 +131,7 @@
                 com.google.protobuf:protoc:${proto2.hadooprpc.protobuf.version}:exe:${os.detected.classifier}
               </protocArtifact>
               <protoSourceRoot>${basedir}/src/main/proto/</protoSourceRoot>
-              <outputDirectory>target/generated-sources/protobuf/java</outputDirectory>
+              <outputDirectory>target/generated-sources/java</outputDirectory>
               <clearOutputDirectory>false</clearOutputDirectory>
               <includes>
                 <include>JobworkerServiceProtocol.proto</include>
