@@ -644,3 +644,23 @@ message ObjectAttributeProto {
     optional int64 mtime = 2;  // Unix timestamp for modification time
     optional int64 ctime = 3;  // Unix timestamp for creation time
 }
+
+message JobworkerMigrationKeysTxProto {
+    required int64 txId = 1;
+    required string volume = 2;
+    required string bucket = 3;
+    required ECReplicationConfig ecReplicationConfig = 4;
+    repeated MigrationKeyProto migrationKeys = 5;
+    optional string preserveAttributes = 6;
+}
+
+message MigrationKeyProto {
+    required string key = 1;
+    required uint64 updateID = 2;
+}
+
+message JobworkerMigrationKeysCommandProto {
+    required int64 cmdId = 1;
+    required JobworkerMigrationKeysTxProto migrationKeysTx = 2;
+    required int32 retryCount = 3;
+}

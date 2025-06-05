@@ -69,6 +69,10 @@
             <groupId>com.google.protobuf</groupId>
             <artifactId>protobuf-java</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.apache.ozone</groupId>
+            <artifactId>ozone-client</artifactId>
+        </dependency>
     </dependencies>
 
 </project>

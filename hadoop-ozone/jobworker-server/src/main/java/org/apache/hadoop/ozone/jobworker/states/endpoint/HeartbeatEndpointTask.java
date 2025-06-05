@@ -34,6 +34,7 @@ import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolP
 import org.apache.hadoop.ozone.jobworker.JobworkerEndpointStateMachine;
 import org.apache.hadoop.ozone.jobworker.JobworkerEndpointStateMachine.EndpointStates;
 import org.apache.hadoop.ozone.jobworker.JobworkerStateContext;
+import org.apache.hadoop.ozone.jobworker.commands.MigrateKeyJobworkerCommand;
 import org.apache.hadoop.util.ProtobufUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -161,7 +162,7 @@ public class HeartbeatEndpointTask implements Callable<EndpointStates> {
     }
     // Process commands
     for (OMJobworkerCommandProto commandProto : response.getCommandsList()) {
-      processCommandProto(commandProto, response.getOmServiceId());
+      processCommandProto(commandProto, response.getOmServiceId(), response.getTerm());
     }
   }
 
@@ -170,13 +171,19 @@ public class HeartbeatEndpointTask implements Callable<EndpointStates> {
    *
    * @param commandProto the command proto
    */
-  private void processCommandProto(OMJobworkerCommandProto commandProto, String omServiceId) {
+  private void processCommandProto(OMJobworkerCommandProto commandProto, String omServiceId, long term) {
     OMJobworkerCommandProto.Type cmdType = commandProto.getCommandType();
     try {
       switch (cmdType) {
-      // use context.addCommand(cmd); to add command if you need
       case reregisterCommand:
         processReregisterCommand();
+        break;
+      case migrateKeyCommand:
+        MigrateKeyJobworkerCommand migrateCommand =
+            MigrateKeyJobworkerCommand.fromOMCommand(commandProto, omServiceId, term);
+        LOG.debug("Received key migration command: volume={}, bucket={}, keyCount={}",
+            migrateCommand.getVolume(), migrateCommand.getBucket(), migrateCommand.getMigrationKeys().size());
+        context.addCommand(migrateCommand);
         break;
       default:
         LOG.warn("Unknown command type: {} omServiceId {}", cmdType, omServiceId);

@@ -36,6 +36,7 @@ import org.apache.hadoop.ozone.jobworker.JobworkerEndpointStateMachine.EndpointS
 import org.apache.hadoop.ozone.jobworker.commands.JobworkerCommandDispatcher;
 import org.apache.hadoop.ozone.jobworker.commands.JobworkerCommandManager;
 import org.apache.hadoop.ozone.jobworker.commands.JobworkerCommandProcessor;
+import org.apache.hadoop.ozone.jobworker.commands.MigrateKeyCommandHandler;
 import org.apache.hadoop.ozone.jobworker.states.InitJobworkerState;
 import org.apache.hadoop.ozone.jobworker.states.JobworkerStateHandler;
 import org.apache.hadoop.ozone.jobworker.states.RunningJobworkerState;
@@ -105,6 +106,7 @@ public class JobworkerStateMachine implements Closeable {
         // Add more handlers as they're implemented
         .setConnectionManager(connectionManager)
         .setContext(context)
+        .addHandler(MigrateKeyCommandHandler.create(threadNamePrefix, conf))
         .build();
     this.commandProcessor = new JobworkerCommandProcessor(
         context, commandManager, commandDispatcher, conf, threadNamePrefix, nextHB);

@@ -126,12 +126,14 @@ message OMJobworkerCommandProto {
     unknownCommand = 0;
     reregisterCommand = 1;
     mockCommand = 2; // Just for test
+    migrateKeyCommand = 3;
     // OM -> Jobworker Command
   }
   required Type commandType = 1;
   optional int64 expirationTimestampMs = 2;
   optional JobworkerReregisterCommandProto jobworkerReregisterCommandProto = 3;
   optional JobworkerMockCommandProto jobworkerMockCommandProto = 4;
+  optional hadoop.hdds.JobworkerMigrationKeysCommandProto jobworkerMigrationKeysCommandProto = 5;
 }
 
 message JobworkerNodeReportProto {
@@ -175,6 +177,7 @@ message CommandStatus {
 
 message CommandExecutionResultsProto {
   optional MockCommandResultsProto mockCommandResults = 1;
+  optional MigrationResultsProto migrationResults = 2;
   // Can add other command type details here in the future
 }
 
@@ -201,4 +204,14 @@ enum CommandResultCode {
   KEY_GENERATION_MISMATCH = 15; // rewrite key Exception
   CLIENT_CREATION_FAILED = 16;
   COMMAND_QUEUE_FULL = 17;
+}
+
+message MigrationResultsProto {
+  repeated MigrationKeyResult results = 1;
+  required int32 successfulKeyCount = 2;
+}
+
+message MigrationKeyResult {
+  required string keyName = 1;
+  required CommandResultCode resultCode = 2;
 }

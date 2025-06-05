@@ -23,6 +23,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.Maps;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.JobworkerMockCommandProto;
 import org.apache.hadoop.hdds.server.events.EventPublisher;
+import org.apache.hadoop.ozone.jobworker.commands.OMJobworkerMigrateKeyCommand;
 import org.apache.hadoop.ozone.jobworker.commands.OMJobworkerCommand;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.GetOMVersionRequest;
@@ -155,6 +156,14 @@ public class JobworkerProtocolServerImpl implements JobworkerProtocol {
           .setCommandType(Type.mockCommand)
           .setJobworkerMockCommandProto(JobworkerMockCommandProto.getDefaultInstance())
           .build();
+
+    case migrateKeyCommand:
+      OMJobworkerMigrateKeyCommand migrateCmd = (OMJobworkerMigrateKeyCommand) command;
+      return builder
+          .setCommandType(Type.migrateKeyCommand)
+          .setJobworkerMigrationKeysCommandProto(migrateCmd.getProto())
+          .build();
+
     case unknownCommand:
       throw new IllegalArgumentException("Unknown OMJobworker command");
     default:

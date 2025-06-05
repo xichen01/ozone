@@ -83,6 +83,28 @@ public class OMJobworkerCommandManager {
   }
 
   /**
+   * Get the listener for a specific command type (for testing purposes).
+   *
+   * @param commandType the command type
+   * @return the listener for the command type, or null if not found
+   */
+  @VisibleForTesting
+  public JobworkerCommandListener getListener(OMJobworkerCommandProto.Type commandType) {
+    return listeners.get(commandType);
+  }
+
+  /**
+   * Set the listener for a specific command type (for testing purposes).
+   *
+   * @param commandType the command type
+   * @param listener the listener to set
+   */
+  @VisibleForTesting
+  public void setListener(OMJobworkerCommandProto.Type commandType, JobworkerCommandListener listener) {
+    listeners.put(commandType, listener);
+  }
+
+  /**
    * Validates whether a state transition is allowed according to the rules:
    * - PENDING -> EXECUTING: Successful resource allocation
    * - PENDING -> FAILED: Resource allocation failed, not in IN_SERVICE status, low term command
