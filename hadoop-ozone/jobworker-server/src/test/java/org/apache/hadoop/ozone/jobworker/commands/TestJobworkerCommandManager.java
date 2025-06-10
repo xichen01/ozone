@@ -22,12 +22,12 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 import java.util.Map;
 import java.util.OptionalLong;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandResultCode;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatus;
 import org.apache.hadoop.ozone.jobworker.JobworkerClientConfiguration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -209,6 +209,35 @@ public class TestJobworkerCommandManager {
     if (status != null) {
       assertEquals(commandId, status.getCmdId());
     }
+  }
+
+  @Test
+  public void testCommandQueueFullStatusUpdate() {
+    // Create a configuration with a small queue limit
+    OzoneConfiguration smallQueueConf = new OzoneConfiguration();
+    JobworkerClientConfiguration jwConfig = smallQueueConf.getObject(JobworkerClientConfiguration.class);
+    jwConfig.setCommandQueueLimit(2);
+    smallQueueConf.setFromObject(jwConfig);
+    JobworkerCommandManager limitedManager = new JobworkerCommandManager(smallQueueConf);
+
+    // Add two commands to fill the queue to its limit
+    createAndAddCommand(limitedManager, 1L, TEST_SERVICE_ID, 1L, Type.mockCommand);
+    createAndAddCommand(limitedManager, 2L, TEST_SERVICE_ID, 1L, Type.mockCommand);
+
+    // Try to add a third command, which should be rejected due to queue being full
+    JobworkerCommand<?> thirdCommand = new MockJobworkerCommand(3L, TEST_SERVICE_ID, 1L, 0L, Type.mockCommand);
+    limitedManager.addCommand(thirdCommand);
+
+    // Verify the third command has FAILED status with COMMAND_QUEUE_FULL result code
+    JobworkerCommandStatus status3 = limitedManager.getCmdStatus(TEST_SERVICE_ID, 3L);
+    assertNotNull(status3);
+    assertEquals(CommandStatus.Status.FAILED, status3.getStatus());
+    assertEquals(CommandResultCode.COMMAND_QUEUE_FULL, status3.getProtobufMessage().getResultCode());
+    assertEquals("Command queue is full", status3.getMessage());
+
+    // Verify the command was not actually added to the queue
+    Map<Type, Integer> summary = limitedManager.getCommandQueueSummary();
+    assertEquals(2, summary.values().stream().mapToInt(Integer::intValue).sum());
   }
 
   private void createAndAddCommand(long id, String omServiceId, long term,

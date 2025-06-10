@@ -18,7 +18,10 @@
 package org.apache.hadoop.ozone.om.jobworker.command;
 
 import java.util.UUID;
+import javax.annotation.Nullable;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandExecutionResultsProto;
+import org.apache.hadoop.ozone.jobworker.command.OMJobworkerCommand;
 
 /**
  * Defines the event listener methods that JobWorker command implementations must support
@@ -28,13 +31,21 @@ import org.apache.hadoop.hdds.protocol.JobworkerDetails;
 public interface JobworkerCommandListener {
 
   /**
+   * Called when a command is successfully sent to a JobWorker.
+   *
+   * @param command the command that was sent
+   * @param jobworkerUuid the UUID of the target JobWorker
+   */
+  void onSendCommand(OMJobworkerCommand command, UUID jobworkerUuid);
+
+  /**
    * Called when a command's status changes to SUCCEEDED.
    *
    * @param statusInfo the command status info
    * @param jobworkerDetails the JobWorker that executed the command
    */
   void onCommandSucceeded(JobworkerCommandInfo statusInfo,
-                          JobworkerDetails jobworkerDetails);
+      @Nullable CommandExecutionResultsProto executionResultsProto, JobworkerDetails jobworkerDetails);
 
   /**
    * Called when a command's status changes to FAILED.
@@ -43,7 +54,7 @@ public interface JobworkerCommandListener {
    * @param jobworkerDetails the JobWorker that failed to execute the command
    */
   void onCommandFailed(JobworkerCommandInfo statusInfo,
-                       JobworkerDetails jobworkerDetails);
+      @Nullable CommandExecutionResultsProto executionResultsProto, JobworkerDetails jobworkerDetails);
 
   /**
    * Called when a command's status changes to EXECUTING.

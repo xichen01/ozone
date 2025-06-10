@@ -30,6 +30,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandResultCode;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatus;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto;
 import org.apache.hadoop.hdds.server.ServerUtils;
@@ -149,6 +150,7 @@ public class OMJobworkerCommandManager {
     try {
       CommandStatus.Status currentStatus = statusInfo.getStatus();
       CommandStatus.Status newStatus = cmdStatus.getStatus();
+      CommandResultCode resultCode = cmdStatus.getResultCode();
 
       if (!isValidStateTransition(currentStatus, newStatus)) {
         LOG.warn("Invalid state transition attempted for command ID {} from {} to {} by JobWorker {}",
@@ -162,6 +164,7 @@ public class OMJobworkerCommandManager {
       }
       statusInfo.setStatus(newStatus);
       statusInfo.updateLastStatusUpdateTime();
+      statusInfo.setResultCode(resultCode);
 
       if (cmdStatus.hasMsg()) {
         statusInfo.setMessage(cmdStatus.getMsg());
@@ -169,10 +172,10 @@ public class OMJobworkerCommandManager {
 
       switch (newStatus) {
       case SUCCEEDED:
-        listener.onCommandSucceeded(statusInfo, jobworkerDetails);
+        listener.onCommandSucceeded(statusInfo, cmdStatus.getExecutionResults(), jobworkerDetails);
         break;
       case FAILED:
-        listener.onCommandFailed(statusInfo, jobworkerDetails);
+        listener.onCommandFailed(statusInfo, cmdStatus.getExecutionResults(), jobworkerDetails);
         break;
       case EXECUTING:
         listener.onCommandExecuting(statusInfo, jobworkerDetails);
@@ -241,6 +244,7 @@ public class OMJobworkerCommandManager {
     commandInfoMap.put(command.getId(), commandInfo);
 
     jobworkerNodeManager.addOMJobworkerCommand(jobworkerUuid, command);
+    listener.onSendCommand(command, jobworkerUuid);
     LOG.debug("Sent command {} of type {} to JobWorker {}", command.getId(), command.getType(), jobworkerUuid);
     return command.getId();
   }

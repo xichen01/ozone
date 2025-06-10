@@ -39,7 +39,7 @@ public class MockCommandHandler extends AbstractJobworkerCommandHandler {
   }
 
   @Override
-  protected void processCommand(JobworkerCommand<?> command,
+  protected boolean processCommand(JobworkerCommand<?> command,
                                 JobworkerStateContext context,
                                 JobworkerConnectionManager connectionManager) throws Exception {
 
@@ -55,6 +55,7 @@ public class MockCommandHandler extends AbstractJobworkerCommandHandler {
     if (exceptionToThrow != null) {
       throw exceptionToThrow;
     }
+    return true;
   }
 
   public boolean wasProcessCommandCalled() {

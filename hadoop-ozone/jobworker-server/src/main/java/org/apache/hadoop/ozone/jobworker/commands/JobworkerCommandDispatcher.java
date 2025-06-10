@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandResultCode;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatus;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto;
 import org.apache.hadoop.ozone.jobworker.JobworkerConnectionManager;
@@ -117,7 +118,8 @@ public final class JobworkerCommandDispatcher {
         handler.handle(command, context, connectionManager);
       } catch (Exception ex) {
         handler.updateCommandStatus(context, command, status -> {
-          status.updateStatusAndMessage(CommandStatus.Status.FAILED, ex.getMessage());
+          status.updateStatusAndMessage(CommandStatus.Status.FAILED, ex.getMessage(),
+              CommandResultCode.OTHER_ERROR);
         });
         LOG.error("Exception while handling command Id {} type {}: {}",
             command.getId(), command.getType().name(), ex.getMessage(), ex);

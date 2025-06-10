@@ -18,6 +18,7 @@
 package org.apache.hadoop.ozone.om.jobworker.command;
 
 import com.google.common.base.Preconditions;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandResultCode;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatus;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto;
 
@@ -35,6 +36,7 @@ public class JobworkerCommandInfo {
   private String message;
   private final long creationTime;
   private long lastStatusUpdateTime;
+  private CommandResultCode resultCode;
 
   /**
    * Create a new CommandStatusInfo.
@@ -140,6 +142,16 @@ public class JobworkerCommandInfo {
    */
   public long getCreationTime() {
     return creationTime;
+  }
+
+
+  public CommandResultCode getResultCode() {
+    return resultCode;
+  }
+
+  public void setResultCode(
+      CommandResultCode resultCode) {
+    this.resultCode = resultCode;
   }
 
   /**

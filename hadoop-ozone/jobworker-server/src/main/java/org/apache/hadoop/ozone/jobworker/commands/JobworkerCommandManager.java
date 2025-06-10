@@ -30,6 +30,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import java.util.function.Consumer;
 import org.apache.hadoop.hdds.conf.ConfigurationSource;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandResultCode;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatus;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto;
 import org.apache.hadoop.ozone.jobworker.JobworkerClientConfiguration;
@@ -107,6 +108,31 @@ public class JobworkerCommandManager {
   }
 
   /**
+   * Adds a failed command status for a given command.
+   *
+   * @param cmd JobworkerCommand
+   * @param msg The failed Command message
+   * @param resultCode The failed result code
+   *
+   */
+  public void addFailedCmd(JobworkerCommand cmd, String msg, CommandResultCode resultCode) {
+    String omServiceId = cmd.getOmServiceId();
+    JobworkerCommandStatus.Builder builder = JobworkerCommandStatus.newBuilder()
+        .setCmdId(cmd.getId())
+        .setType(cmd.getType())
+        .setStatus(CommandStatus.Status.FAILED)
+        .setOmServiceId(omServiceId);
+    if (msg != null) {
+      builder.setMsg(msg);
+    }
+    if (resultCode != null) {
+      builder.setResultCode(resultCode);
+    }
+    cmdStatusMap.computeIfAbsent(omServiceId, ignore -> new ConcurrentHashMap<>())
+        .put(cmd.getId(), builder.build());
+  }
+
+  /**
    * Get map holding all command status objects.
    *
    * @return map of command statuses
@@ -169,12 +195,12 @@ public class JobworkerCommandManager {
   }
 
   public void updateCommand(JobworkerCommand command,
-                            CommandStatus.Status status, String message) {
+                            CommandStatus.Status status, String message, CommandResultCode resultCode) {
     long commandId = command.getId();
     String omServiceId = command.getOmServiceId();
     Map<Long, JobworkerCommandStatus> commands = cmdStatusMap.get(omServiceId);
     if (commands != null && commands.get(commandId) != null) {
-      commands.get(commandId).updateStatusAndMessage(status, message);
+      commands.get(commandId).updateStatusAndMessage(status, message, resultCode);
     } else {
       LOG.warn("CommandStatus Type {} with ID: {} not found.", command.getType(),
           command.getId());
@@ -219,8 +245,11 @@ public class JobworkerCommandManager {
           // updateTermOfLeaderOM will update current Term,
           // so normal business logic cannot reach here
           LOG.error("No Term found for OM service id {}", omServiceId);
+          updateCommand(command, CommandStatus.Status.FAILED, "\"No Term found for OM service",
+              CommandResultCode.UNEXPECTED_ERROR);
           return null;
         }
+
         if (command.getTerm() == currentTerm.getAsLong()) {
           return command;
         }
@@ -229,10 +258,7 @@ public class JobworkerCommandManager {
         LOG.warn("Detect and drop a JobworkerCommand {} from stale leader OM for service {}," +
                 " stale term {}, latest term {}.",
             command, omServiceId, command.getTerm(), currentTerm.getAsLong());
-        Map<Long, JobworkerCommandStatus> commands = cmdStatusMap.get(command.getOmServiceId());
-        if (commands != null &&  commands.get(command.getId()) != null) {
-          commands.get(command.getId()).updateStatusAndMessage(CommandStatus.Status.FAILED, "Stale command");
-        }
+        updateCommand(command, CommandStatus.Status.FAILED, "Stale command", CommandResultCode.STALE_TERM);
       }
     } finally {
       lock.unlock();
@@ -251,7 +277,7 @@ public class JobworkerCommandManager {
         // TODO jobworker add metrics
         LOG.warn("Ignore command {} as command queue crosses max limit {}.",
             command.getType(), maxCommandQueueLimit);
-        // TODO jobworker add metrics set status to failure
+        addFailedCmd(command, "Command queue is full", CommandResultCode.COMMAND_QUEUE_FULL);
         return;
       }
 

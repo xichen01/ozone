@@ -40,6 +40,7 @@ import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
 import org.apache.hadoop.hdds.protocol.MockJobworkerDetails;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandResultCode;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatus;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatusReportsProto;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto.Type;
@@ -123,7 +124,7 @@ public class TestJobworkerCommandStatusReportPublisher {
 
     // Update the status of one command to a terminal state (SUCCEEDED)
     JobworkerCommandStatus status1 = commandMap.get(serviceId).get(1L);
-    status1.updateStatusAndMessage(CommandStatus.Status.SUCCEEDED, null);
+    status1.updateStatusAndMessage(CommandStatus.Status.SUCCEEDED, null, CommandResultCode.OTHER_ERROR);
     report = publisher.getReport();
 
     // Verify the report still contains both commands
@@ -161,7 +162,8 @@ public class TestJobworkerCommandStatusReportPublisher {
           // Randomly update some statuses to terminal states
           if (id % 3 == 0) {
             JobworkerCommandStatus status = commandManager.getCmdStatus(serviceId, id);
-            status.updateStatusAndMessage(CommandStatus.Status.SUCCEEDED, null);
+            status.updateStatusAndMessage(CommandStatus.Status.SUCCEEDED, null,
+                CommandResultCode.OTHER_ERROR);
           }
         } finally {
           latch.countDown();
@@ -220,5 +222,44 @@ public class TestJobworkerCommandStatusReportPublisher {
     assertEquals(1L, retrievedStatus.getCmdId(), "Command ID should match");
     // The report should have been removed, so cannot get new reports.
     assertEquals(0, testReportManager.getLimitedCountAvailableReports(serviceId, endpoint).size());
+  }
+
+  @Test
+  public void testCommandResultCodeInReports() throws Exception {
+    // Test that CommandResultCode is properly included in command status reports
+    String serviceId = "test-service";
+    JobworkerCommand<?> command1 = new MockJobworkerCommand(1L, serviceId, Type.mockCommand);
+    JobworkerCommand<?> command2 = new MockJobworkerCommand(2L, serviceId, Type.reregisterCommand);
+    
+    commandManager.addCommand(command1);
+    commandManager.addCommand(command2);
+    
+    Map<String, Map<Long, JobworkerCommandStatus>> commandMap = commandManager.getCommandStatusMap();
+    
+    // Update command statuses with different CommandResultCode values
+    JobworkerCommandStatus status1 = commandMap.get(serviceId).get(1L);
+    JobworkerCommandStatus status2 = commandMap.get(serviceId).get(2L);
+    
+    status1.updateStatusAndMessage(CommandStatus.Status.SUCCEEDED, "Success", CommandResultCode.SUCCESS);
+    status2.updateStatusAndMessage(CommandStatus.Status.FAILED, "Key not found", CommandResultCode.KEY_NOT_FOUND);
+    
+    CommandStatusReportsProto report = publisher.getReport();
+    assertNotNull(report);
+    assertEquals(2, report.getCmdStatusCount());
+    
+    // Verify CommandResultCode is included in the reports
+    for (CommandStatus commandStatus : report.getCmdStatusList()) {
+      assertTrue(commandStatus.hasResultCode(), "CommandResultCode should be present");
+      
+      if (commandStatus.getCmdId() == 1L) {
+        assertEquals(CommandStatus.Status.SUCCEEDED, commandStatus.getStatus());
+        assertEquals(CommandResultCode.SUCCESS, commandStatus.getResultCode());
+        assertEquals("Success", commandStatus.getMsg());
+      } else if (commandStatus.getCmdId() == 2L) {
+        assertEquals(CommandStatus.Status.FAILED, commandStatus.getStatus());
+        assertEquals(CommandResultCode.KEY_NOT_FOUND, commandStatus.getResultCode());
+        assertEquals("Key not found", commandStatus.getMsg());
+      }
+    }
   }
 }

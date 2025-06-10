@@ -19,6 +19,8 @@ package org.apache.hadoop.ozone.jobworker.commands;
 import com.google.common.base.Preconditions;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandExecutionResultsProto;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandResultCode;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatus;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatus.Status;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto;
@@ -33,6 +35,8 @@ public class JobworkerCommandStatus {
   private volatile Status status;
   private final String omServiceId;
   private volatile String message;
+  private volatile CommandResultCode resultCode;
+  private volatile CommandExecutionResultsProto executionResults;
   private final ReadWriteLock lock = new ReentrantReadWriteLock();
 
   /**
@@ -44,7 +48,7 @@ public class JobworkerCommandStatus {
    * @param message optional status message
    */
   public JobworkerCommandStatus(long cmdId, OMJobworkerCommandProto.Type type,
-                                Status status, String omServiceId, String message) {
+                                Status status, String omServiceId, String message, CommandResultCode resultCode) {
     Preconditions.checkArgument(cmdId >= 0, "CmdId must be >= 0");
     Preconditions.checkNotNull(type, "Type must be not null");
     Preconditions.checkNotNull(status, "Status must be not null");
@@ -54,6 +58,7 @@ public class JobworkerCommandStatus {
     this.status = status;
     this.omServiceId = omServiceId;
     this.message = message;
+    this.resultCode = resultCode;
   }
 
   /**
@@ -117,14 +122,25 @@ public class JobworkerCommandStatus {
    * by other threads.
    *
    * @param newStatus new status
-   * @param msg new message
+   * @param msg       new message
+   * @param code      the command error code
    */
-  public void updateStatusAndMessage(Status newStatus, String msg) {
+  public void updateStatusAndMessage(Status newStatus, String msg, CommandResultCode code) {
     Preconditions.checkNotNull(newStatus, "New status must be not null");
     lock.writeLock().lock();
     try {
       this.status = newStatus;
       this.message = msg;
+      this.resultCode = code;
+    } finally {
+      lock.writeLock().unlock();
+    }
+  }
+
+  public void setExecutionResults(CommandExecutionResultsProto results) {
+    lock.writeLock().lock();
+    try {
+      this.executionResults = results;
     } finally {
       lock.writeLock().unlock();
     }
@@ -147,6 +163,12 @@ public class JobworkerCommandStatus {
       if (message != null) {
         builder.setMsg(message);
       }
+      if (resultCode != null) {
+        builder.setResultCode(resultCode);
+      }
+      if (executionResults != null) {
+        builder.setExecutionResults(executionResults);
+      }
 
       return builder.build();
     } finally {
@@ -167,6 +189,7 @@ public class JobworkerCommandStatus {
     private Status status;
     private String omServiceId;
     private String message;
+    private CommandResultCode resultCode;
 
     /**
      * Sets command ID.
@@ -223,12 +246,23 @@ public class JobworkerCommandStatus {
     }
 
     /**
+     * Sets executionResults.
+     * @param resultCode, the command's resultCode
+     * @return Builder
+     */
+    public Builder setResultCode(
+        CommandResultCode resultCode) {
+      this.resultCode = resultCode;
+      return this;
+    }
+
+    /**
      * Build the JobworkerCommandStatus.
      *
      * @return JobworkerCommandStatus instance
      */
     public JobworkerCommandStatus build() {
-      return new JobworkerCommandStatus(cmdId, type, status, omServiceId, message);
+      return new JobworkerCommandStatus(cmdId, type, status, omServiceId, message, resultCode);
     }
   }
 }

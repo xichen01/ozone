@@ -168,5 +168,37 @@ message CommandStatus {
   required Status status = 2 [default = PENDING];
   optional string msg = 3;
   required string omServiceId = 4;
-  required OMJobworkerCommandProto.Type type = 5;
+  optional CommandResultCode resultCode = 5;
+  required OMJobworkerCommandProto.Type type = 6;
+  optional CommandExecutionResultsProto executionResults = 7;
+}
+
+message CommandExecutionResultsProto {
+  optional MockCommandResultsProto mockCommandResults = 1;
+  // Can add other command type details here in the future
+}
+
+message MockCommandResultsProto {
+  required CommandResultCode resultCode = 1;
+}
+
+enum CommandResultCode {
+  UNKNOWN_CODE = 0;
+  SUCCESS = 1;
+  OTHER_ERROR = 2;
+  KEY_NOT_FOUND = 3;
+  VOLUME_NOT_FOUND = 4;
+  BUCKET_NOT_FOUND = 5;
+  PERMISSION_DENIED = 6;
+  TYPE_MISMATCH = 7;
+  COMMAND_EXPIRED = 8;
+  STALE_TERM = 9;
+  COMMAND_REJECTED = 10;
+  UNEXPECTED_ERROR = 11;
+  INVALID_COMMAND = 12;
+  UNSUPPORTED_OM_SERVICE = 13;
+  IO_TIMEOUT = 14;
+  KEY_GENERATION_MISMATCH = 15; // rewrite key Exception
+  CLIENT_CREATION_FAILED = 16;
+  COMMAND_QUEUE_FULL = 17;
 }

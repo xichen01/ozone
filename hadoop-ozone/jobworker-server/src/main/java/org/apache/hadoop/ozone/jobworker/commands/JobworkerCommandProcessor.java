@@ -23,6 +23,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.hadoop.hdds.conf.ConfigurationSource;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandResultCode;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatus;
 import org.apache.hadoop.ozone.jobworker.JobworkerStateContext;
 import org.apache.hadoop.ozone.jobworker.JobworkerStates;
@@ -131,7 +132,8 @@ public class JobworkerCommandProcessor implements Closeable {
         boolean handled = commandDispatcher.handle(command);
         commandsHandled.incrementAndGet();
         if (!handled) {
-          commandManager.updateCommand(command, CommandStatus.Status.FAILED, "Command cannot be handled");
+          commandManager.updateCommand(command, CommandStatus.Status.FAILED,
+              "Command cannot be handled", CommandResultCode.INVALID_COMMAND);
         }
       } else {
         try {

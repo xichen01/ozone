@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -29,6 +30,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandResultCode;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatus;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto;
 import org.apache.hadoop.hdds.server.ServerUtils;
@@ -105,6 +107,7 @@ public class TestAbstractJobworkerCommandHandler {
     handler.handle(command, context, connectionManager);
     assertFalse(handler.wasProcessCommandCalled());
     assertEquals(CommandStatus.Status.FAILED, cmdStatus.getStatus());
+    assertEquals(CommandResultCode.COMMAND_EXPIRED, cmdStatus.getProtobufMessage().getResultCode());
   }
 
   @Test
@@ -124,6 +127,7 @@ public class TestAbstractJobworkerCommandHandler {
     GenericTestUtils.waitFor(() -> handler.wasProcessCommandCalled(), 50, 1000);
     assertEquals(CommandStatus.Status.FAILED, cmdStatus.getStatus());
     assertEquals(1, handler.getInvocationCount());
+    assertEquals(CommandResultCode.OTHER_ERROR, cmdStatus.getProtobufMessage().getResultCode());
   }
 
   @Test
@@ -137,12 +141,96 @@ public class TestAbstractJobworkerCommandHandler {
     when(context.getCommandManager()).thenReturn(commandManager);
 
     Consumer<JobworkerCommandStatus> statusUpdater = status -> {
-      status.updateStatusAndMessage(CommandStatus.Status.SUCCEEDED, "Success");
+      status.updateStatusAndMessage(CommandStatus.Status.SUCCEEDED, "Success", CommandResultCode.OTHER_ERROR);
     };
 
     handler.updateCommandStatus(context, command, statusUpdater);
     // Command should be updated normally
     assertEquals(CommandStatus.Status.SUCCEEDED, cmdStatus.getStatus());
     assertEquals("Success", cmdStatus.getMessage());
+  }
+
+  @Test
+  public void testUpdateCommandStatusWithResultCode() throws InterruptedException, TimeoutException {
+    // Test the new CommandResultCode parameter in updateCommandStatus
+    MockJobworkerCommand command =
+        new MockJobworkerCommand(1L, "omServiceId", OMJobworkerCommandProto.Type.mockCommand);
+
+    commandManager.addCommand(command);
+    JobworkerCommandStatus cmdStatus = commandManager.getCmdStatus(command.getOmServiceId(), command.getId());
+
+    when(context.getCommandManager()).thenReturn(commandManager);
+
+    // Test updating status with specific CommandResultCode
+    handler.updateCommandStatus(context, command, CommandStatus.Status.FAILED, 
+        "Command failed", CommandResultCode.KEY_NOT_FOUND);
+
+    GenericTestUtils.waitFor(() -> CommandStatus.Status.FAILED == cmdStatus.getStatus(), 50, 1000);
+    assertEquals("Command failed", cmdStatus.getMessage());
+    assertEquals(CommandResultCode.KEY_NOT_FOUND, cmdStatus.getProtobufMessage().getResultCode());
+  }
+
+  @Test
+  public void testCommandTypeMismatchWithResultCode() throws InterruptedException, TimeoutException {
+    MockJobworkerCommand command =
+        new MockJobworkerCommand(1L, "omServiceId", OMJobworkerCommandProto.Type.unknownCommand);
+
+    commandManager.addCommand(command);
+    JobworkerCommandStatus cmdStatus = commandManager.getCmdStatus(command.getOmServiceId(), command.getId());
+    when(context.getCommandManager()).thenReturn(commandManager);
+    handler.handle(command, context, connectionManager);
+    
+    // Should fail due to type mismatch and set TYPE_MISMATCH result code
+    GenericTestUtils.waitFor(() -> CommandStatus.Status.FAILED == cmdStatus.getStatus(), 50, 1000);
+    assertEquals(CommandResultCode.TYPE_MISMATCH, cmdStatus.getProtobufMessage().getResultCode());
+    assertFalse(handler.wasProcessCommandCalled());
+  }
+
+  @Test
+  public void testRejectedExecutionException() throws InterruptedException, TimeoutException {
+    MockJobworkerCommand command =
+        new MockJobworkerCommand(1L, "omServiceId", OMJobworkerCommandProto.Type.mockCommand);
+    commandManager.addCommand(command);
+    JobworkerCommandStatus cmdStatus = commandManager.getCmdStatus(command.getOmServiceId(), command.getId());
+    when(context.getCommandManager()).thenReturn(commandManager);
+
+    // Shutdown the executor service to cause RejectedExecutionException
+    executorService.shutdown();
+    
+    // Create a new handler with the shutdown executor service
+    MockCommandHandler rejectedHandler = new MockCommandHandler(OMJobworkerCommandProto.Type.mockCommand, executorService);
+    rejectedHandler.handle(command, context, connectionManager);
+    
+    // Command should fail with COMMAND_REJECTED result code
+    GenericTestUtils.waitFor(() -> CommandStatus.Status.FAILED == cmdStatus.getStatus(), 50, 1000);
+    assertEquals(CommandResultCode.COMMAND_REJECTED, cmdStatus.getProtobufMessage().getResultCode());
+    assertEquals("Command execution rejected", cmdStatus.getMessage());
+    assertFalse(rejectedHandler.wasProcessCommandCalled());
+    assertEquals(1, rejectedHandler.getInvocationCount());
+    assertEquals(0, rejectedHandler.getQueuedCount()); // Should be decremented after rejection
+  }
+
+  @Test
+  public void testSubmissionUnexpectedError() throws InterruptedException, TimeoutException {
+    MockJobworkerCommand command =
+        new MockJobworkerCommand(1L, "omServiceId", OMJobworkerCommandProto.Type.mockCommand);
+    commandManager.addCommand(command);
+    JobworkerCommandStatus cmdStatus = commandManager.getCmdStatus(command.getOmServiceId(), command.getId());
+    when(context.getCommandManager()).thenReturn(commandManager);
+
+    // Create a handler with a mock executor service that throws unexpected error
+    ExecutorService faultyExecutor = mock(ExecutorService.class);
+    RuntimeException unexpectedError = new RuntimeException("Unexpected submission error");
+    when(faultyExecutor.submit(any(Runnable.class))).thenThrow(unexpectedError);
+    MockCommandHandler faultyHandler = new MockCommandHandler(OMJobworkerCommandProto.Type.mockCommand, faultyExecutor);
+    faultyHandler.handle(command, context, connectionManager);
+    
+    // Command should fail with UNEXPECTED_ERROR result code
+    GenericTestUtils.waitFor(() -> CommandStatus.Status.FAILED == cmdStatus.getStatus(), 50, 1000);
+    assertEquals(CommandResultCode.UNEXPECTED_ERROR, cmdStatus.getProtobufMessage().getResultCode());
+    assertEquals("Unexpected submission error", cmdStatus.getMessage());
+    assertFalse(faultyHandler.wasProcessCommandCalled());
+    assertEquals(1, faultyHandler.getInvocationCount());
+    assertEquals(0, faultyHandler.getQueuedCount()); // Should be decremented after error
   }
 }
