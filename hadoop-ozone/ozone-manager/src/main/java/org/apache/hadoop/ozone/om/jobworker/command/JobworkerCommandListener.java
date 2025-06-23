@@ -21,7 +21,7 @@ import java.util.UUID;
 import javax.annotation.Nullable;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandExecutionResultsProto;
-import org.apache.hadoop.ozone.jobworker.command.OMJobworkerCommand;
+import org.apache.hadoop.ozone.jobworker.commands.OMJobworkerCommand;
 
 /**
  * Defines the event listener methods that JobWorker command implementations must support

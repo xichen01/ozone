@@ -34,7 +34,7 @@ import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolP
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatus;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto;
 import org.apache.hadoop.hdds.server.ServerUtils;
-import org.apache.hadoop.ozone.jobworker.command.OMJobworkerCommand;
+import org.apache.hadoop.ozone.jobworker.commands.OMJobworkerCommand;
 import org.apache.hadoop.ozone.om.jobworker.node.JobworkerNodeManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

@@ -22,7 +22,7 @@ import java.util.List;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
 import org.apache.hadoop.hdds.server.events.EventHandler;
 import org.apache.hadoop.hdds.server.events.EventPublisher;
-import org.apache.hadoop.ozone.jobworker.command.OMJobworkerCommand;
+import org.apache.hadoop.ozone.jobworker.commands.OMJobworkerCommand;
 import org.apache.hadoop.ozone.om.jobworker.command.OMJobworkerCommandManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

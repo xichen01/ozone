@@ -41,8 +41,8 @@ import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolP
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerDetailsProto;
 import org.apache.hadoop.hdds.server.events.Event;
 import org.apache.hadoop.hdds.server.events.EventPublisher;
-import org.apache.hadoop.ozone.jobworker.command.JobworkerReregisterCommand;
-import org.apache.hadoop.ozone.jobworker.command.OMJobworkerCommand;
+import org.apache.hadoop.ozone.jobworker.commands.JobworkerReregisterCommand;
+import org.apache.hadoop.ozone.jobworker.commands.OMJobworkerCommand;
 import org.apache.hadoop.ozone.om.jobworker.JobworkerHeartbeatDispatcher.NodeReportFromJobworker;
 import org.apache.hadoop.ozone.om.jobworker.node.JobworkerNodeManager;
 import org.junit.jupiter.api.BeforeEach;

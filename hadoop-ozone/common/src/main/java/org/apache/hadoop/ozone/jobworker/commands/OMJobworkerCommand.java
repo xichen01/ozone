@@ -17,7 +17,7 @@
  *
  */
 
-package org.apache.hadoop.ozone.jobworker.command;
+package org.apache.hadoop.ozone.jobworker.commands;
 
 import com.google.protobuf.Message;
 import org.apache.hadoop.hdds.HddsIdFactory;
