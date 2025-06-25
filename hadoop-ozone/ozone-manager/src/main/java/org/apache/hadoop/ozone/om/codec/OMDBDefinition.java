@@ -20,6 +20,8 @@ package org.apache.hadoop.ozone.om.codec;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTaskProto;
+import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTxProto;
 import org.apache.hadoop.hdds.utils.TransactionInfo;
 import org.apache.hadoop.hdds.utils.db.DBColumnFamilyDefinition;
 import org.apache.hadoop.hdds.utils.db.DBDefinition;
@@ -362,6 +364,22 @@ public final class OMDBDefinition extends DBDefinition.WithMap {
       StringCodec.get(),
       LongCodec.get());
 
+  public static final String JOBWORKER_MIGRATION_KEYS_TRANSACTION_TABLE =
+      "jobworkerMigrationKeysTxTable";
+  public static final DBColumnFamilyDefinition<String, JobworkerMigrationKeysTxProto>
+      JOBWORKER_MIGRATION_KEYS_TRANSACTION_TABLE_DEF = new DBColumnFamilyDefinition<>(
+      JOBWORKER_MIGRATION_KEYS_TRANSACTION_TABLE,
+      StringCodec.get(),
+      Proto2Codec.get(JobworkerMigrationKeysTxProto.getDefaultInstance()));
+
+  public static final String JOBWORKER_MIGRATION_KEYS_TASK_TABLE =
+      "jobworkerMigrationKeysTaskTable";
+  public static final DBColumnFamilyDefinition<String, JobworkerMigrationKeysTaskProto>
+      JOBWORKER_MIGRATION_KEYS_TASK_TABLE_DEF = new DBColumnFamilyDefinition<>(
+      JOBWORKER_MIGRATION_KEYS_TASK_TABLE,
+      StringCodec.get(),
+      Proto2Codec.get(JobworkerMigrationKeysTaskProto.getDefaultInstance()));
+
   //---------------------------------------------------------------------------
   private static final Map<String, DBColumnFamilyDefinition<?, ?>> COLUMN_FAMILIES
       = DBColumnFamilyDefinition.newUnmodifiableMap(
@@ -391,7 +409,9 @@ public final class OMDBDefinition extends DBDefinition.WithMap {
           S3_REVOKED_STS_TOKEN_TABLE_DEF,
           LIFECYCLE_CONFIGURATION_TABLE_DEF,
           LIFECYCLE_SCAN_STATE_TABLE_DEF,
-          SEQUENCE_ID_TABLE_DEF);
+          SEQUENCE_ID_TABLE_DEF,
+          JOBWORKER_MIGRATION_KEYS_TRANSACTION_TABLE_DEF,
+          JOBWORKER_MIGRATION_KEYS_TASK_TABLE_DEF);
 
   private static final OMDBDefinition INSTANCE = new OMDBDefinition();
 

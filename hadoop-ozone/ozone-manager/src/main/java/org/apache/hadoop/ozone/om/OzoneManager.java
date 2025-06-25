@@ -189,6 +189,7 @@ import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.conf.ReconfigurationHandler;
 import org.apache.hadoop.hdds.conf.TracingReconfigurationCallback;
 import org.apache.hadoop.hdds.protocol.SecretKeyProtocol;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos;
 import org.apache.hadoop.hdds.protocol.proto.ReconfigureProtocolProtos.ReconfigureProtocolService;
 import org.apache.hadoop.hdds.protocolPB.ReconfigureProtocolOmPB;
@@ -206,9 +207,11 @@ import org.apache.hadoop.net.CachedDNSToSwitchMapping;
 import org.apache.hadoop.net.DNSToSwitchMapping;
 import org.apache.hadoop.net.TableMapping;
 import org.apache.hadoop.ozone.om.jobworker.command.JobworkerCommandStatusReportHandler;
+import org.apache.hadoop.ozone.om.jobworker.command.MigrateKeyCommandListener;
 import org.apache.hadoop.ozone.om.jobworker.command.OMJobworkerCommandManager;
 import org.apache.hadoop.ozone.om.util.OMSequenceIdGenerator;
 import org.apache.hadoop.ozone.om.jobworker.JobworkerGrpcServer;
+import org.apache.hadoop.ozone.om.jobworker.MigrationTaskManager;
 import org.apache.hadoop.ozone.om.jobworker.JobworkerProtocolServerImpl;
 import org.apache.hadoop.ozone.om.jobworker.OMJobworkerEvents;
 import org.apache.hadoop.ozone.om.jobworker.node.JobworkerNodeManager;
@@ -452,6 +455,7 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
   private KeyManager keyManager;
   private PrefixManagerImpl prefixManager;
   private OMSequenceIdGenerator sequenceIdGenerator;
+  private MigrationTaskManager migrationTaskManager;
   private final UpgradeFinalizer<OzoneManager> upgradeFinalizer;
   private ExecutorService edekCacheLoader = null;
   private JobworkerGrpcServer jobworkerGrpcServer;
@@ -943,6 +947,10 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
         new JobworkerNodeReportHandler(nodeManager);
     NewJobworkerHandler newJobworkerHandler =
         new NewJobworkerHandler(nodeManager);
+    MigrateKeyCommandListener migrationListener =
+        new MigrateKeyCommandListener(this, configuration);
+    omJobworkerCommandManager.registerHandler(
+        OMJobworkerCommandProto.Type.migrateKeyCommand, migrationListener);
     StaleJobworkerHandler staleJobworkerHandler =
         new StaleJobworkerHandler(nodeManager, omJobworkerCommandManager);
     JobworkerCommandStatusReportHandler commandStatusReportHandler =
@@ -1081,6 +1089,7 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
         new OmMetadataManagerImpl(configuration, this);
     this.metadataManager = metadataManagerImpl;
     this.sequenceIdGenerator = new OMSequenceIdGenerator(configuration, this);
+    this.migrationTaskManager = new MigrationTaskManager(metadataManagerImpl, configuration);
     LOG.info("Initialized OMSequenceIdGenerator");
     LOG.info("S3 Multi-Tenancy is {}",
         isS3MultiTenancyEnabled ? "enabled" : "disabled");
@@ -6177,6 +6186,10 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
   @VisibleForTesting
   public JobworkerProtocolServerImpl getJobworkerServerProtocol() {
     return jobworkerServerProtocol;
+  }
+
+  public MigrationTaskManager getMigrationTaskManager() {
+    return migrationTaskManager;
   }
 
 }

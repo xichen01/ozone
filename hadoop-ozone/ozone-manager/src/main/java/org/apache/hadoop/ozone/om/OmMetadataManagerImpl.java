@@ -77,6 +77,8 @@ import java.util.stream.Stream;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.hdds.client.BlockID;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
+import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTaskProto;
+import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTxProto;
 import org.apache.hadoop.hdds.utils.TableCacheMetrics;
 import org.apache.hadoop.hdds.utils.TransactionInfo;
 import org.apache.hadoop.hdds.utils.db.BatchOperation;
@@ -182,6 +184,8 @@ public class OmMetadataManagerImpl implements OMMetadataManager,
   private Table<String, OmLifecycleConfiguration> lifecycleConfigurationTable;
   private Table<String, OmLifecycleScanState> lifecycleScanStateTable;
   private Table<String, Long> sequenceIdTable;
+  private Table<String, JobworkerMigrationKeysTxProto> jobworkerMigrationKeysTxTable;
+  private Table<String, JobworkerMigrationKeysTaskProto> jobworkerMigrationKeysTaskTable;
 
   // Tables required for multi-tenancy
   private Table<String, OmDBAccessIdInfo> tenantAccessIdTable;
@@ -550,6 +554,10 @@ public class OmMetadataManagerImpl implements OMMetadataManager,
     lifecycleConfigurationTable = initializer.get(OMDBDefinition.LIFECYCLE_CONFIGURATION_TABLE_DEF, cacheType);
     lifecycleScanStateTable = initializer.get(OMDBDefinition.LIFECYCLE_SCAN_STATE_TABLE_DEF, cacheType);
     sequenceIdTable = initializer.get(OMDBDefinition.SEQUENCE_ID_TABLE_DEF, cacheType);
+    jobworkerMigrationKeysTxTable = initializer.get(
+        OMDBDefinition.JOBWORKER_MIGRATION_KEYS_TRANSACTION_TABLE_DEF);
+    jobworkerMigrationKeysTaskTable = initializer.get(
+        OMDBDefinition.JOBWORKER_MIGRATION_KEYS_TASK_TABLE_DEF);
   }
 
   /**
@@ -1780,6 +1788,16 @@ public class OmMetadataManagerImpl implements OMMetadataManager,
   @Override
   public Table<String, Long> getSequenceIdTable() {
     return sequenceIdTable;
+  }
+
+  @Override
+  public Table<String, JobworkerMigrationKeysTxProto> getJobworkerMigrationKeysTxTable() {
+    return jobworkerMigrationKeysTxTable;
+  }
+
+  @Override
+  public Table<String, JobworkerMigrationKeysTaskProto> getJobworkerMigrationKeysTaskTable() {
+    return jobworkerMigrationKeysTaskTable;
   }
 
   /**

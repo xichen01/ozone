@@ -18,6 +18,7 @@
 
 package org.apache.hadoop.ozone.om.jobworker.node;
 
+import static java.util.stream.Collectors.toList;
 import static org.apache.hadoop.hdds.protocol.proto.HddsProtos.NodeState.HEALTHY;
 
 import java.io.Closeable;
@@ -163,6 +164,21 @@ public class JobworkerNodeStateManager implements Closeable {
     lock.readLock().lock();
     try {
       return new ArrayList<>(nodeMap.values());
+    } finally {
+      lock.readLock().unlock();
+    }
+  }
+
+  /**
+   * Returns all JobWorkerInfos which nodeStatus is HEALTH in the cluster.
+   * @return List of all JobWorkerInfo objects
+   */
+  public List<JobworkerInfo> getHealthyJobworkerInfos() {
+    lock.readLock().lock();
+    try {
+      return nodeMap.values().stream()
+          .filter(info -> info.getNodeStatus().isHealthy())
+          .collect(toList());
     } finally {
       lock.readLock().unlock();
     }

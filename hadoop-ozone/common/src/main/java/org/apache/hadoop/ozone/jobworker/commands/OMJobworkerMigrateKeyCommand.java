@@ -52,18 +52,21 @@ public class OMJobworkerMigrateKeyCommand extends OMJobworkerCommand<JobworkerMi
   @SuppressWarnings("checkstyle:ParameterNumber")
   public OMJobworkerMigrateKeyCommand(long txId, String volume, String bucket,
       ECReplicationConfig replicationConfig,
-      List<MigrationKeyProto> migrationKeys, String preserveAttributes, int retryCount) {
+      List<MigrationKeyProto> migrationKeys, String preserveAttributes, String taskKey,
+      int retryCount) {
     Preconditions.checkNotNull(volume, "Volume cannot be null");
     Preconditions.checkNotNull(bucket, "Bucket cannot be null");
     Preconditions.checkNotNull(replicationConfig, "Replication config cannot be null");
     Preconditions.checkNotNull(migrationKeys, "migrationKeys cannot be null");
+    Preconditions.checkNotNull(taskKey, "Task status key cannot be null");
     JobworkerMigrationKeysTxProto.Builder builder =
         JobworkerMigrationKeysTxProto.newBuilder()
             .setTxId(txId)
             .setVolume(volume)
             .setBucket(bucket)
             .setEcReplicationConfig(replicationConfig.toProto())
-            .addAllMigrationKeys(migrationKeys);
+            .addAllMigrationKeys(migrationKeys)
+            .setTaskKey(taskKey);
     if (preserveAttributes != null) {
       builder.setPreserveAttributes(preserveAttributes);
     }
@@ -135,6 +138,14 @@ public class OMJobworkerMigrateKeyCommand extends OMJobworkerCommand<JobworkerMi
     return migrationKeysTxProto.getMigrationKeysList();
   }
 
+  public int getMigrationKeysCount() {
+    return migrationKeysTxProto.getMigrationKeysCount();
+  }
+
+  public MigrationKeyProto getMigrationKeys(int index) {
+    return migrationKeysTxProto.getMigrationKeys(index);
+  }
+
   @Nullable
   public String getPreserveAttributes() {
     return migrationKeysTxProto.getPreserveAttributes();
@@ -142,6 +153,14 @@ public class OMJobworkerMigrateKeyCommand extends OMJobworkerCommand<JobworkerMi
 
   public int getRetryCount() {
     return retryCount;
+  }
+
+  public String getTaskKey() {
+    return migrationKeysTxProto.getTaskKey();
+  }
+
+  public JobworkerMigrationKeysTxProto getMigrationKeysTxProto() {
+    return migrationKeysTxProto;
   }
 
   @Override
@@ -152,6 +171,7 @@ public class OMJobworkerMigrateKeyCommand extends OMJobworkerCommand<JobworkerMi
         ", replicationConfig=" + migrationKeysTxProto.getEcReplicationConfig() +
         ", keyCount=" + migrationKeysTxProto.getMigrationKeysCount() +
         ", preserveAttributes=" + migrationKeysTxProto.getPreserveAttributes() +
+        ", taskKey=" + migrationKeysTxProto.getTaskKey() +
         ", retryCount=" + retryCount +
         '}';
   }
@@ -159,7 +179,7 @@ public class OMJobworkerMigrateKeyCommand extends OMJobworkerCommand<JobworkerMi
   @Override
   public OMJobworkerMigrateKeyCommand copyObject() {
     return new OMJobworkerMigrateKeyCommand(getTxId(), getVolume(), getBucket(), getReplicationConfig(),
-        getMigrationKeys(), getPreserveAttributes(), getRetryCount());
+        getMigrationKeys(), getPreserveAttributes(), getTaskKey(), getRetryCount());
   }
 
 }

@@ -29,6 +29,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
+import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTaskProto;
+import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTxProto;
 import org.apache.hadoop.hdds.utils.DBStoreHAManager;
 import org.apache.hadoop.hdds.utils.TransactionInfo;
 import org.apache.hadoop.hdds.utils.db.DBStore;
@@ -521,6 +523,10 @@ public interface OMMetadataManager extends DBStoreHAManager, AutoCloseable {
    */
   OmLifecycleConfiguration getLifecycleConfiguration(String volumeName,
       String bucketName) throws IOException;
+
+  Table<String, JobworkerMigrationKeysTxProto> getJobworkerMigrationKeysTxTable();
+
+  Table<String, JobworkerMigrationKeysTaskProto> getJobworkerMigrationKeysTaskTable();
 
   /**
    * Gets the OM Meta table.

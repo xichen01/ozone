@@ -172,4 +172,20 @@ public class JobworkerServiceConfig {
     this.removalTimeoutMs = removalTimeoutMs;
     return this;
   }
+
+  @Config(key = "migration.key.command.max.retry.count",
+      defaultValue = "3",
+      type = ConfigType.INT,
+      tags = {ConfigTag.JOBWORKER},
+      description = "Maximum retry count for failed migration commands.")
+  private int migrationKeyCommandMaxRetryCount;
+
+  public int getMigrationKeyCommandMaxRetryCount() {
+    return migrationKeyCommandMaxRetryCount;
+  }
+
+  public JobworkerServiceConfig setMigrationKeyCommandMaxRetryCount(int migrationKeyCommandMaxRetryCount) {
+    this.migrationKeyCommandMaxRetryCount = migrationKeyCommandMaxRetryCount;
+    return this;
+  }
 }

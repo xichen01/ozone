@@ -645,6 +645,27 @@ message ObjectAttributeProto {
     optional int64 ctime = 3;  // Unix timestamp for creation time
 }
 
+enum JobworkerTaskStatus {
+    UNKNOWN_STATUS = 0;
+    PENDING = 1;
+    EXECUTING = 2;
+    PAUSED = 3;
+    COMPLETED = 4;
+    FAILED = 5;
+    CANCELED = 6;
+}
+
+message JobworkerMigrationKeysTaskProto {
+    required JobworkerTaskStatus migrationStatus = 1;
+    required int64 totalKeyCount = 2;
+    required int64 migratedKeyCount = 3;
+    required int64 failedKeyCount = 4;
+    required int64 startTime = 5;
+    required int64 lastUpdateTime = 6;
+    required bool completeScanning = 7;
+    optional string lastScanKey = 8;   // for breakpoint scanning function
+}
+
 message JobworkerMigrationKeysTxProto {
     required int64 txId = 1;
     required string volume = 2;
@@ -652,6 +673,7 @@ message JobworkerMigrationKeysTxProto {
     required ECReplicationConfig ecReplicationConfig = 4;
     repeated MigrationKeyProto migrationKeys = 5;
     optional string preserveAttributes = 6;
+    required string taskKey = 7;
 }
 
 message MigrationKeyProto {
