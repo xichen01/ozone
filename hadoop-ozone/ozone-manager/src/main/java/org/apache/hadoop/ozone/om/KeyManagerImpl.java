@@ -148,6 +148,7 @@ import org.apache.hadoop.net.DNSToSwitchMapping;
 import org.apache.hadoop.net.ScriptBasedMapping;
 import org.apache.hadoop.ozone.OmUtils;
 import org.apache.hadoop.ozone.OzoneAcl;
+import org.apache.hadoop.ozone.conf.JobWorkerMigrationKeyConfiguration;
 import org.apache.hadoop.ozone.common.BlockGroup;
 import org.apache.hadoop.ozone.common.DeletedBlock;
 import org.apache.hadoop.ozone.om.PendingKeysDeletion.PurgedKey;
@@ -184,6 +185,7 @@ import org.apache.hadoop.ozone.om.service.KeyLifecycleService;
 import org.apache.hadoop.ozone.om.service.MultipartUploadCleanupService;
 import org.apache.hadoop.ozone.om.service.OpenKeyCleanupService;
 import org.apache.hadoop.ozone.om.service.SnapshotDeletingService;
+import org.apache.hadoop.ozone.om.service.StoragePolicySatisfierService;
 import org.apache.hadoop.ozone.om.snapshot.defrag.SnapshotDefragService;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.ExpiredMultipartUploadsBucket;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.PartKeyInfo;
@@ -229,6 +231,7 @@ public class KeyManagerImpl implements KeyManager {
   private DNSToSwitchMapping dnsToSwitchMapping;
   private CompactionService compactionService;
   private KeyLifecycleService keyLifecycleService;
+  private StoragePolicySatisfierService storagePolicySatisfierService;
 
   public KeyManagerImpl(OzoneManager om, ScmClient scmClient,
       OzoneConfiguration conf, OMPerformanceMetrics metrics) {
@@ -375,6 +378,15 @@ public class KeyManagerImpl implements KeyManager {
       keyLifecycleService = new KeyLifecycleService(ozoneManager, this, lifecycleServiceInterval,
           lifecycleServiceTimeout, lifecycleServiceWorkerSize, configuration);
       keyLifecycleService.start();
+    }
+
+    if (storagePolicySatisfierService == null) {
+      JobWorkerMigrationKeyConfiguration migrationConfig =
+          configuration.getObject(JobWorkerMigrationKeyConfiguration.class);
+      storagePolicySatisfierService = new StoragePolicySatisfierService(
+          migrationConfig.getStoragePolicySatisfierIntervalMs(),
+          migrationConfig.getStoragePolicySatisfierTimeoutMs(), ozoneManager, configuration);
+      storagePolicySatisfierService.start();
     }
 
     dnsToSwitchMapping = createDNSToSwitchMapping(configuration);
@@ -535,6 +547,10 @@ public class KeyManagerImpl implements KeyManager {
     if (keyLifecycleService != null) {
       keyLifecycleService.shutdown();
       keyLifecycleService = null;
+    }
+    if (storagePolicySatisfierService != null) {
+      storagePolicySatisfierService.shutdown();
+      storagePolicySatisfierService = null;
     }
   }
 
@@ -1094,6 +1110,20 @@ public class KeyManagerImpl implements KeyManager {
   @Override
   public KeyLifecycleService getKeyLifecycleService() {
     return keyLifecycleService;
+  }
+
+  @Override
+  public void stopStoragePolicySatisfierService() {
+    if (storagePolicySatisfierService != null) {
+      storagePolicySatisfierService.shutdown();
+      storagePolicySatisfierService = null;
+    }
+  }
+
+  @Override
+  @VisibleForTesting
+  public StoragePolicySatisfierService getStoragePolicySatisfierService() {
+    return storagePolicySatisfierService;
   }
 
   public boolean isSstFilteringSvcEnabled() {

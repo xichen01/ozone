@@ -46,6 +46,7 @@ import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolP
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.GetOMVersionResponse;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.GetOMVersionRequest;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.RegisterJobworkerResponse;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.RegisterJobworkerResponse.ReturnCode;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos;
@@ -471,6 +472,11 @@ public class JobworkerNodeManager implements JobworkerNodeProtocol, Closeable {
   @VisibleForTesting
   public void setLastHealthCheck(long lastHealthCheck) {
     this.lastHealthCheck = lastHealthCheck;
+  }
+
+  @VisibleForTesting
+  public int getCommandCount(UUID jobworkerUuid, OMJobworkerCommandProto.Type commandType) {
+    return commandQueue.getJobworkerCommandCount(jobworkerUuid, commandType);
   }
 
 }

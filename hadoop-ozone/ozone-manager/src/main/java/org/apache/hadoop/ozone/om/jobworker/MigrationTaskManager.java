@@ -22,6 +22,7 @@ import com.google.common.util.concurrent.Striped;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTaskProto;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTxProto;
+import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerTaskStatus;
 import org.apache.hadoop.hdds.utils.db.BatchOperation;
 import org.apache.hadoop.hdds.utils.db.Table;
 import org.apache.hadoop.ozone.om.OMMetadataManager;
@@ -97,8 +98,8 @@ public class MigrationTaskManager {
 
   /**
    * Checks if a transaction exists in the transaction table.
-   * @param transactionKey The task key to check
-   * @return true if the task exists
+   * @param transactionKey The transaction key to check
+   * @return true if the transaction exists
    * @throws IOException if there is an error accessing the table
    */
   public boolean isTransactionExists(String transactionKey) throws IOException {
@@ -122,6 +123,28 @@ public class MigrationTaskManager {
       return taskTable.get(taskKey);
     } finally {
       readLock(taskKey).unlock();
+    }
+  }
+
+  /**
+   * Updates the task status with atomic operation.
+   * @param taskKey The task key to update
+   * @param newStatus The new status to set
+   * @throws IOException if there is an error updating the status
+   */
+  public void updateTaskStatus(String taskKey, JobworkerTaskStatus newStatus) throws IOException {
+    writeLock(taskKey).lock();
+    try {
+      JobworkerMigrationKeysTaskProto currentTask = taskTable.get(taskKey);
+      if (currentTask != null) {
+        JobworkerMigrationKeysTaskProto.Builder builder = currentTask.toBuilder();
+        builder.setMigrationStatus(newStatus);
+        builder.setLastUpdateTime(System.currentTimeMillis());
+        taskTable.put(taskKey, builder.build());
+        LOG.debug("Updated migration status to {} for task: {}", newStatus, taskKey);
+      }
+    } finally {
+      writeLock(taskKey).unlock();
     }
   }
 
@@ -184,4 +207,41 @@ public class MigrationTaskManager {
     }
   }
 
+  /**
+   * Marks scanning as completed for a task by setting completeScanning to true.
+   * @param taskKey The task key to mark scanning as completed
+   * @throws IOException if there is an error updating the task
+   */
+  public void markScanningCompleted(String taskKey) throws IOException {
+    writeLock(taskKey).lock();
+    try {
+      JobworkerMigrationKeysTaskProto currentTask = taskTable.get(taskKey);
+      if (currentTask != null) {
+        JobworkerMigrationKeysTaskProto.Builder builder = currentTask.toBuilder();
+        builder.setCompleteScanning(true);
+        builder.setLastUpdateTime(System.currentTimeMillis());
+        taskTable.put(taskKey, builder.build());
+        LOG.debug("Marked scanning as completed for task: {}", taskKey);
+      } else {
+        LOG.warn("Migration task is not found for the key: {}", taskKey);
+      }
+    } finally {
+      writeLock(taskKey).unlock();
+    }
+  }
+
+  /**
+   * Cleans up a completed task.
+   * @param taskKey The task key to clean up
+   * @throws IOException if there is an error cleaning up the task
+   */
+  public void cleanupTask(String taskKey) throws IOException {
+    writeLock(taskKey).lock();
+    try {
+      taskTable.delete(taskKey);
+      LOG.info("Clean up a completed migration task: {}", taskKey);
+    } finally {
+      writeLock(taskKey).unlock();
+    }
+  }
 }

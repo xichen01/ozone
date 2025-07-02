@@ -82,6 +82,20 @@ public class OMJobworkerCommandManager {
     commandInfoMaps.put(commandType, new ConcurrentHashMap<>());
   }
 
+  public int getInFlightCommandCount(OMJobworkerCommandProto.Type commandType) {
+    if (commandInfoMaps.get(commandType) == null) {
+      return 0;
+    }
+    return commandInfoMaps.get(commandType).size();
+  }
+
+  public boolean isCommandInFlight(OMJobworkerCommandProto.Type commandType, long commandId) {
+    if (commandInfoMaps.get(commandType) == null) {
+      return false;
+    }
+    return commandInfoMaps.get(commandType).containsKey(commandId);
+  }
+
   /**
    * Get the listener for a specific command type (for testing purposes).
    *

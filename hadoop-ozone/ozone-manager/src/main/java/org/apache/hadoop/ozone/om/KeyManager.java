@@ -45,6 +45,7 @@ import org.apache.hadoop.ozone.om.service.DirectoryDeletingService;
 import org.apache.hadoop.ozone.om.service.KeyDeletingService;
 import org.apache.hadoop.ozone.om.service.KeyLifecycleService;
 import org.apache.hadoop.ozone.om.service.SnapshotDeletingService;
+import org.apache.hadoop.ozone.om.service.StoragePolicySatisfierService;
 import org.apache.hadoop.ozone.om.snapshot.defrag.SnapshotDefragService;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.ExpiredMultipartUploadsBucket;
 import org.apache.ratis.util.function.CheckedFunction;
@@ -400,6 +401,10 @@ public interface KeyManager extends OzoneManagerFS, IOzoneAcl {
    * @return Background service.
    */
   KeyLifecycleService getKeyLifecycleService();
+
+  void stopStoragePolicySatisfierService();
+
+  StoragePolicySatisfierService getStoragePolicySatisfierService();
 
   /**
    * Sort the datanodes of a write pipeline by network-topology distance to the

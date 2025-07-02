@@ -39,7 +39,9 @@ import org.apache.hadoop.ozone.conf.JobWorkerMigrationKeyConfiguration;
 import org.apache.hadoop.ozone.jobworker.commands.OMJobworkerMigrateKeyCommand;
 import org.apache.hadoop.ozone.om.OzoneManager;
 import org.apache.hadoop.ozone.om.jobworker.MigrationTaskManager;
+import org.apache.hadoop.ozone.om.jobworker.command.OMJobworkerCommandManager;
 import org.apache.hadoop.ozone.om.jobworker.node.JobworkerInfo;
+import org.apache.hadoop.ozone.om.jobworker.node.JobworkerNodeManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,6 +56,8 @@ public class MigrateKeyCommandListener implements JobworkerCommandListener {
   private final OzoneManager ozoneManager;
   private final MigrationTaskManager taskManager;
   private final int maxRetryCount;
+  private final JobworkerNodeManager jobworkerNodeManager;
+  private final OMJobworkerCommandManager jobworkerCommandManager;
 
   /**
    * Constructor for MigrateKeyCommandListener.
@@ -63,6 +67,8 @@ public class MigrateKeyCommandListener implements JobworkerCommandListener {
     this.taskManager = ozoneManager.getMigrationTaskManager();
     JobWorkerMigrationKeyConfiguration jwConf = configuration.getObject(JobWorkerMigrationKeyConfiguration.class);
     this.maxRetryCount = jwConf.getCommandMaxRetryCount();
+    this.jobworkerNodeManager = ozoneManager.getJobworkerNodemanager();
+    this.jobworkerCommandManager = ozoneManager.getOMJobworkerCommandManager();
   }
 
   @Override
@@ -267,7 +273,7 @@ public class MigrateKeyCommandListener implements JobworkerCommandListener {
   private void sendMigrationCommand(OMJobworkerMigrateKeyCommand command) throws IOException {
     UUID selectedJobworker = selectJobworkerForRetry();
     if (selectedJobworker != null) {
-      ozoneManager.getOMJobworkerCommandManager().sendCommand(selectedJobworker, command);
+      jobworkerCommandManager.sendCommand(selectedJobworker, command);
       LOG.debug("Sent retry migration txProto for {} failed keys", command.getMigrationKeysCount());
     } else {
       // Do not retry command and do not update task status, this transaction will be sent again
@@ -276,7 +282,7 @@ public class MigrateKeyCommandListener implements JobworkerCommandListener {
   }
 
   private UUID selectJobworkerForRetry() {
-    List<JobworkerInfo> healthJobworkerInfos = ozoneManager.getJobworkerNodemanager()
+    List<JobworkerInfo> healthJobworkerInfos = jobworkerNodeManager
         .getNodeStateManager().getHealthyJobworkerInfos();
     if (healthJobworkerInfos.isEmpty()) {
       LOG.warn("No JobWorkers available health for retry migration");
