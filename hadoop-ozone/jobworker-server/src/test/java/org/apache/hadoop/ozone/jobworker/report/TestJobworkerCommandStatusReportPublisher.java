@@ -44,7 +44,7 @@ import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolP
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatus;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatusReportsProto;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto.Type;
-import org.apache.hadoop.ozone.jobworker.JobworkerClientConfiguration;
+import org.apache.hadoop.ozone.jobworker.JobworkerConfiguration;
 import org.apache.hadoop.ozone.jobworker.JobworkerStateContext;
 import org.apache.hadoop.ozone.jobworker.JobworkerStateMachine;
 import org.apache.hadoop.ozone.jobworker.JobworkerStates;
@@ -71,7 +71,7 @@ public class TestJobworkerCommandStatusReportPublisher {
   @BeforeEach
   public void setUp() {
     conf = new OzoneConfiguration();
-    JobworkerClientConfiguration clientConf = conf.getObject(JobworkerClientConfiguration.class);
+    JobworkerConfiguration clientConf = conf.getObject(JobworkerConfiguration.class);
     clientConf.setCommandStatusReportInterval(Duration.ofMillis(100));
     clientConf.setHeartbeatInterval(Duration.ofMillis(50));
     conf.setFromObject(clientConf);

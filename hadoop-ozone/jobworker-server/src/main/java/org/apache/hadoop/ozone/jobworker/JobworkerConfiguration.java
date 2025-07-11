@@ -28,8 +28,8 @@ import org.apache.hadoop.hdds.conf.ConfigType;
 /**
  * Configuration specific to JobWorker.
  */
-@ConfigGroup(prefix = "ozone.jobworker.client")
-public class JobworkerClientConfiguration {
+@ConfigGroup(prefix = "ozone.jobworker")
+public class JobworkerConfiguration {
 
   @Config(key = "rpc.timeout",
       type = ConfigType.TIME,

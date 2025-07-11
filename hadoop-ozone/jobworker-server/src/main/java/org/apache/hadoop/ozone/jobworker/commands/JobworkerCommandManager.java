@@ -33,7 +33,7 @@ import org.apache.hadoop.hdds.conf.ConfigurationSource;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandResultCode;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatus;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto;
-import org.apache.hadoop.ozone.jobworker.JobworkerClientConfiguration;
+import org.apache.hadoop.ozone.jobworker.JobworkerConfiguration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -59,7 +59,7 @@ public class JobworkerCommandManager {
    * @param conf Configuration source
    */
   public JobworkerCommandManager(ConfigurationSource conf) {
-    this.maxCommandQueueLimit = conf.getObject(JobworkerClientConfiguration.class)
+    this.maxCommandQueueLimit = conf.getObject(JobworkerConfiguration.class)
         .getCommandQueueLimit();
     this.commandQueue = new LinkedList<>();
     this.cmdStatusMap = new ConcurrentHashMap<>();

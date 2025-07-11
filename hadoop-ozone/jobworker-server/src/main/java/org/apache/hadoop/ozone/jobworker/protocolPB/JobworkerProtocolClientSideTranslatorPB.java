@@ -37,8 +37,8 @@ import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolP
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.RegisterJobworkerResponse;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.SendHeartbeatRequest;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.SendHeartbeatResponseProto;
-import org.apache.hadoop.ozone.conf.JobworkerServiceConfig;
-import org.apache.hadoop.ozone.jobworker.JobworkerClientConfiguration;
+import org.apache.hadoop.ozone.conf.OMJobworkerConfiguration;
+import org.apache.hadoop.ozone.jobworker.JobworkerConfiguration;
 import org.apache.hadoop.ozone.jobworker.protocol.JobworkerProtocol;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -75,16 +75,16 @@ public class JobworkerProtocolClientSideTranslatorPB implements JobworkerProtoco
    * @param omHostname The OM host Address.
    * @param conf       The OzoneConfiguration
    * @param port       The port to connect to. If set to -1, the default gRPC port
-   *                   from {@link JobworkerServiceConfig#getGrpcPort()} will be used.
+   *                   from {@link OMJobworkerConfiguration#getGrpcPort()} will be used.
    */
   public JobworkerProtocolClientSideTranslatorPB(String omHostname, int port, OzoneConfiguration conf) {
     this.omHostname = omHostname;
-    JobworkerClientConfiguration jobworkerServiceConfig = conf.getObject(JobworkerClientConfiguration.class);
+    JobworkerConfiguration jobworkerServiceConfig = conf.getObject(JobworkerConfiguration.class);
     this.timeoutDuration = jobworkerServiceConfig.getRpcTimeout();
     this.maxInboundLength = jobworkerServiceConfig.getGrpcMaximumInboundLength();
 
     if (port < 0) {
-      JobworkerServiceConfig jwsConf = conf.getObject(JobworkerServiceConfig.class);
+      OMJobworkerConfiguration jwsConf = conf.getObject(OMJobworkerConfiguration.class);
       this.port = jwsConf.getGrpcPort();
     } else {
       this.port = port;

@@ -18,7 +18,7 @@
 package org.apache.hadoop.ozone.jobworker;
 
 import static org.apache.hadoop.hdds.server.ServerUtils.executorServiceShutdownGraceful;
-import static org.apache.hadoop.ozone.conf.JobworkerServiceConfig.getGrpcPortKey;
+import static org.apache.hadoop.ozone.conf.OMJobworkerConfiguration.getGrpcPortKey;
 import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_OM_ADDRESS_KEY;
 import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_OM_NODES_KEY;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;

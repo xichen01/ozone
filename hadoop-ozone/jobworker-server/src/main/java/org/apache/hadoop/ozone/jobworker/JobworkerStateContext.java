@@ -47,7 +47,7 @@ public class JobworkerStateContext {
   private final JobworkerCommandManager commandManager;
   private final JobworkerStateMachine parentJobworkerStateMachine;
   private final AtomicLong stateExecutionCount;
-  private final JobworkerClientConfiguration jwConf;
+  private final JobworkerConfiguration jwConf;
   private final AtomicLong threadPoolNotAvailableCount;
   private final AtomicLong lastHeartbeatSent;
   private final long initializeHeartbeatFrequencyMs = 2000;
@@ -74,7 +74,7 @@ public class JobworkerStateContext {
                                String threadNamePrefix,
                                JobworkerStateMachine stateMachine,
                                JobworkerCommandManager commandManager) {
-    this.jwConf = conf.getObject(JobworkerClientConfiguration.class);
+    this.jwConf = conf.getObject(JobworkerConfiguration.class);
     this.state = state;
     this.parentJobworkerStateMachine = stateMachine;
     this.commandManager = commandManager;

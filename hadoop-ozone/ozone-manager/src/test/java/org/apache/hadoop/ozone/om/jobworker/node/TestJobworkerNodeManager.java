@@ -64,7 +64,7 @@ import org.apache.hadoop.hdds.server.ServerUtils;
 import org.apache.hadoop.hdds.server.events.Event;
 import org.apache.hadoop.hdds.server.events.EventPublisher;
 import org.apache.hadoop.ozone.common.statemachine.InvalidStateTransitionException;
-import org.apache.hadoop.ozone.conf.JobworkerServiceConfig;
+import org.apache.hadoop.ozone.conf.OMJobworkerConfiguration;
 import org.apache.hadoop.ozone.om.OMStorage;
 import org.apache.hadoop.ozone.om.OmTestManagers;
 import org.apache.hadoop.ozone.om.OzoneManager;
@@ -248,7 +248,7 @@ public class TestJobworkerNodeManager {
       throws Exception {
     // GIVEN
     OzoneConfiguration conf = createNewTestPath();
-    JobworkerServiceConfig jwConf = conf.getObject(JobworkerServiceConfig.class);
+    OMJobworkerConfiguration jwConf = conf.getObject(OMJobworkerConfiguration.class);
     jwConf.setStaleNodeIntervalMs(500);
     conf.setFromObject(jwConf);
     JobworkerNodeManager nodeManager = getNodeManager(conf);
@@ -278,7 +278,7 @@ public class TestJobworkerNodeManager {
   public void testNodeStateTransitionFromStaleToHealthy() throws Exception {
     // GIVEN
     OzoneConfiguration conf = createNewTestPath();
-    JobworkerServiceConfig jwConf = conf.getObject(JobworkerServiceConfig.class);
+    OMJobworkerConfiguration jwConf = conf.getObject(OMJobworkerConfiguration.class);
     jwConf.setStaleNodeIntervalMs(500);
     jwConf.setHeartbeatProcessIntervalMs(200);
     conf.setFromObject(jwConf);
@@ -308,7 +308,7 @@ public class TestJobworkerNodeManager {
   public void testStaleJobworkerRemovalTimeout() throws Exception {
     // GIVEN
     OzoneConfiguration conf = createNewTestPath();
-    JobworkerServiceConfig jwConf = conf.getObject(JobworkerServiceConfig.class);
+    OMJobworkerConfiguration jwConf = conf.getObject(OMJobworkerConfiguration.class);
     jwConf.setStaleNodeIntervalMs(100);
     jwConf.setRemovalTimeoutMs(1000);
     conf.setFromObject(jwConf);
@@ -367,7 +367,7 @@ public class TestJobworkerNodeManager {
   public void testConcurrentHeartbeats() throws Exception {
     // GIVEN
     OzoneConfiguration conf = createNewTestPath();
-    JobworkerServiceConfig jwConf = conf.getObject(JobworkerServiceConfig.class);
+    OMJobworkerConfiguration jwConf = conf.getObject(OMJobworkerConfiguration.class);
     jwConf.setHeartbeatProcessIntervalMs(200);
     jwConf.setStaleNodeIntervalMs(10000);
     conf.setFromObject(jwConf);
@@ -443,7 +443,7 @@ public class TestJobworkerNodeManager {
   public void testEventFiredWhenNodeBecomesStale() throws Exception {
     // GIVEN
     OzoneConfiguration conf = createNewTestPath();
-    JobworkerServiceConfig jwConf = conf.getObject(JobworkerServiceConfig.class);
+    OMJobworkerConfiguration jwConf = conf.getObject(OMJobworkerConfiguration.class);
     jwConf.setStaleNodeIntervalMs(500);
     conf.setFromObject(jwConf);
 
@@ -491,7 +491,7 @@ public class TestJobworkerNodeManager {
   public void testMultipleNodesInDifferentHealthStates() throws Exception {
     // GIVEN
     OzoneConfiguration conf = createNewTestPath();
-    JobworkerServiceConfig jwConf = conf.getObject(JobworkerServiceConfig.class);
+    OMJobworkerConfiguration jwConf = conf.getObject(OMJobworkerConfiguration.class);
     jwConf.setStaleNodeIntervalMs(500);
     jwConf.setRemovalTimeoutMs(1000);
     conf.setFromObject(jwConf);
@@ -551,7 +551,7 @@ public class TestJobworkerNodeManager {
   public void testJvmPauseHandling() throws Exception {
     // GIVEN
     OzoneConfiguration conf = createNewTestPath();
-    JobworkerServiceConfig jwConf = conf.getObject(JobworkerServiceConfig.class);
+    OMJobworkerConfiguration jwConf = conf.getObject(OMJobworkerConfiguration.class);
     jwConf.setStaleNodeIntervalMs(500);
     conf.setFromObject(jwConf);
     JobworkerNodeManager nodeManager = getNodeManager(conf);

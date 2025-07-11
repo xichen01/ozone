@@ -21,7 +21,7 @@ import com.google.common.base.Preconditions;
 import java.util.List;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.JobworkerNodeReportProto;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.JobworkerStorageReportProto;
-import org.apache.hadoop.ozone.jobworker.JobworkerClientConfiguration;
+import org.apache.hadoop.ozone.jobworker.JobworkerConfiguration;
 
 import java.io.IOException;
 
@@ -36,8 +36,8 @@ public class JobworkerNodeReportPublisher
   @Override
   protected long getReportFrequency() {
     if (nodeReportInterval == null) {
-      JobworkerClientConfiguration jwConf =
-          getConf().getObject(JobworkerClientConfiguration.class);
+      JobworkerConfiguration jwConf =
+          getConf().getObject(JobworkerConfiguration.class);
 
       nodeReportInterval = jwConf.getNodeReportInterval().toMillis();
       long heartbeatFrequency = jwConf.getHeartbeatInterval().toMillis();

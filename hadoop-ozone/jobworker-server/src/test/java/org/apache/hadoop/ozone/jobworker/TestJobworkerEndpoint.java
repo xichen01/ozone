@@ -146,7 +146,7 @@ public class TestJobworkerEndpoint {
 
     // Create custom configuration with the short timeout
     OzoneConfiguration timeoutConf = new OzoneConfiguration(ozoneConf);
-    JobworkerClientConfiguration jwConfig = timeoutConf.getObject(JobworkerClientConfiguration.class);
+    JobworkerConfiguration jwConfig = timeoutConf.getObject(JobworkerConfiguration.class);
     jwConfig.setRpcTimeout(Duration.ofMillis(rpcTimeout));
     timeoutConf.setFromObject(jwConfig);
 
@@ -203,7 +203,7 @@ public class TestJobworkerEndpoint {
     mockHandler.setRegisterDelayMs(5000);
     // Create custom configuration with the short timeout
     OzoneConfiguration timeoutConf = new OzoneConfiguration(ozoneConf);
-    JobworkerClientConfiguration jwConfig = new JobworkerClientConfiguration();
+    JobworkerConfiguration jwConfig = new JobworkerConfiguration();
     jwConfig.setRpcTimeout(Duration.ofMillis(rpcTimeout));
     timeoutConf.setFromObject(jwConfig);
 
@@ -314,7 +314,7 @@ public class TestJobworkerEndpoint {
 
     // Create custom configuration with the short timeout
     OzoneConfiguration timeoutConf = new OzoneConfiguration(ozoneConf);
-    JobworkerClientConfiguration jwConf = timeoutConf.getObject(JobworkerClientConfiguration.class);
+    JobworkerConfiguration jwConf = timeoutConf.getObject(JobworkerConfiguration.class);
     jwConf.setRpcTimeout(Duration.ofMillis(rpcTimeout));
     timeoutConf.setFromObject(jwConf);
 
@@ -350,7 +350,7 @@ public class TestJobworkerEndpoint {
     JobworkerDetails largeJobworkerDetails = MockJobworkerDetails.randomJobworkerDetails();
 
     OzoneConfiguration limitedConf = new OzoneConfiguration(ozoneConf);
-    JobworkerClientConfiguration jwConfig = limitedConf.getObject(JobworkerClientConfiguration.class);
+    JobworkerConfiguration jwConfig = limitedConf.getObject(JobworkerConfiguration.class);
     jwConfig.setGrpcMaximumInboundLength(1);
     limitedConf.setFromObject(jwConfig);
 

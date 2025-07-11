@@ -34,7 +34,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.apache.hadoop.hdds.conf.ConfigurationSource;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.JobworkerStorageReportProto;
 import org.apache.hadoop.hdfs.server.datanode.StorageLocation;
-import org.apache.hadoop.ozone.jobworker.JobworkerClientConfiguration;
+import org.apache.hadoop.ozone.jobworker.JobworkerConfiguration;
 import org.apache.hadoop.ozone.jobworker.JobworkerStateContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,7 +46,7 @@ public class VolatileJobworkerVolumeSet implements JobworkerVolumeSet {
 
   private static final Logger LOG = LoggerFactory.getLogger(VolatileJobworkerVolumeSet.class);
   private final ConfigurationSource conf;
-  private final JobworkerClientConfiguration jwConf;
+  private final JobworkerConfiguration jwConf;
 
   /**
    * A Reentrant Read-Write Lock to synchronize volume operations in VolumeSet.
@@ -83,7 +83,7 @@ public class VolatileJobworkerVolumeSet implements JobworkerVolumeSet {
     this.conf = conf;
     this.context = context;
     this.volumeSetRWLock = new ReentrantReadWriteLock();
-    jwConf = conf.getObject(JobworkerClientConfiguration.class);
+    jwConf = conf.getObject(JobworkerConfiguration.class);
     initializingStatus =
         new AtomicReference<>(InitializingStatus.UNINITIALIZED);
     volumeMap = new ConcurrentHashMap<>();

@@ -40,7 +40,7 @@ import org.apache.hadoop.hdds.HddsUtils;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.JobworkerCommandType;
 import org.apache.hadoop.hdds.utils.ProtocolMessageMetrics;
-import org.apache.hadoop.ozone.conf.JobworkerServiceConfig;
+import org.apache.hadoop.ozone.conf.OMJobworkerConfiguration;
 import org.apache.hadoop.ozone.grpc.metrics.GrpcMetrics;
 import org.apache.hadoop.ozone.grpc.metrics.GrpcMetricsServerRequestInterceptor;
 import org.apache.hadoop.ozone.grpc.metrics.GrpcMetricsServerResponseInterceptor;
@@ -75,7 +75,7 @@ public class JobworkerGrpcServer {
   public JobworkerGrpcServer(OzoneConfiguration config,
       JobworkerProtocolServerImpl jobworkerServerImpl, OMNodeDetails nodeDetails) {
     omNodeDetails = nodeDetails;
-    JobworkerServiceConfig jobworkerServiceConfig = config.getObject(JobworkerServiceConfig.class);
+    OMJobworkerConfiguration jobworkerServiceConfig = config.getObject(OMJobworkerConfiguration.class);
     port = getGrpcPort(config, jobworkerServiceConfig);
     grpcExecutorSize = jobworkerServiceConfig.getGrpcExecutorThreadNum();
     maxInboundLength = jobworkerServiceConfig.getGrpcMaximumInboundLength();
@@ -193,15 +193,15 @@ public class JobworkerGrpcServer {
   }
 
   private int getGrpcPort(OzoneConfiguration conf,
-                          JobworkerServiceConfig jobworkerServiceConfig) {
+                          OMJobworkerConfiguration jobworkerServiceConfig) {
     if (omNodeDetails == null) {
       return jobworkerServiceConfig.getGrpcPort();
     }
 
-    String haPortKey = ConfUtils.addKeySuffixes(JobworkerServiceConfig.getGrpcPortKey(),
+    String haPortKey = ConfUtils.addKeySuffixes(OMJobworkerConfiguration.getGrpcPortKey(),
         omNodeDetails.getServiceId(), omNodeDetails.getNodeId());
     OptionalInt haPort = HddsUtils.getNumberFromConfigKeys(conf, haPortKey,
-        JobworkerServiceConfig.getGrpcPortKey());
+        OMJobworkerConfiguration.getGrpcPortKey());
     if (haPort.isPresent()) {
       return haPort.getAsInt();
     } else {

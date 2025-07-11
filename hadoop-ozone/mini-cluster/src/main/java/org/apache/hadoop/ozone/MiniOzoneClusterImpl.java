@@ -79,11 +79,11 @@ import org.apache.hadoop.ozone.client.OzoneClient;
 import org.apache.hadoop.ozone.client.OzoneClientFactory;
 import org.apache.hadoop.ozone.common.Storage.StorageState;
 import org.apache.hadoop.ozone.container.common.helpers.ContainerUtils;
-import org.apache.hadoop.ozone.conf.JobworkerServiceConfig;
+import org.apache.hadoop.ozone.conf.OMJobworkerConfiguration;
 import org.apache.hadoop.ozone.container.common.DatanodeLayoutStorage;
 import org.apache.hadoop.ozone.container.common.utils.ContainerCache;
 import org.apache.hadoop.ozone.container.common.utils.DatanodeStoreCache;
-import org.apache.hadoop.ozone.jobworker.JobworkerClientConfiguration;
+import org.apache.hadoop.ozone.jobworker.JobworkerConfiguration;
 import org.apache.hadoop.ozone.om.OMConfigKeys;
 import org.apache.hadoop.ozone.om.OMStorage;
 import org.apache.hadoop.ozone.om.OzoneManager;
@@ -930,7 +930,7 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
           localhostWithFreePort());
       conf.setInt(OMConfigKeys.OZONE_OM_RATIS_PORT_KEY, getFreePort());
       conf.setInt(OMConfigKeys.OZONE_OM_HANDLER_COUNT_KEY, numOfOmHandlers);
-      JobworkerServiceConfig jwConf = conf.getObject(JobworkerServiceConfig.class);
+      OMJobworkerConfiguration jwConf = conf.getObject(OMJobworkerConfiguration.class);
       jwConf.setGrpcPort(getFreePort());
       conf.setFromObject(jwConf);
 
@@ -969,8 +969,8 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
         return Collections.emptyList();
       }
       OzoneConfiguration jwConf = new OzoneConfiguration(conf);
-      JobworkerClientConfiguration jobworkerClientConfig =
-          jwConf.getObject(JobworkerClientConfiguration.class);
+      JobworkerConfiguration jobworkerConfig = jwConf.getObject(JobworkerConfiguration.class);
+      configureJobworker();
       List<JobworkerService> jobworkers = new ArrayList<>();
       for (int i = 0; i < numOfJobworkers; i++) {
         List<String> volumeRoots = new ArrayList<>();
@@ -981,9 +981,9 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
           LOG.info("Create Jobworker service at {}", volumeRoot);
         }
         if (!volumeRoots.isEmpty()) {
-          jobworkerClientConfig.setStorageVolumeDirs(String.join(", ", volumeRoots));
+          jobworkerConfig.setStorageVolumeDirs(String.join(", ", volumeRoots));
         }
-        jwConf.setFromObject(jobworkerClientConfig);
+        jwConf.setFromObject(jobworkerConfig);
         JobworkerService jobworker = new JobworkerService(NO_ARGS);
         jobworker.setConfiguration(jwConf);
         jobworkers.add(jobworker);

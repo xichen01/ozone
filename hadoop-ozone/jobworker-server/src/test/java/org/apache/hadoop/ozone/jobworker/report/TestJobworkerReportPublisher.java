@@ -26,7 +26,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.JobworkerNodeReportProto;
-import org.apache.hadoop.ozone.jobworker.JobworkerClientConfiguration;
+import org.apache.hadoop.ozone.jobworker.JobworkerConfiguration;
 import org.apache.hadoop.ozone.jobworker.JobworkerStateContext;
 import org.apache.hadoop.ozone.jobworker.JobworkerStateMachine;
 import org.apache.hadoop.ozone.jobworker.JobworkerStates;
@@ -113,7 +113,7 @@ public class TestJobworkerReportPublisher {
   public void testNodeReportPublisher() {
     // Create a custom config with an override for report interval
     OzoneConfiguration customConf = new OzoneConfiguration();
-    JobworkerClientConfiguration jwConf = new JobworkerClientConfiguration();
+    JobworkerConfiguration jwConf = new JobworkerConfiguration();
     customConf.setFromObject(jwConf);
 
     JobworkerNodeReportPublisher publisher = Mockito.spy(new JobworkerNodeReportPublisher());

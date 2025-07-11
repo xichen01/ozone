@@ -31,7 +31,7 @@ import java.util.concurrent.TimeUnit;
 import org.apache.hadoop.hdds.conf.ConfigurationSource;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatus;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatusReportsProto;
-import org.apache.hadoop.ozone.jobworker.JobworkerClientConfiguration;
+import org.apache.hadoop.ozone.jobworker.JobworkerConfiguration;
 import org.apache.hadoop.ozone.jobworker.JobworkerStateContext;
 import org.apache.hadoop.util.concurrent.HadoopExecutors;
 
@@ -78,7 +78,7 @@ public final class JobworkerReportManager {
             .setNameFormat(threadNamePrefix +
                 "JobworkerReportManager-%d").build());
     this.reportQueue = Collections.synchronizedMap(new HashMap<>());
-    JobworkerClientConfiguration jwConf = conf.getObject(JobworkerClientConfiguration.class);
+    JobworkerConfiguration jwConf = conf.getObject(JobworkerConfiguration.class);
     maxReportCount = jwConf.getMaxReportCount();
     maxReportInBytes = jwConf.getMaxReportSizeInBytes();
   }

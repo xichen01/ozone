@@ -35,7 +35,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.apache.commons.io.FileUtils;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
-import org.apache.hadoop.ozone.jobworker.JobworkerClientConfiguration;
+import org.apache.hadoop.ozone.jobworker.JobworkerConfiguration;
 import org.apache.hadoop.ozone.jobworker.JobworkerStateContext;
 import org.apache.ozone.test.GenericTestUtils;
 import org.junit.jupiter.api.AfterEach;
@@ -69,7 +69,7 @@ public class TestJobworkerVolumeSet {
 
     // Setup configuration with volume paths
     conf = new OzoneConfiguration();
-    JobworkerClientConfiguration jwConf = conf.getObject(JobworkerClientConfiguration.class);
+    JobworkerConfiguration jwConf = conf.getObject(JobworkerConfiguration.class);
     volume1 = new File(tempDir.toFile(), "disk1").getAbsolutePath();
     volume2 = new File(tempDir.toFile(), "disk2").getAbsolutePath();
     volumes = Arrays.asList(volume1, volume2);
@@ -270,7 +270,7 @@ public class TestJobworkerVolumeSet {
   @Test
   public void testVolumeInitializationWithoutVolume() throws Exception {
     OzoneConfiguration badConf = new OzoneConfiguration();
-    JobworkerClientConfiguration jwConf = badConf.getObject(JobworkerClientConfiguration.class);
+    JobworkerConfiguration jwConf = badConf.getObject(JobworkerConfiguration.class);
     jwConf.setStorageVolumeDirs("");
     conf.setFromObject(jwConf);
 
@@ -285,7 +285,7 @@ public class TestJobworkerVolumeSet {
   public void testCreateTaskDirectoryWithNoVolumes() throws Exception {
     OzoneConfiguration emptyVolumeConf = new OzoneConfiguration();
     // Initialize an empty volume set (no volumes)
-    JobworkerClientConfiguration jwConf = emptyVolumeConf.getObject(JobworkerClientConfiguration.class);
+    JobworkerConfiguration jwConf = emptyVolumeConf.getObject(JobworkerConfiguration.class);
     jwConf.setStorageVolumeDirs("");
     emptyVolumeConf.setFromObject(jwConf);
 

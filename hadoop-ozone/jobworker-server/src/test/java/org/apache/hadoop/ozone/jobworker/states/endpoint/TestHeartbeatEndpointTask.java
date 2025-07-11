@@ -40,7 +40,7 @@ import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolP
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.SendHeartbeatRequest;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.SendHeartbeatResponseProto;
-import org.apache.hadoop.ozone.jobworker.JobworkerClientConfiguration;
+import org.apache.hadoop.ozone.jobworker.JobworkerConfiguration;
 import org.apache.hadoop.ozone.jobworker.JobworkerEndpointStateMachine;
 import org.apache.hadoop.ozone.jobworker.JobworkerEndpointStateMachine.EndpointStates;
 import org.apache.hadoop.ozone.jobworker.JobworkerStateContext;
@@ -72,7 +72,7 @@ public class TestHeartbeatEndpointTask {
   public void setup() {
     jobworkerDetails = MockJobworkerDetails.randomJobworkerDetails();
     conf = new OzoneConfiguration();
-    JobworkerClientConfiguration jwConf = new JobworkerClientConfiguration();
+    JobworkerConfiguration jwConf = new JobworkerConfiguration();
     jwConf.setHeartbeatInterval(Duration.of(1, ChronoUnit.SECONDS));
     conf.setFromObject(jwConf);
     JobworkerReportManager jobworkerReportManager = mock(JobworkerReportManager.class);

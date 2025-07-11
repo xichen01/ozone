@@ -261,7 +261,7 @@ public class JobworkerEndpointStateMachine implements Closeable {
    * @param ex Exception
    */
   public void logIfNeeded(Exception ex) {
-    JobworkerClientConfiguration jwConf = conf.getObject(JobworkerClientConfiguration.class);
+    JobworkerConfiguration jwConf = conf.getObject(JobworkerConfiguration.class);
     double missCounter = this.getMissedCount() % jwConf.getHeartbeatLogWarnInterval();
 
     if (missCounter == 0) {

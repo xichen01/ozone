@@ -18,7 +18,7 @@
 
 package org.apache.hadoop.ozone;
 
-import static org.apache.hadoop.ozone.conf.JobworkerServiceConfig.getGrpcPortKey;
+import static org.apache.hadoop.ozone.conf.OMJobworkerConfiguration.getGrpcPortKey;
 import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_OM_ADDRESS_KEY;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;

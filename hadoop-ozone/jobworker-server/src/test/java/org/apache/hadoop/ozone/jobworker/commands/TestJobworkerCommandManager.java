@@ -28,7 +28,7 @@ import java.util.OptionalLong;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandResultCode;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatus;
-import org.apache.hadoop.ozone.jobworker.JobworkerClientConfiguration;
+import org.apache.hadoop.ozone.jobworker.JobworkerConfiguration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -139,7 +139,7 @@ public class TestJobworkerCommandManager {
   public void testQueueLimitEnforcement() {
     // Create a configuration with a small queue limit
     OzoneConfiguration smallQueueConf = new OzoneConfiguration();
-    JobworkerClientConfiguration jwConfig = smallQueueConf.getObject(JobworkerClientConfiguration.class);
+    JobworkerConfiguration jwConfig = smallQueueConf.getObject(JobworkerConfiguration.class);
     jwConfig.setCommandQueueLimit(2);
     smallQueueConf.setFromObject(jwConfig);
     JobworkerCommandManager limitedManager = new JobworkerCommandManager(smallQueueConf);
@@ -215,7 +215,7 @@ public class TestJobworkerCommandManager {
   public void testCommandQueueFullStatusUpdate() {
     // Create a configuration with a small queue limit
     OzoneConfiguration smallQueueConf = new OzoneConfiguration();
-    JobworkerClientConfiguration jwConfig = smallQueueConf.getObject(JobworkerClientConfiguration.class);
+    JobworkerConfiguration jwConfig = smallQueueConf.getObject(JobworkerConfiguration.class);
     jwConfig.setCommandQueueLimit(2);
     smallQueueConf.setFromObject(jwConfig);
     JobworkerCommandManager limitedManager = new JobworkerCommandManager(smallQueueConf);

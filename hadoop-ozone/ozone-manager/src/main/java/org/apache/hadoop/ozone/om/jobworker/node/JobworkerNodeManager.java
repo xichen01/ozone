@@ -19,7 +19,7 @@ package org.apache.hadoop.ozone.om.jobworker.node;
 
 import static org.apache.hadoop.ozone.OzoneConsts.CLUSTER_ID;
 import static org.apache.hadoop.ozone.OzoneConsts.OM_SERVICE_ID;
-import static org.apache.hadoop.ozone.conf.JobworkerServiceConfig.getJobworkerServiceConfigKey;
+import static org.apache.hadoop.ozone.conf.OMJobworkerConfiguration.getJobworkerServiceConfigKey;
 import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_OM_USE_JOBWORKER_HOSTNAME_DEFAULT;
 import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_OM_USE_JOBWORKER_HOSTNAME_KEY;
 import static org.apache.hadoop.ozone.om.OMStorage.OM_ID;
@@ -52,7 +52,7 @@ import org.apache.hadoop.hdds.protocol.proto.HddsProtos;
 import org.apache.hadoop.hdds.scm.net.NetworkTopology;
 import org.apache.hadoop.hdds.server.ServerUtils;
 import org.apache.hadoop.hdds.server.events.EventPublisher;
-import org.apache.hadoop.ozone.conf.JobworkerServiceConfig;
+import org.apache.hadoop.ozone.conf.OMJobworkerConfiguration;
 import org.apache.hadoop.ozone.jobworker.commands.OMJobworkerCommand;
 import org.apache.hadoop.ozone.jobworker.protocol.JobworkerNodeProtocol;
 import org.apache.hadoop.ozone.om.OMStorage;
@@ -117,8 +117,8 @@ public class JobworkerNodeManager implements JobworkerNodeProtocol, Closeable {
     this.nodeStateMachine = new JobworkerNodeStateMachine();
 
     // Initialize configuration values
-    JobworkerServiceConfig jwConfig =
-        conf.getObject(JobworkerServiceConfig.class);
+    OMJobworkerConfiguration jwConfig =
+        conf.getObject(OMJobworkerConfiguration.class);
     this.heartbeatCheckerIntervalMs = jwConfig.getHeartbeatProcessIntervalMs();
     this.staleNodeIntervalMs = jwConfig.getStaleNodeIntervalMs();
     this.removalTimeoutMs = jwConfig.getRemovalTimeoutMs();

@@ -36,7 +36,7 @@ import java.util.Optional;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.hdds.conf.ConfigurationSource;
 import org.apache.hadoop.net.NetUtils;
-import org.apache.hadoop.ozone.conf.JobworkerServiceConfig;
+import org.apache.hadoop.ozone.conf.OMJobworkerConfiguration;
 import org.apache.hadoop.ozone.ha.ConfUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -95,7 +95,7 @@ public final class JobworkerUtils {
       return null;
     }
     int port = getOmJobworkerRpcPortOrDefault(conf,
-        ConfUtils.addKeySuffixes(JobworkerServiceConfig.getGrpcPortKey(), serviceId, nodeId));
+        ConfUtils.addKeySuffixes(OMJobworkerConfiguration.getGrpcPortKey(), serviceId, nodeId));
     return host.get() + ":" + port;
   }
 
@@ -106,7 +106,7 @@ public final class JobworkerUtils {
       return port;
     } else {
       // Use the default port
-      String grpcPortStr = conf.get(JobworkerServiceConfig.getGrpcPortKey());
+      String grpcPortStr = conf.get(OMJobworkerConfiguration.getGrpcPortKey());
       try {
         return Integer.parseInt(grpcPortStr);
       } catch (NumberFormatException e) {
@@ -126,7 +126,7 @@ public final class JobworkerUtils {
     final Optional<String> host = getHostNameFromConfigKeys(conf,
         OZONE_OM_ADDRESS_KEY);
     int port;
-    String grpcPortStr = conf.get(JobworkerServiceConfig.getGrpcPortKey());
+    String grpcPortStr = conf.get(OMJobworkerConfiguration.getGrpcPortKey());
     try {
       port = Integer.parseInt(grpcPortStr);
     } catch (NumberFormatException e) {

@@ -27,7 +27,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.hadoop.hdds.conf.ConfigurationSource;
 import org.apache.hadoop.ozone.OzoneConsts;
-import org.apache.hadoop.ozone.jobworker.JobworkerClientConfiguration;
+import org.apache.hadoop.ozone.jobworker.JobworkerConfiguration;
 import org.apache.hadoop.util.Time;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -100,7 +100,7 @@ public final class VolatileJobworkerVolume {
       this.jobworkerUuid = b.jobWorkerUuid;
       this.capacity = volumeRootDir.getTotalSpace();
       // Initialize IO test parameters from configuration
-      JobworkerClientConfiguration jwConf = conf.getObject(JobworkerClientConfiguration.class);
+      JobworkerConfiguration jwConf = conf.getObject(JobworkerConfiguration.class);
       initialize();
     }
   }

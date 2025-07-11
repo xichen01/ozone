@@ -18,11 +18,8 @@
 package org.apache.hadoop.ozone.jobworker.report;
 
 import com.google.common.base.Preconditions;
-import java.time.Duration;
-import java.time.temporal.ChronoUnit;
-import java.util.concurrent.TimeUnit;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatusReportsProto;
-import org.apache.hadoop.ozone.jobworker.JobworkerClientConfiguration;
+import org.apache.hadoop.ozone.jobworker.JobworkerConfiguration;
 
 import java.io.IOException;
 import java.util.Iterator;
@@ -44,9 +41,7 @@ public class JobworkerCommandStatusReportPublisher extends
 
   @Override
   protected long getReportFrequency() {
-    JobworkerClientConfiguration jwConf =
-        getConf().getObject(JobworkerClientConfiguration.class);
-
+    JobworkerConfiguration jwConf = getConf().getObject(JobworkerConfiguration.class);
     long cmdStatusReportIntervalMs = jwConf.getCommandStatusReportInterval().toMillis();
     long heartbeatFrequencyMs = jwConf.getHeartbeatInterval().toMillis();
     Preconditions.checkState(

@@ -74,10 +74,10 @@ public class TestJobworkerWithOzoneHA {
   @BeforeAll
   public static void setup() throws Exception {
     conf = new OzoneConfiguration();
-    JobworkerClientConfiguration jobworkerClientConfiguration =
-        conf.getObject(JobworkerClientConfiguration.class);
-    jobworkerClientConfiguration.setHeartbeatInterval(Duration.of(5, ChronoUnit.SECONDS));
-    conf.setFromObject(jobworkerClientConfiguration);
+    JobworkerConfiguration jobworkerConfiguration =
+        conf.getObject(JobworkerConfiguration.class);
+    jobworkerConfiguration.setHeartbeatInterval(Duration.of(5, ChronoUnit.SECONDS));
+    conf.setFromObject(jobworkerConfiguration);
 
     // Configure two OM services with 3 OMs each
     String clusterID = UUID.randomUUID().toString();
