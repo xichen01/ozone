@@ -231,6 +231,10 @@ public class OzoneManagerStateMachine extends BaseStateMachine {
     ozoneManager.omHAMetricsInit(newLeaderId.toString());
     // Notify OM service of leader change
     ozoneManager.getOMServiceManager().notifyStatusChanged();
+    if (ozoneManager.getSequenceIdGenerator() != null) {
+      ozoneManager.getSequenceIdGenerator().invalidateAllBatches();
+      LOG.info("Invalidated OMSequenceIdGenerator batches due to leader change to: {}", newLeaderId);
+    }
 
     Map<String, String> auditParams = new LinkedHashMap<>();
     auditParams.put(AUDIT_PARAM_PREVIOUS_LEADER,

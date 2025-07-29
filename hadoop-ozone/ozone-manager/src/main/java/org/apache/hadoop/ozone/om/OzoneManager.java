@@ -207,6 +207,7 @@ import org.apache.hadoop.net.DNSToSwitchMapping;
 import org.apache.hadoop.net.TableMapping;
 import org.apache.hadoop.ozone.om.jobworker.command.JobworkerCommandStatusReportHandler;
 import org.apache.hadoop.ozone.om.jobworker.command.OMJobworkerCommandManager;
+import org.apache.hadoop.ozone.om.util.OMSequenceIdGenerator;
 import org.apache.hadoop.ozone.om.jobworker.JobworkerGrpcServer;
 import org.apache.hadoop.ozone.om.jobworker.JobworkerProtocolServerImpl;
 import org.apache.hadoop.ozone.om.jobworker.OMJobworkerEvents;
@@ -450,6 +451,7 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
   private BucketManager bucketManager;
   private KeyManager keyManager;
   private PrefixManagerImpl prefixManager;
+  private OMSequenceIdGenerator sequenceIdGenerator;
   private final UpgradeFinalizer<OzoneManager> upgradeFinalizer;
   private ExecutorService edekCacheLoader = null;
   private JobworkerGrpcServer jobworkerGrpcServer;
@@ -1077,6 +1079,8 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
     OmMetadataManagerImpl metadataManagerImpl =
         new OmMetadataManagerImpl(configuration, this);
     this.metadataManager = metadataManagerImpl;
+    this.sequenceIdGenerator = new OMSequenceIdGenerator(configuration, this);
+    LOG.info("Initialized OMSequenceIdGenerator");
     LOG.info("S3 Multi-Tenancy is {}",
         isS3MultiTenancyEnabled ? "enabled" : "disabled");
     if (isS3MultiTenancyEnabled) {
@@ -6157,6 +6161,10 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
       LOG.debug("Node resolution did not yield any result for {}", hostname);
       return null;
     }
+  }
+
+  public OMSequenceIdGenerator getSequenceIdGenerator() {
+    return sequenceIdGenerator;
   }
 
   public JobworkerNodeManager getJobworkerNodemanager() {

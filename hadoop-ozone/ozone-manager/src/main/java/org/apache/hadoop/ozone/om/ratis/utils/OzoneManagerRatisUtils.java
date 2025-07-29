@@ -98,6 +98,7 @@ import org.apache.hadoop.ozone.om.request.snapshot.OMSnapshotSetPropertyRequest;
 import org.apache.hadoop.ozone.om.request.upgrade.OMCancelPrepareRequest;
 import org.apache.hadoop.ozone.om.request.upgrade.OMFinalizeUpgradeRequest;
 import org.apache.hadoop.ozone.om.request.upgrade.OMPrepareRequest;
+import org.apache.hadoop.ozone.om.request.util.OMAllocateIdBatchRequest;
 import org.apache.hadoop.ozone.om.request.util.OMEchoRPCWriteRequest;
 import org.apache.hadoop.ozone.om.request.volume.OMQuotaRepairRequest;
 import org.apache.hadoop.ozone.om.request.volume.OMVolumeCreateRequest;
@@ -368,6 +369,8 @@ public final class OzoneManagerRatisUtils {
       return new OMLifecycleConfigurationDeleteRequest(omRequest);
     case SetLifecycleServiceStatus:
       return new OMLifecycleSetServiceStatusRequest(omRequest);
+    case AllocateIdBatch:
+      return new OMAllocateIdBatchRequest(omRequest);
     case SaveLifecycleScanState:
       return new OMLifecycleSaveScanStateRequest(omRequest);
     case PutBucketTagging:

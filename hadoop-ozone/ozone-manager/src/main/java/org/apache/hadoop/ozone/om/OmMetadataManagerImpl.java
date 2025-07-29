@@ -181,6 +181,7 @@ public class OmMetadataManagerImpl implements OMMetadataManager,
   private Table<String, String> metaTable;
   private Table<String, OmLifecycleConfiguration> lifecycleConfigurationTable;
   private Table<String, OmLifecycleScanState> lifecycleScanStateTable;
+  private Table<String, Long> sequenceIdTable;
 
   // Tables required for multi-tenancy
   private Table<String, OmDBAccessIdInfo> tenantAccessIdTable;
@@ -548,6 +549,7 @@ public class OmMetadataManagerImpl implements OMMetadataManager,
 
     lifecycleConfigurationTable = initializer.get(OMDBDefinition.LIFECYCLE_CONFIGURATION_TABLE_DEF, cacheType);
     lifecycleScanStateTable = initializer.get(OMDBDefinition.LIFECYCLE_SCAN_STATE_TABLE_DEF, cacheType);
+    sequenceIdTable = initializer.get(OMDBDefinition.SEQUENCE_ID_TABLE_DEF, cacheType);
   }
 
   /**
@@ -1773,6 +1775,11 @@ public class OmMetadataManagerImpl implements OMMetadataManager,
   @Override
   public Table<String, OmLifecycleScanState> getLifecycleScanStateTable() {
     return lifecycleScanStateTable;
+  }
+
+  @Override
+  public Table<String, Long> getSequenceIdTable() {
+    return sequenceIdTable;
   }
 
   /**

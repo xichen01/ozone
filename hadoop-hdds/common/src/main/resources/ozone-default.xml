@@ -3044,6 +3044,16 @@
   </property>
 
   <property>
+    <name>ozone.om.sequence.id.batch.size</name>
+    <value>1000</value>
+    <tag>OZONE, OM</tag>
+    <description>
+      OM allocates sequence id in batches. This property determines how many
+      IDs are allocated in a single batch.
+    </description>
+  </property>
+
+  <property>
     <name>ozone.freon.http-address</name>
     <value>0.0.0.0:9884</value>
     <tag>OZONE, MANAGEMENT</tag>

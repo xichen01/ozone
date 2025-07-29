@@ -170,6 +170,7 @@ enum Type {
   RevokeSTSToken = 154;
   DeleteRevokedSTSTokens = 155;
   GetCallerIdentity = 156;
+  AllocateIdBatch = 1180;
 }
 
 enum SafeMode {
@@ -335,6 +336,7 @@ message OMRequest {
   optional DeleteRevokedSTSTokensRequest    deleteRevokedSTSTokensRequest  = 156;
   optional UpdateAssumeRoleRequest          updateAssumeRoleRequest        = 157;
   optional GetCallerIdentityRequest         getCallerIdentityRequest       = 158;
+  optional AllocateIdBatchRequest            allocateIdBatchRequest         = 1180;
 }
 
 message OMResponse {
@@ -484,6 +486,7 @@ message OMResponse {
   optional RevokeSTSTokenResponse            revokeSTSTokenResponse         = 154;
   optional DeleteRevokedSTSTokensResponse    deleteRevokedSTSTokensResponse = 155;
   optional GetCallerIdentityResponse         getCallerIdentityResponse      = 156;
+  optional AllocateIdBatchResponse           allocateIdBatchResponse        = 1180;
 }
 
 enum Status {
@@ -2800,4 +2803,14 @@ message DeleteBucketTaggingRequest {
 }
 
 message DeleteBucketTaggingResponse {
+}
+
+message AllocateIdBatchRequest {
+  required string sequenceIdName = 1;
+  required uint32 batchSize = 2;
+}
+
+message AllocateIdBatchResponse {
+  required uint64 startId = 1;
+  required uint64 endId = 2;
 }

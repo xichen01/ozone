@@ -806,6 +806,10 @@ public final class OMConfigKeys {
   public static final boolean OZONE_OM_USE_JOBWORKER_HOSTNAME_DEFAULT
       = false;
 
+  public static final String OZONE_OM_SEQUENCE_ID_BATCH_SIZE =
+      "ozone.om.sequence.id.batch.size";
+  public static final int OZONE_OM_SEQUENCE_ID_BATCH_SIZE_DEFAULT = 1000;
+
   /**
    * Never constructed.
    */

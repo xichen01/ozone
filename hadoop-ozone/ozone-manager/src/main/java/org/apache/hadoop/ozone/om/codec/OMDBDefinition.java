@@ -356,6 +356,12 @@ public final class OMDBDefinition extends DBDefinition.WithMap {
       StringCodec.get(),
       OmLifecycleScanState.getCodec());
 
+  public static final String SEQUENCE_ID_TABLE = "sequenceIdTable";
+  public static final DBColumnFamilyDefinition<String, Long> SEQUENCE_ID_TABLE_DEF
+      = new DBColumnFamilyDefinition<>(SEQUENCE_ID_TABLE,
+      StringCodec.get(),
+      LongCodec.get());
+
   //---------------------------------------------------------------------------
   private static final Map<String, DBColumnFamilyDefinition<?, ?>> COLUMN_FAMILIES
       = DBColumnFamilyDefinition.newUnmodifiableMap(
@@ -384,7 +390,8 @@ public final class OMDBDefinition extends DBDefinition.WithMap {
           VOLUME_TABLE_DEF,
           S3_REVOKED_STS_TOKEN_TABLE_DEF,
           LIFECYCLE_CONFIGURATION_TABLE_DEF,
-          LIFECYCLE_SCAN_STATE_TABLE_DEF);
+          LIFECYCLE_SCAN_STATE_TABLE_DEF,
+          SEQUENCE_ID_TABLE_DEF);
 
   private static final OMDBDefinition INSTANCE = new OMDBDefinition();
 

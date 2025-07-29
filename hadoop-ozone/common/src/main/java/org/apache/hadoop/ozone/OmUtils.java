@@ -340,6 +340,8 @@ public final class OmUtils {
       return false;
     case UnknownCommand:
       return false;
+    case AllocateIdBatch:
+      return false;
     case EchoRPC:
       return omRequest.getEchoRPCRequest().getReadOnly();
     default:

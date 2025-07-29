@@ -537,6 +537,12 @@ public interface OMMetadataManager extends DBStoreHAManager, AutoCloseable {
 
 
   /**
+   * Gets the OM sequence ID table for HA ID generator.
+   * @return sequence ID table.
+   */
+  Table<String, Long> getSequenceIdTable();
+
+  /**
    * Returns number of rows in a table.  This should not be used for very
    * large tables.
    * @param table
