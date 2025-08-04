@@ -45,6 +45,7 @@ import org.apache.hadoop.ozone.om.exceptions.OMNotLeaderException;
 import org.apache.hadoop.ozone.om.helpers.BucketLayout;
 import org.apache.hadoop.ozone.om.request.BucketLayoutAwareOMKeyRequestFactory;
 import org.apache.hadoop.ozone.om.request.OMClientRequest;
+import org.apache.hadoop.ozone.om.request.migrationKey.OMMigrationKeyDBUpdateRequest;
 import org.apache.hadoop.ozone.om.request.bucket.OMBucketCreateRequest;
 import org.apache.hadoop.ozone.om.request.bucket.OMBucketDeleteRequest;
 import org.apache.hadoop.ozone.om.request.bucket.OMBucketSetOwnerRequest;
@@ -371,6 +372,8 @@ public final class OzoneManagerRatisUtils {
       return new OMLifecycleSetServiceStatusRequest(omRequest);
     case AllocateIdBatch:
       return new OMAllocateIdBatchRequest(omRequest);
+    case MigrationKeyDBUpdate:
+      return new OMMigrationKeyDBUpdateRequest(omRequest);
     case SaveLifecycleScanState:
       return new OMLifecycleSaveScanStateRequest(omRequest);
     case PutBucketTagging:

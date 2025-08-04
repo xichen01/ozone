@@ -574,6 +574,7 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
   private NetworkTopology clusterMap;
   private EventQueue eventQueue;
   private OMJobworkerCommandManager omJobworkerCommandManager;
+  private JobworkerCommandStatusReportHandler commandStatusReportHandler;
 
   @SuppressWarnings("methodlength")
   private OzoneManager(OzoneConfiguration conf, StartupOption startupOption)
@@ -953,7 +954,7 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
         OMJobworkerCommandProto.Type.migrateKeyCommand, migrationListener);
     StaleJobworkerHandler staleJobworkerHandler =
         new StaleJobworkerHandler(nodeManager, omJobworkerCommandManager);
-    JobworkerCommandStatusReportHandler commandStatusReportHandler =
+    commandStatusReportHandler =
         new JobworkerCommandStatusReportHandler(omJobworkerCommandManager);
     queue.addHandler(OMJobworkerEvents.JW_NODE_REPORT, nodeReportHandler);
     queue.addHandler(OMJobworkerEvents.NEW_JOBWORKER, newJobworkerHandler);
@@ -1089,7 +1090,7 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
         new OmMetadataManagerImpl(configuration, this);
     this.metadataManager = metadataManagerImpl;
     this.sequenceIdGenerator = new OMSequenceIdGenerator(configuration, this);
-    this.migrationTaskManager = new MigrationTaskManager(metadataManagerImpl, configuration);
+    this.migrationTaskManager = new MigrationTaskManager(metadataManagerImpl, this, configuration);
     LOG.info("Initialized OMSequenceIdGenerator");
     LOG.info("S3 Multi-Tenancy is {}",
         isS3MultiTenancyEnabled ? "enabled" : "disabled");
@@ -6197,6 +6198,16 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
 
   public MigrationTaskManager getMigrationTaskManager() {
     return migrationTaskManager;
+  }
+
+  @VisibleForTesting
+  public EventQueue getEventQueue() {
+    return eventQueue;
+  }
+
+  @VisibleForTesting
+  public JobworkerCommandStatusReportHandler getCommandStatusReportHandler() {
+    return commandStatusReportHandler;
   }
 
 }

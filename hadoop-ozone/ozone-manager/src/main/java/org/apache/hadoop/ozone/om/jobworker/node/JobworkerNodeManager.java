@@ -373,7 +373,7 @@ public class JobworkerNodeManager implements JobworkerNodeProtocol, Closeable {
     }
   }
 
-  private void removeNodes(List<UUID> nodesToRemove) {
+  public void removeNodes(List<UUID> nodesToRemove) {
     for (UUID nodeId : nodesToRemove) {
       try {
         JobworkerDetails node = nodeStateManager.getNodeInfo(nodeId);

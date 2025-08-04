@@ -23,11 +23,10 @@ import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTaskProto;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTxProto;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerTaskStatus;
-import org.apache.hadoop.hdds.utils.db.BatchOperation;
 import org.apache.hadoop.hdds.utils.db.Table;
 import org.apache.hadoop.ozone.om.OMMetadataManager;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.hadoop.ozone.om.OzoneManager;
+import org.apache.hadoop.ozone.om.ha.MigrationKeyDBUpdateManager;
 
 import java.io.IOException;
 import java.util.concurrent.locks.Lock;
@@ -36,14 +35,16 @@ import java.util.concurrent.locks.ReadWriteLock;
 /**
  * Manages migration tasks with striped locks to ensure thread safety.
  * This class provides synchronized access to migration task tables and status.
+ * 
+ * All write operations use HA-compatible writes through DBUpdateManager
+ * for consistency across OM instances in HA mode.
  */
 public class MigrationTaskManager {
-  private static final Logger LOG = LoggerFactory.getLogger(MigrationTaskManager.class);
-  // TODO Let all write requests go through Ratis for HA transfer compatibility
-  private final OMMetadataManager metadataManager;
+
   private final Striped<ReadWriteLock> stripedLock;
   private final Table<String, JobworkerMigrationKeysTaskProto> taskTable;
   private final Table<String, JobworkerMigrationKeysTxProto> transactionTable;
+  private final MigrationKeyDBUpdateManager dbUpdateManager;
   private static final int LOCK_STRIPE_SIZE = 512;
 
   /**
@@ -56,11 +57,11 @@ public class MigrationTaskManager {
     return taskKey + "/" + txId;
   }
 
-  public MigrationTaskManager(OMMetadataManager metadataManager, OzoneConfiguration conf) {
-    this.metadataManager = metadataManager;
+  public MigrationTaskManager(OMMetadataManager metadataManager, OzoneManager ozoneManager, OzoneConfiguration conf) {
     this.taskTable = metadataManager.getJobworkerMigrationKeysTaskTable();
     this.transactionTable = metadataManager.getJobworkerMigrationKeysTxTable();
     this.stripedLock = Striped.readWriteLock(LOCK_STRIPE_SIZE);
+    this.dbUpdateManager = new MigrationKeyDBUpdateManager(ozoneManager);
   }
 
   /**
@@ -127,7 +128,7 @@ public class MigrationTaskManager {
   }
 
   /**
-   * Updates the task status with atomic operation.
+   * Updates the task status with HA-compatible atomic operation.
    * @param taskKey The task key to update
    * @param newStatus The new status to set
    * @throws IOException if there is an error updating the status
@@ -135,111 +136,53 @@ public class MigrationTaskManager {
   public void updateTaskStatus(String taskKey, JobworkerTaskStatus newStatus) throws IOException {
     writeLock(taskKey).lock();
     try {
-      JobworkerMigrationKeysTaskProto currentTask = taskTable.get(taskKey);
-      if (currentTask != null) {
-        JobworkerMigrationKeysTaskProto.Builder builder = currentTask.toBuilder();
-        builder.setMigrationStatus(newStatus);
-        builder.setLastUpdateTime(System.currentTimeMillis());
-        taskTable.put(taskKey, builder.build());
-        LOG.debug("Updated migration status to {} for task: {}", newStatus, taskKey);
-      }
+      dbUpdateManager.keyMigrationUpdateTaskStatus(taskKey, newStatus);
     } finally {
       writeLock(taskKey).unlock();
     }
   }
 
   /**
-   * Completes a migration transaction by removing the transaction entry and updating the task status.
+   * Completes a migration transaction by removing the transaction entry and updating the task status
+   * using HA-compatible writes.
    *
    * @param taskKey        The task key
    * @param txId           The transaction ID for constructing transaction key
    * @param failedKeyCount Number of failed keys
-   * @throws IOException if there is an error updating the status
+   * @throws IOException if there is an error completing the transaction
    */
-  public void completeTransaction(String taskKey, long txId, int failedKeyCount)
-      throws IOException {
+  public void completeTransaction(String taskKey, long txId, long failedKeyCount) throws IOException {
     writeLock(taskKey).lock();
-    try (BatchOperation batchOperation = metadataManager.getStore().initBatchOperation()) {
-      String transactionKey = getTransactionKey(taskKey, txId);
-      JobworkerMigrationKeysTxProto txProto = transactionTable.get(transactionKey);
-      if (txProto == null) {
-        return;
-      }
-      transactionTable.deleteWithBatch(batchOperation, transactionKey);
-      // The number of successful keys is calculated as (total keys - failed keys).
-      // This is because failed keys will be retried in subsequent commands, and only
-      // the remaining failed keys are sent again. For example, if a transaction originally
-      // contains 10 keys and 5 fail, the retry command will only include those 5 failed keys.
-      // If all retries succeed, the final failedKeyCount will be 0, and the total number of
-      // successful keys will be 10. Thus, by tracking only the final failedKeyCount, we can
-      // always determine the number of successful keys as (total - failed).
-      updateTaskStatusWithCountsInBatch(
-          batchOperation, taskKey, txProto.getMigrationKeysCount() - failedKeyCount, failedKeyCount);
-      metadataManager.getStore().commitBatchOperation(batchOperation);
-      LOG.debug("Completed migration transaction {}, task {}, total keys count: {}, failed keys: {}",
-          transactionKey, taskKey, txProto.getMigrationKeysCount(), failedKeyCount);
+    try {
+      dbUpdateManager.keyMigrationCompleteTransaction(taskKey, txId, failedKeyCount);
     } finally {
       writeLock(taskKey).unlock();
     }
   }
 
   /**
-   * Updates task status with success and failure counts in a batch operation.
-   * @param batchOperation The batch operation to use
-   * @param taskKey The task key to update
-   * @param successCount Number of successful keys
-   * @param failedCount Number of failed keys
-   * @throws IOException if there is an error updating the status
-   */
-  private void updateTaskStatusWithCountsInBatch(BatchOperation batchOperation,
-      String taskKey, int successCount, int failedCount) throws IOException {
-    JobworkerMigrationKeysTaskProto currentTask = taskTable.get(taskKey);
-    if (currentTask != null) {
-      JobworkerMigrationKeysTaskProto.Builder builder = currentTask.toBuilder();
-      builder.setMigratedKeyCount(builder.getMigratedKeyCount() + successCount);
-      builder.setFailedKeyCount(builder.getFailedKeyCount() + failedCount);
-      builder.setLastUpdateTime(System.currentTimeMillis());
-      taskTable.putWithBatch(batchOperation, taskKey, builder.build());
-      LOG.debug("Updated migration status for {}: +{} succeeded, +{} failed",
-          taskKey, successCount, failedCount);
-    } else {
-      LOG.warn("Migration task is not found for the key: {}", taskKey);
-    }
-  }
-
-  /**
-   * Marks scanning as completed for a task by setting completeScanning to true.
+   * Marks scanning as completed for a task using HA-compatible writes.
    * @param taskKey The task key to mark scanning as completed
-   * @throws IOException if there is an error updating the task
+   * @throws IOException if there is an error marking scanning as completed
    */
   public void markScanningCompleted(String taskKey) throws IOException {
     writeLock(taskKey).lock();
     try {
-      JobworkerMigrationKeysTaskProto currentTask = taskTable.get(taskKey);
-      if (currentTask != null) {
-        JobworkerMigrationKeysTaskProto.Builder builder = currentTask.toBuilder();
-        builder.setCompleteScanning(true);
-        builder.setLastUpdateTime(System.currentTimeMillis());
-        taskTable.put(taskKey, builder.build());
-        LOG.debug("Marked scanning as completed for task: {}", taskKey);
-      } else {
-        LOG.warn("Migration task is not found for the key: {}", taskKey);
-      }
+      dbUpdateManager.keyMigrationMarkScanningCompleted(taskKey);
     } finally {
       writeLock(taskKey).unlock();
     }
   }
 
   /**
-   * Cleans up a completed task.
+   * Cleans up a completed task using HA-compatible writes.
    * @param taskKey The task key to clean up
    * @throws IOException if there is an error cleaning up the task
    */
   public void cleanupTask(String taskKey) throws IOException {
     writeLock(taskKey).lock();
     try {
-      taskTable.delete(taskKey);
-      LOG.info("Clean up a completed migration task: {}", taskKey);
+      dbUpdateManager.keyMigrationCleanupTask(taskKey);
     } finally {
       writeLock(taskKey).unlock();
     }

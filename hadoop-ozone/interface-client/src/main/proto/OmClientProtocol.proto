@@ -171,6 +171,7 @@ enum Type {
   DeleteRevokedSTSTokens = 155;
   GetCallerIdentity = 156;
   AllocateIdBatch = 1180;
+  MigrationKeyDBUpdate = 1191;
 }
 
 enum SafeMode {
@@ -337,6 +338,7 @@ message OMRequest {
   optional UpdateAssumeRoleRequest          updateAssumeRoleRequest        = 157;
   optional GetCallerIdentityRequest         getCallerIdentityRequest       = 158;
   optional AllocateIdBatchRequest            allocateIdBatchRequest         = 1180;
+  optional MigrationKeyDBUpdateRequest       migrationKeyDBUpdateRequest    = 1191;
 }
 
 message OMResponse {
@@ -487,6 +489,7 @@ message OMResponse {
   optional DeleteRevokedSTSTokensResponse    deleteRevokedSTSTokensResponse = 155;
   optional GetCallerIdentityResponse         getCallerIdentityResponse      = 156;
   optional AllocateIdBatchResponse           allocateIdBatchResponse        = 1180;
+  optional MigrationKeyDBUpdateResponse      migrationKeyDBUpdateResponse   = 1191;
 }
 
 enum Status {
@@ -2814,4 +2817,34 @@ message AllocateIdBatchRequest {
 message AllocateIdBatchResponse {
   required uint64 startId = 1;
   required uint64 endId = 2;
+}
+
+message MigrationKeyDBUpdateRequest {
+  required MigrationKeyOperationType type = 1;
+  required MigrationKeyArgs migrationKeyArgs = 2;
+}
+
+message MigrationKeyDBUpdateResponse {
+}
+
+enum MigrationKeyOperationType {
+  KEY_MIGRATION_COMPLETE_TRANSACTION = 1;
+  KEY_MIGRATION_UPDATE_TASK_STATUS = 2;
+  KEY_MIGRATION_MARK_SCANNING_COMPLETED = 3;
+  KEY_MIGRATION_CLEANUP_TASK = 4;
+}
+
+message MigrationKeyArgs {
+  message CompleteTransaction {
+    required string transactionKey = 1;
+    required int64 failedKeyCount = 2;
+  }
+
+  message UpdateTaskStatus {
+    required hdds.JobworkerTaskStatus newStatus = 1;
+  }
+
+  required string taskKey = 1;
+  optional CompleteTransaction completeTransaction = 2;
+  optional UpdateTaskStatus updateTaskStatus = 3;
 }

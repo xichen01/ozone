@@ -341,6 +341,7 @@ public final class OmUtils {
     case UnknownCommand:
       return false;
     case AllocateIdBatch:
+    case MigrationKeyDBUpdate:
       return false;
     case EchoRPC:
       return omRequest.getEchoRPCRequest().getReadOnly();
@@ -484,6 +485,7 @@ public final class OmUtils {
     case DeleteLifecycleConfiguration:
     case SetLifecycleServiceStatus:
     case SaveLifecycleScanState:
+    case MigrationKeyDBUpdate:
     case UnknownCommand:
       return false;
     case EchoRPC:

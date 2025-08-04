@@ -17,6 +17,7 @@
 package org.apache.hadoop.ozone.om.service;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -24,13 +25,17 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto.Type;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTaskProto;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTxProto;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerTaskStatus;
+import org.apache.hadoop.hdds.server.ServerUtils;
 import org.apache.hadoop.hdds.utils.BackgroundService;
 import org.apache.hadoop.hdds.utils.BackgroundTask;
 import org.apache.hadoop.hdds.utils.BackgroundTaskQueue;
@@ -61,15 +66,16 @@ public class StoragePolicySatisfierService extends BackgroundService {
   private final JobworkerNodeManager nodeManager;
   private final JobWorkerMigrationKeyConfiguration config;
   private final MigrationTaskManager taskManager;
-
+  private final ExecutorService migrationThreadPool;
+  private final AtomicBoolean running;
   private final Map<String, CompletableFuture<JobworkerTaskStatus>> runningMigrations = new ConcurrentHashMap<>();
   private int totalActivatedTaskCount = 0;
 
-  private final long incompleteTaskTimeoutMs;
-  private final long taskRetentionTimeoutMs;
-  private final int maxConcurrentMigrationTasks;
-  private final int maxInflightCommandCount;
-  private final long maxTaskWaitingTimeMs;
+  private long incompleteTaskTimeoutMs;
+  private long taskRetentionTimeMs;
+  private int maxConcurrentTasks;
+  private int maxInflightCommandCount;
+  private long maxTaskWaitingTimeMs;
 
 
   /**
@@ -90,10 +96,16 @@ public class StoragePolicySatisfierService extends BackgroundService {
     this.nodeManager = ozoneManager.getJobworkerNodemanager();
     this.config = configuration.getObject(JobWorkerMigrationKeyConfiguration.class);
     this.taskManager = ozoneManager.getMigrationTaskManager();
+    this.running = new AtomicBoolean(true);
+    this.migrationThreadPool = Executors.newCachedThreadPool(
+        new ThreadFactoryBuilder()
+            .setNameFormat("MigrationKey-Thread-%d")
+            .setDaemon(true)
+            .build());
 
     this.incompleteTaskTimeoutMs = config.getIncompleteTaskTimeoutMs();
-    this.taskRetentionTimeoutMs = config.getCompletedTaskRetentionTimeMs();
-    this.maxConcurrentMigrationTasks = config.getMaxConcurrentTasks();
+    this.taskRetentionTimeMs = config.getCompletedTaskRetentionTimeMs();
+    this.maxConcurrentTasks = config.getMaxConcurrentTasks();
     this.maxInflightCommandCount = config.getMaxInflightCommandCount();
     this.maxTaskWaitingTimeMs = config.getMaxTaskWaitingTimeMs();
   }
@@ -103,6 +115,13 @@ public class StoragePolicySatisfierService extends BackgroundService {
     BackgroundTaskQueue queue = new BackgroundTaskQueue();
     queue.add(new StoragePolicySatisfierTask());
     return queue;
+  }
+
+  @Override
+  public void shutdown() {
+    running.set(false);
+    ServerUtils.executorServiceShutdownGraceful(migrationThreadPool);
+    super.shutdown();
   }
 
   void processStoragePolicyMigration() {
@@ -163,9 +182,9 @@ public class StoragePolicySatisfierService extends BackgroundService {
           continue;
         }
 
-        if (getRunningTaskCount() >= maxConcurrentMigrationTasks) {
+        if (getRunningTaskCount() >= maxConcurrentTasks) {
           LOG.debug("Maximum concurrent migration tasks ({}) reached, skipping new task submission",
-              maxConcurrentMigrationTasks);
+              maxConcurrentTasks);
           break;
         }
 
@@ -181,6 +200,19 @@ public class StoragePolicySatisfierService extends BackgroundService {
 
       if (future.isDone()) {
         try {
+          JobworkerMigrationKeysTaskProto task;
+          try {
+            task = taskManager.getTask(taskKey);
+          } catch (IOException e) {
+            LOG.error("Fail to get task {} status", taskKey, e);
+            return true;
+          }
+          // Do not update a finished task
+          if (task != null && isTaskFinished(task)) {
+            LOG.debug("Task {} has been {} status", taskKey, task.getMigrationStatus());
+            return true;
+          }
+
           JobworkerTaskStatus resultStatus = future.get();
           updateMigrationTaskStatus(taskKey, resultStatus);
         } catch (ExecutionException e) {
@@ -240,7 +272,7 @@ public class StoragePolicySatisfierService extends BackgroundService {
   private void cleanupCompletedTask(String taskKey, JobworkerMigrationKeysTaskProto task) {
     if (isTaskFinished(task)) {
       long timeSinceUpdate = System.currentTimeMillis() - task.getLastUpdateTime();
-      if (timeSinceUpdate > taskRetentionTimeoutMs) {
+      if (timeSinceUpdate > taskRetentionTimeMs) {
         LOG.debug("Cleaning up completed task {} after retention timeout", taskKey);
         try {
           taskManager.cleanupTask(taskKey);
@@ -261,7 +293,7 @@ public class StoragePolicySatisfierService extends BackgroundService {
     CompletableFuture<JobworkerTaskStatus> future = CompletableFuture.supplyAsync(() -> {
       KeyMigrationThread migrationThread = new KeyMigrationThread(taskKey, task);
       return migrationThread.processMigrationTasks();
-    });
+    }, migrationThreadPool);
     totalActivatedTaskCount++;
 
     JobworkerTaskStatus currentStatus = task.getMigrationStatus();
@@ -304,7 +336,7 @@ public class StoragePolicySatisfierService extends BackgroundService {
 
     private JobworkerTaskStatus processMigrationTasks() {
       try {
-        LOG.info("Starting key migration processing for task: {}", taskKey);
+        LOG.debug("Starting key migration processing for task: {}", taskKey);
 
         boolean hasMoreTasks = processTransactionTable();
         // Wait for any remaining Commands to complete
@@ -313,7 +345,9 @@ public class StoragePolicySatisfierService extends BackgroundService {
 
         // Determine final status based on scanning completion and remaining tasks
         JobworkerTaskStatus finalStatus;
-        if (task.getCompleteScanning() && !hasMoreTasks) {
+        if (!running.get()) {
+          finalStatus = JobworkerTaskStatus.PAUSED;
+        } else if (task.getCompleteScanning() && !hasMoreTasks) {
           finalStatus = JobworkerTaskStatus.COMPLETED;
         } else if (noAvailableJobworker) {
           finalStatus = JobworkerTaskStatus.MIGRATION_PAUSED;
@@ -321,7 +355,7 @@ public class StoragePolicySatisfierService extends BackgroundService {
           finalStatus = JobworkerTaskStatus.EXECUTING;
         }
 
-        LOG.info("Completed key migration processing for task: {} with status: {}",
+        LOG.debug("Completed key migration processing for task: {} with status: {}",
             taskKey, finalStatus);
         return finalStatus;
       } catch (InterruptedException e) {
@@ -336,12 +370,13 @@ public class StoragePolicySatisfierService extends BackgroundService {
 
     private boolean processTransactionTable() throws IOException, InterruptedException {
       boolean hasMoreTasks = false;
+      long processedTransactions = 0;
 
       try (TableIterator<String, ? extends Table.KeyValue<String, JobworkerMigrationKeysTxProto>> iterator =
                transactionTable.iterator()) {
         iterator.seek(taskKey);
 
-        while (iterator.hasNext()) {
+        while (iterator.hasNext() && running.get()) {
           Table.KeyValue<String, JobworkerMigrationKeysTxProto> entry = iterator.next();
           String migrationTxKey = entry.getKey();
 
@@ -350,7 +385,10 @@ public class StoragePolicySatisfierService extends BackgroundService {
           if (!taskKeyPrefix.equals(taskKey)) {
             continue;
           }
-
+if (!hasMoreTasks) {
+            LOG.debug("Start Processing task {}, first transaction {}", taskKey, migrationTxKey);
+          }
+          processedTransactions++;
           hasMoreTasks = true;
 
           waitForCommandQueueCapacity();
@@ -367,7 +405,8 @@ public class StoragePolicySatisfierService extends BackgroundService {
           }
         }
       }
-
+LOG.info("Processed transactions count {} for task {} hasMoreTasks {} running {}",
+          processedTransactions, taskKey, hasMoreTasks, running);
       return hasMoreTasks;
     }
 
@@ -474,5 +513,14 @@ public class StoragePolicySatisfierService extends BackgroundService {
   @VisibleForTesting
   public int getTotalActivatedTasksCount() {
     return totalActivatedTaskCount;
+  }
+
+  @VisibleForTesting
+  void resetConfiguration(JobWorkerMigrationKeyConfiguration jwConf) {
+    this.incompleteTaskTimeoutMs = jwConf.getIncompleteTaskTimeoutMs();
+    this.taskRetentionTimeMs = jwConf.getCompletedTaskRetentionTimeMs();
+    this.maxConcurrentTasks = jwConf.getMaxConcurrentTasks();
+    this.maxInflightCommandCount = jwConf.getMaxInflightCommandCount();
+    this.maxTaskWaitingTimeMs = jwConf.getMaxTaskWaitingTimeMs();
   }
 }

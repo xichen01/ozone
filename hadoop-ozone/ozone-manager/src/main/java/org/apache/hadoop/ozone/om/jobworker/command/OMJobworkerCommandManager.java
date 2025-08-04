@@ -303,6 +303,16 @@ public class OMJobworkerCommandManager {
   }
 
   /**
+   * For testing only - reset the command info maps.
+   */
+  @VisibleForTesting
+  public void resetCommandInfoMaps() {
+    commandInfoMaps.forEach((type, commandInfoMap) -> {
+      commandInfoMap.clear();
+    });
+  }
+
+  /**
    * For testing only - get the command timeout checker instance.
    */
   @VisibleForTesting
