@@ -64,6 +64,12 @@ public class OMSequenceIdGenerator {
   private final ReentrantLock lock;
 
   /**
+   * Ids supported.
+   */
+  public static final String MIGRATION_KEYS_TX_ID = "migrationKeysTxId";
+  public static final String MIGRATION_KEYS_TASK_ID = "migrationKeysTaskId";
+
+  /**
    * Represents a batch of allocated IDs.
    */
   private static class Batch {

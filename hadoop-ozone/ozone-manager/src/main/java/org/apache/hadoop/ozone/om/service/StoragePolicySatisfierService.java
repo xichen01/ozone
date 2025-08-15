@@ -30,6 +30,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto.Type;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTaskProto;
@@ -40,13 +41,11 @@ import org.apache.hadoop.hdds.utils.BackgroundService;
 import org.apache.hadoop.hdds.utils.BackgroundTask;
 import org.apache.hadoop.hdds.utils.BackgroundTaskQueue;
 import org.apache.hadoop.hdds.utils.BackgroundTaskResult;
-import org.apache.hadoop.hdds.utils.db.Table;
-import org.apache.hadoop.hdds.utils.db.TableIterator;
 import org.apache.hadoop.ozone.conf.JobWorkerMigrationKeyConfiguration;
 import org.apache.hadoop.ozone.jobworker.commands.OMJobworkerMigrateKeyCommand;
-import org.apache.hadoop.ozone.om.OMMetadataManager;
 import org.apache.hadoop.ozone.om.OzoneManager;
 import org.apache.hadoop.ozone.om.jobworker.MigrationTaskManager;
+import org.apache.hadoop.ozone.om.jobworker.MigrationTaskManager.TaskEntry;
 import org.apache.hadoop.ozone.om.jobworker.command.OMJobworkerCommandManager;
 import org.apache.hadoop.ozone.om.jobworker.node.JobworkerInfo;
 import org.apache.hadoop.ozone.om.jobworker.node.JobworkerNodeManager;
@@ -61,14 +60,13 @@ public class StoragePolicySatisfierService extends BackgroundService {
   private static final Logger LOG = LoggerFactory.getLogger(StoragePolicySatisfierService.class);
 
   private final OzoneManager ozoneManager;
-  private final OMMetadataManager metadataManager;
   private final OMJobworkerCommandManager commandManager;
   private final JobworkerNodeManager nodeManager;
   private final JobWorkerMigrationKeyConfiguration config;
   private final MigrationTaskManager taskManager;
   private final ExecutorService migrationThreadPool;
   private final AtomicBoolean running;
-  private final Map<String, CompletableFuture<JobworkerTaskStatus>> runningMigrations = new ConcurrentHashMap<>();
+  private final Map<String, CompletableFuture<MigrationResult>> runningMigrations = new ConcurrentHashMap<>();
   private int totalActivatedTaskCount = 0;
 
   private long incompleteTaskTimeoutMs;
@@ -91,7 +89,6 @@ public class StoragePolicySatisfierService extends BackgroundService {
     super(StoragePolicySatisfierService.class.getSimpleName(), intervalMs, TimeUnit.MILLISECONDS,
         1, serviceTimeoutMs);
     this.ozoneManager = ozoneManager;
-    this.metadataManager = ozoneManager.getMetadataManager();
     this.commandManager = ozoneManager.getOMJobworkerCommandManager();
     this.nodeManager = ozoneManager.getJobworkerNodemanager();
     this.config = configuration.getObject(JobWorkerMigrationKeyConfiguration.class);
@@ -132,38 +129,31 @@ public class StoragePolicySatisfierService extends BackgroundService {
       }
 
       LOG.info("Starting storage policy migration task processing");
-
-      Table<String, JobworkerMigrationKeysTaskProto> statusTable =
-          metadataManager.getJobworkerMigrationKeysTaskTable();
-
       // Update incomplete tasks and cleanup completed tasks
-      processExistingTasks(statusTable);
+      processExistingTasks();
       // Check and update running migration statuses
       updateRunningMigrationStatuses();
       // Start new migration tasks if capacity allows
-      startNewMigrationTasks(statusTable);
+      startNewMigrationTasks();
       LOG.debug("Completed storage policy migration scan. Active tasks: {}", getRunningTaskCount());
     } catch (IOException e) {
       LOG.error("Error scanning migration status table", e);
     }
   }
 
-  private void processExistingTasks(Table<String, JobworkerMigrationKeysTaskProto> statusTable)
+  private void processExistingTasks()
       throws IOException {
-    try (TableIterator<String, ? extends Table.KeyValue<String, JobworkerMigrationKeysTaskProto>> iterator =
-             statusTable.iterator()) {
-      while (iterator.hasNext()) {
-        Table.KeyValue<String, JobworkerMigrationKeysTaskProto> entry = iterator.next();
-        String taskKey = entry.getKey();
-        JobworkerMigrationKeysTaskProto task = entry.getValue();
+    List<TaskEntry> allTasks = taskManager.getAllTasks();
+    for (TaskEntry taskEntry : allTasks) {
+      String taskKey = taskEntry.getTaskKey();
+      JobworkerMigrationKeysTaskProto task = taskEntry.getTask();
 
-        handleIncompleteTaskTimeout(taskKey, task);
-        cleanupCompletedTask(taskKey, task);
-      }
+      handleIncompleteTaskTimeout(taskKey, task);
+      cleanupCompletedTask(taskKey, task);
     }
   }
 
-  private void startNewMigrationTasks(Table<String, JobworkerMigrationKeysTaskProto> statusTable)
+  private void startNewMigrationTasks()
       throws IOException {
     List<JobworkerInfo> healthyJobworkers = nodeManager.getNodeStateManager().getHealthyJobworkerInfos();
     if (healthyJobworkers.isEmpty()) {
@@ -171,32 +161,27 @@ public class StoragePolicySatisfierService extends BackgroundService {
       return;
     }
 
-    try (TableIterator<String, ? extends Table.KeyValue<String, JobworkerMigrationKeysTaskProto>> iterator =
-             statusTable.iterator()) {
-      while (iterator.hasNext()) {
-        Table.KeyValue<String, JobworkerMigrationKeysTaskProto> entry = iterator.next();
-        String taskKey = entry.getKey();
-        JobworkerMigrationKeysTaskProto task = entry.getValue();
-
-        if (runningMigrations.containsKey(taskKey) || isTaskFinished(task)) {
-          continue;
-        }
-
-        if (getRunningTaskCount() >= maxConcurrentTasks) {
-          LOG.debug("Maximum concurrent migration tasks ({}) reached, skipping new task submission",
-              maxConcurrentTasks);
-          break;
-        }
-
-        startKeyMigrationTask(taskKey, task);
+    List<TaskEntry> allTasks = taskManager.getAllTasks();
+    for (TaskEntry taskEntry : allTasks) {
+      String taskKey = taskEntry.getTaskKey();
+      JobworkerMigrationKeysTaskProto task = taskEntry.getTask();
+      if (runningMigrations.containsKey(taskKey) || isTaskFinished(task)) {
+        continue;
       }
+      if (getRunningTaskCount() >= maxConcurrentTasks) {
+        LOG.debug("Maximum concurrent migration tasks ({}) reached, skipping new task submission",
+            maxConcurrentTasks);
+        break;
+      }
+
+      startKeyMigrationTask(taskKey, task);
     }
   }
 
   private void updateRunningMigrationStatuses() {
     runningMigrations.entrySet().removeIf(entry -> {
       String taskKey = entry.getKey();
-      CompletableFuture<JobworkerTaskStatus> future = entry.getValue();
+      CompletableFuture<MigrationResult> future = entry.getValue();
 
       if (future.isDone()) {
         try {
@@ -213,8 +198,22 @@ public class StoragePolicySatisfierService extends BackgroundService {
             return true;
           }
 
-          JobworkerTaskStatus resultStatus = future.get();
-          updateMigrationTaskStatus(taskKey, resultStatus);
+          MigrationResult resultStatus = future.get();
+
+          // Skip status update for EXECUTING tasks that processed no transactions.
+          // This prevents refreshing lastUpdateTime when no actual work was done,
+          // allowing handleIncompleteTaskTimeout to properly detect stuck tasks.
+          // Some of the scenarios:
+          // 1. Task created, but no transactions added yet
+          // 2. All transactions completed, no new transactions added
+          // Without this check, these idle tasks would have their lastUpdateTime
+          // constantly refreshed, preventing timeout-based CANCELED status.
+          if (resultStatus.getStatus() == JobworkerTaskStatus.EXECUTING &&
+              !resultStatus.isTransactionsProcessed()) {
+            return true; // Skip update to preserve lastUpdateTime for timeout detection
+          }
+
+          updateMigrationTaskStatus(taskKey, resultStatus.getStatus());
         } catch (ExecutionException e) {
           LOG.error("Migration task execution failed for task: {}", taskKey, e.getCause());
           updateMigrationTaskStatus(taskKey, JobworkerTaskStatus.FAILED);
@@ -290,7 +289,7 @@ public class StoragePolicySatisfierService extends BackgroundService {
    * @param task the migration task to start
    */
   private void startKeyMigrationTask(String taskKey, JobworkerMigrationKeysTaskProto task) {
-    CompletableFuture<JobworkerTaskStatus> future = CompletableFuture.supplyAsync(() -> {
+    CompletableFuture<MigrationResult> future = CompletableFuture.supplyAsync(() -> {
       KeyMigrationThread migrationThread = new KeyMigrationThread(taskKey, task);
       return migrationThread.processMigrationTasks();
     }, migrationThreadPool);
@@ -302,7 +301,7 @@ public class StoragePolicySatisfierService extends BackgroundService {
     }
 
     runningMigrations.put(taskKey, future);
-    LOG.info("Started migration thread for the task: {}. Active tasks: {}", taskKey, getRunningTaskCount());
+    LOG.debug("Started migration thread for the task: {}. Active tasks: {}", taskKey, getRunningTaskCount());
   }
 
   private void updateMigrationTaskStatus(String taskKey, JobworkerTaskStatus newStatus) {
@@ -314,6 +313,24 @@ public class StoragePolicySatisfierService extends BackgroundService {
     }
   }
 
+  private static class MigrationResult {
+    private final JobworkerTaskStatus status;
+    private final boolean transactionsProcessed;
+
+    MigrationResult(JobworkerTaskStatus status, boolean transactionsProcessed) {
+      this.status = status;
+      this.transactionsProcessed = transactionsProcessed;
+    }
+
+    JobworkerTaskStatus getStatus() {
+      return status;
+    }
+
+    boolean isTransactionsProcessed() {
+      return transactionsProcessed;
+    }
+  }
+
   /**
    * Thread responsible for processing migration tasks for a specific bucket.
    */
@@ -321,9 +338,9 @@ public class StoragePolicySatisfierService extends BackgroundService {
     private final String taskKey;
     private final JobworkerMigrationKeysTaskProto task;
     private final List<Long> sentCommands = new ArrayList<>();
-    private final Table<String, JobworkerMigrationKeysTxProto> transactionTable;
     private boolean noAvailableJobworker = false;
 
+    private static final int LIST_TRANSACTION_BATCH_SIZE = 1000;
     private static final int TRANSACTION_BATCH_SIZE = 100;
     private static final long COMMAND_QUEUE_CHECK_INTERVAL_MS = 2000;
     private static final long TASK_COMPLETION_CHECK_INTERVAL_MS = 1000;
@@ -331,14 +348,17 @@ public class StoragePolicySatisfierService extends BackgroundService {
     KeyMigrationThread(String taskKey, JobworkerMigrationKeysTaskProto task) {
       this.taskKey = taskKey;
       this.task = task;
-      this.transactionTable = metadataManager.getJobworkerMigrationKeysTxTable();
     }
 
-    private JobworkerTaskStatus processMigrationTasks() {
+    private MigrationResult processMigrationTasks() {
       try {
         LOG.debug("Starting key migration processing for task: {}", taskKey);
 
-        boolean hasMoreTasks = processTransactionTable();
+        // Process transactions and get results: (hasMoreTasks, processedTransactionCount)
+        // processedTransactionCount is used to determine if task status should be updated
+        Pair<Boolean, Long> processResult = processTransactionTask();
+        boolean hasMoreTasks = processResult.getLeft();
+        long processedTransactions = processResult.getRight();
         // Wait for any remaining Commands to complete
         waitForTaskCompletion(sentCommands);
         sentCommands.clear();
@@ -355,70 +375,91 @@ public class StoragePolicySatisfierService extends BackgroundService {
           finalStatus = JobworkerTaskStatus.EXECUTING;
         }
 
-        LOG.debug("Completed key migration processing for task: {} with status: {}",
-            taskKey, finalStatus);
-        return finalStatus;
+        // Mark as processed only if we actually dispatched commands to jobworkers
+        // This flag controls whether task status update will refresh lastUpdateTime
+        boolean transactionsProcessed = processedTransactions > 0;
+        LOG.debug("Completed key migration processing for task: {} with status: {}, processedTransactions: {}",
+                taskKey, finalStatus, processedTransactions);
+        return new MigrationResult(finalStatus, transactionsProcessed);
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
         LOG.warn("Key migration thread interrupted for task: {}", taskKey);
-        return JobworkerTaskStatus.FAILED;
+        return new MigrationResult(JobworkerTaskStatus.FAILED, false);
       } catch (Exception e) {
         LOG.error("Error in key migration thread for task: {}", taskKey, e);
-        return JobworkerTaskStatus.FAILED;
+        return new MigrationResult(JobworkerTaskStatus.FAILED, false);
       }
     }
 
-    private boolean processTransactionTable() throws IOException, InterruptedException {
+    private Pair<Boolean, Long> processTransactionTask() throws IOException, InterruptedException {
       boolean hasMoreTasks = false;
       long processedTransactions = 0;
+      String startTransactionKey = null;
+      boolean isFirstBatch = true;
 
-      try (TableIterator<String, ? extends Table.KeyValue<String, JobworkerMigrationKeysTxProto>> iterator =
-               transactionTable.iterator()) {
-        iterator.seek(taskKey);
+      // Process transactions in batches to avoid memory issues
+      while (running.get()) {
+        List<MigrationTaskManager.TransactionEntry> transactions =
+            taskManager.listTransactionsForTask(taskKey, startTransactionKey, LIST_TRANSACTION_BATCH_SIZE);
 
-        while (iterator.hasNext() && running.get()) {
-          Table.KeyValue<String, JobworkerMigrationKeysTxProto> entry = iterator.next();
-          String migrationTxKey = entry.getKey();
+        if (transactions.isEmpty()) {
+          break; // No more transactions to process
+        }
 
-          // Check if this transaction belongs to our task
-          String taskKeyPrefix = extractTaskKeyFromTxKey(migrationTxKey);
-          if (!taskKeyPrefix.equals(taskKey)) {
-            continue;
+        boolean processedAnyInThisBatch = false;
+        for (MigrationTaskManager.TransactionEntry transactionEntry : transactions) {
+          if (!running.get()) {
+            break;
           }
-if (!hasMoreTasks) {
-            LOG.debug("Start Processing task {}, first transaction {}", taskKey, migrationTxKey);
+          String migrationTxKey = transactionEntry.getTransactionKey();
+          JobworkerMigrationKeysTxProto txProto = transactionEntry.getTransaction();
+
+          if (!hasMoreTasks && isFirstBatch) {
+            LOG.info("Start Processing task {}, first transaction {}", taskKey, migrationTxKey);
           }
-          processedTransactions++;
           hasMoreTasks = true;
+          processedAnyInThisBatch = true;
 
-          waitForCommandQueueCapacity();
-          JobworkerMigrationKeysTxProto txProto = entry.getValue();
+          waitForCommandQueueCapacity(migrationTxKey);
           if (dispatchMigrationCommand(migrationTxKey, txProto)) {
-            // Process in batches to avoid memory issues
+            processedTransactions++;
+            // Process in command batches to avoid overwhelming job workers
             if (sentCommands.size() >= TRANSACTION_BATCH_SIZE) {
               waitForTaskCompletion(sentCommands);
               sentCommands.clear();
             }
           } else {
             noAvailableJobworker = true;
-            return hasMoreTasks;
+            return Pair.of(hasMoreTasks, processedTransactions);
           }
+
+          // Update startTransactionKey for next batch pagination
+          startTransactionKey = migrationTxKey;
+        }
+
+        isFirstBatch = false;
+
+        if (transactions.size() < LIST_TRANSACTION_BATCH_SIZE || !processedAnyInThisBatch) {
+          break;
         }
       }
-LOG.info("Processed transactions count {} for task {} hasMoreTasks {} running {}",
+
+      LOG.info("Processed transactions count {} for task {} hasMoreTasks {} running {}",
           processedTransactions, taskKey, hasMoreTasks, running);
-      return hasMoreTasks;
+      return Pair.of(hasMoreTasks, processedTransactions);
     }
 
-    private String extractTaskKeyFromTxKey(String migrationTxKey) {
-      return migrationTxKey.substring(0, migrationTxKey.lastIndexOf('/'));
-    }
 
-    private void waitForCommandQueueCapacity() throws InterruptedException {
+    private void waitForCommandQueueCapacity(String migrationTxKey) throws InterruptedException {
       while (true) {
         int inflightCmdCount = commandManager.getInFlightCommandCount(Type.migrateKeyCommand);
         if (inflightCmdCount <= maxInflightCommandCount) {
           break;
+        }
+        List<JobworkerInfo> healthyJobworkers = nodeManager.getNodeStateManager().getHealthyJobworkerInfos();
+        if (healthyJobworkers.isEmpty()) {
+          LOG.error("No healthy Jobworkers available for task: {}", migrationTxKey);
+          return;
         }
         LOG.debug("In-flight command count ({}) exceeds limit ({}), waiting...",
             inflightCmdCount, maxInflightCommandCount);
@@ -506,7 +547,7 @@ LOG.info("Processed transactions count {} for task {} hasMoreTasks {} running {}
   }
 
   @VisibleForTesting
-  public Map<String, CompletableFuture<JobworkerTaskStatus>> getRunningMigrations() {
+  public Map<String, CompletableFuture<MigrationResult>> getRunningMigrations() {
     return runningMigrations;
   }
 

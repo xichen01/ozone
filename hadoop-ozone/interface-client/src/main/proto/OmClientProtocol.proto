@@ -2832,19 +2832,34 @@ enum MigrationKeyOperationType {
   KEY_MIGRATION_UPDATE_TASK_STATUS = 2;
   KEY_MIGRATION_MARK_SCANNING_COMPLETED = 3;
   KEY_MIGRATION_CLEANUP_TASK = 4;
+  KEY_MIGRATION_CREATE_TASK = 5;
+  KEY_MIGRATION_ADD_TRANSACTION = 6;
 }
 
 message MigrationKeyArgs {
   message CompleteTransaction {
     required string transactionKey = 1;
-    required int64 failedKeyCount = 2;
+    required int32 failedKeyCount = 2;
   }
 
   message UpdateTaskStatus {
     required hdds.JobworkerTaskStatus newStatus = 1;
   }
 
+  message CreateTask {
+    required string ruleId = 1;
+    required hadoop.hdds.StoragePolicyProto storagePolicy = 2;
+  }
+
+  message AddTransaction {
+    required int64 txId = 1;
+    required hadoop.hdds.JobworkerMigrationKeysTxProto migrationKeysTxProto = 2;
+  }
+
   required string taskKey = 1;
-  optional CompleteTransaction completeTransaction = 2;
-  optional UpdateTaskStatus updateTaskStatus = 3;
+  optional uint64 operationTime = 2;
+  optional CompleteTransaction completeTransaction = 3;
+  optional UpdateTaskStatus updateTaskStatus = 4;
+  optional CreateTask createTask = 5;
+  optional AddTransaction addTransaction = 6;
 }

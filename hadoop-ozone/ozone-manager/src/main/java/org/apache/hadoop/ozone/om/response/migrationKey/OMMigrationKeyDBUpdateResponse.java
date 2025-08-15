@@ -26,6 +26,7 @@ import java.io.IOException;
 import javax.annotation.Nonnull;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTaskProto;
+import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTxProto;
 import org.apache.hadoop.hdds.utils.db.BatchOperation;
 import org.apache.hadoop.ozone.om.OMMetadataManager;
 import org.apache.hadoop.ozone.om.request.migrationKey.OMMigrationKeyDBUpdateRequest;
@@ -68,6 +69,8 @@ public class OMMigrationKeyDBUpdateResponse extends OMClientResponse {
     case KEY_MIGRATION_UPDATE_TASK_STATUS:
     case KEY_MIGRATION_MARK_SCANNING_COMPLETED:
     case KEY_MIGRATION_CLEANUP_TASK:
+    case KEY_MIGRATION_CREATE_TASK:
+    case KEY_MIGRATION_ADD_TRANSACTION:
       Preconditions.checkArgument(dbUpdateResult.operationData instanceof MigrationOperationData);
       break;
     default:
@@ -100,6 +103,12 @@ public class OMMigrationKeyDBUpdateResponse extends OMClientResponse {
     case KEY_MIGRATION_CLEANUP_TASK:
       executeMigrationCleanupTask(omMetadataManager, batchOperation, dbUpdateResult);
       break;
+    case KEY_MIGRATION_CREATE_TASK:
+      executeMigrationCreateTask(omMetadataManager, batchOperation, dbUpdateResult);
+      break;
+    case KEY_MIGRATION_ADD_TRANSACTION:
+      executeMigrationAddTransaction(omMetadataManager, batchOperation, dbUpdateResult);
+      break;
     default:
       // This should never happen due to constructor validation, but keep for safety
       throw new IOException("Unsupported operation type: " + dbUpdateResult.getOperationType());
@@ -114,7 +123,7 @@ public class OMMigrationKeyDBUpdateResponse extends OMClientResponse {
     omMetadataManager.getJobworkerMigrationKeysTxTable()
         .deleteWithBatch(batchOperation, migrationData.getTransactionKey());
     omMetadataManager.getJobworkerMigrationKeysTaskTable()
-        .putWithBatch(batchOperation, migrationData.getTaskKey(), migrationData.getUpdatedTask());
+        .putWithBatch(batchOperation, migrationData.getTaskKey(), migrationData.getTask());
 
     LOG.debug("Executed migration complete transaction DB operations for task: {}", migrationData.getTaskKey());
   }
@@ -124,7 +133,7 @@ public class OMMigrationKeyDBUpdateResponse extends OMClientResponse {
     MigrationOperationData migrationData = (MigrationOperationData) result.getOperationData();
 
     omMetadataManager.getJobworkerMigrationKeysTaskTable()
-        .putWithBatch(batchOperation, migrationData.getTaskKey(), migrationData.getUpdatedTask());
+        .putWithBatch(batchOperation, migrationData.getTaskKey(), migrationData.getTask());
 
     LOG.debug("Executed migration update task status DB operations for task: {}", migrationData.getTaskKey());
   }
@@ -134,7 +143,7 @@ public class OMMigrationKeyDBUpdateResponse extends OMClientResponse {
     MigrationOperationData migrationData = (MigrationOperationData) result.getOperationData();
 
     omMetadataManager.getJobworkerMigrationKeysTaskTable()
-        .putWithBatch(batchOperation, migrationData.getTaskKey(), migrationData.getUpdatedTask());
+        .putWithBatch(batchOperation, migrationData.getTaskKey(), migrationData.getTask());
 
     LOG.debug("Executed migration mark scanning completed DB operations for task: {}", migrationData.getTaskKey());
   }
@@ -147,6 +156,28 @@ public class OMMigrationKeyDBUpdateResponse extends OMClientResponse {
         .deleteWithBatch(batchOperation, migrationData.getTaskKey());
 
     LOG.debug("Executed migration cleanup task DB operations for task: {}", migrationData.getTaskKey());
+  }
+
+  private void executeMigrationCreateTask(OMMetadataManager omMetadataManager,
+      BatchOperation batchOperation, DBUpdateResult result) throws IOException {
+    MigrationOperationData migrationData = (MigrationOperationData) result.getOperationData();
+
+    omMetadataManager.getJobworkerMigrationKeysTaskTable()
+        .putWithBatch(batchOperation, migrationData.getTaskKey(), migrationData.getTask());
+
+    LOG.debug("Executed migration creates task DB operations for the task: {}", migrationData.getTaskKey());
+  }
+
+  private void executeMigrationAddTransaction(OMMetadataManager omMetadataManager,
+      BatchOperation batchOperation, DBUpdateResult result) throws IOException {
+    MigrationOperationData migrationData = (MigrationOperationData) result.getOperationData();
+
+    omMetadataManager.getJobworkerMigrationKeysTxTable()
+        .putWithBatch(batchOperation, migrationData.getTransactionKey(), migrationData.getTransaction());
+    omMetadataManager.getJobworkerMigrationKeysTaskTable()
+        .putWithBatch(batchOperation, migrationData.getTaskKey(), migrationData.getTask());
+
+    LOG.debug("Executed migration adds transaction DB operations for the task: {}", migrationData.getTaskKey());
   }
 
   /**
@@ -177,7 +208,7 @@ public class OMMigrationKeyDBUpdateResponse extends OMClientResponse {
         JobworkerMigrationKeysTaskProto updatedTask) {
       Preconditions.checkArgument(!StringUtils.isEmpty(taskKey));
       Preconditions.checkNotNull(updatedTask);
-      MigrationOperationData migrationData = new MigrationOperationData(taskKey, null, updatedTask);
+      MigrationOperationData migrationData = new MigrationOperationData(taskKey, updatedTask);
       return new DBUpdateResult(MigrationKeyOperationType.KEY_MIGRATION_UPDATE_TASK_STATUS, migrationData);
     }
 
@@ -185,14 +216,33 @@ public class OMMigrationKeyDBUpdateResponse extends OMClientResponse {
         JobworkerMigrationKeysTaskProto updatedTask) {
       Preconditions.checkArgument(!StringUtils.isEmpty(taskKey));
       Preconditions.checkNotNull(updatedTask);
-      MigrationOperationData migrationData = new MigrationOperationData(taskKey, null, updatedTask);
+      MigrationOperationData migrationData = new MigrationOperationData(taskKey, updatedTask);
       return new DBUpdateResult(MigrationKeyOperationType.KEY_MIGRATION_MARK_SCANNING_COMPLETED, migrationData);
     }
 
     public static DBUpdateResult createMigrationCleanupTaskResult(String taskKey) {
       Preconditions.checkArgument(!StringUtils.isEmpty(taskKey));
-      MigrationOperationData migrationData = new MigrationOperationData(taskKey, null, null);
+      MigrationOperationData migrationData = new MigrationOperationData(taskKey);
       return new DBUpdateResult(MigrationKeyOperationType.KEY_MIGRATION_CLEANUP_TASK, migrationData);
+    }
+
+    public static DBUpdateResult createMigrationCreateTaskResult(String taskKey,
+        JobworkerMigrationKeysTaskProto createdTask) {
+      Preconditions.checkArgument(!StringUtils.isEmpty(taskKey));
+      Preconditions.checkNotNull(createdTask);
+      MigrationOperationData migrationData = new MigrationOperationData(taskKey, null, createdTask);
+      return new DBUpdateResult(MigrationKeyOperationType.KEY_MIGRATION_CREATE_TASK, migrationData);
+    }
+
+    public static DBUpdateResult createMigrationAddTransactionResult(String taskKey, String transactionKey,
+        JobworkerMigrationKeysTaskProto updatedTask, JobworkerMigrationKeysTxProto addedTransaction) {
+      Preconditions.checkArgument(!StringUtils.isEmpty(taskKey));
+      Preconditions.checkArgument(!StringUtils.isEmpty(transactionKey));
+      Preconditions.checkNotNull(updatedTask);
+      Preconditions.checkNotNull(addedTransaction);
+      MigrationOperationData migrationData = new MigrationOperationData(
+          taskKey, transactionKey, updatedTask, addedTransaction);
+      return new DBUpdateResult(MigrationKeyOperationType.KEY_MIGRATION_ADD_TRANSACTION, migrationData);
     }
 
     public MigrationKeyOperationType getOperationType() {
@@ -211,12 +261,27 @@ public class OMMigrationKeyDBUpdateResponse extends OMClientResponse {
   public static final class MigrationOperationData {
     private final String taskKey;
     private final String transactionKey;
-    private final JobworkerMigrationKeysTaskProto updatedTask;
+    private final JobworkerMigrationKeysTaskProto task;
+    private final JobworkerMigrationKeysTxProto transaction;
 
-    public MigrationOperationData(String taskKey, String transactionKey, JobworkerMigrationKeysTaskProto updatedTask) {
+    public MigrationOperationData(String taskKey) {
+      this(taskKey, null, null, null);
+    }
+
+    public MigrationOperationData(String taskKey, JobworkerMigrationKeysTaskProto task) {
+      this(taskKey, null, task, null);
+    }
+
+    public MigrationOperationData(String taskKey, String transactionKey, JobworkerMigrationKeysTaskProto task) {
+      this(taskKey, transactionKey, task, null);
+    }
+
+    public MigrationOperationData(String taskKey, String transactionKey, JobworkerMigrationKeysTaskProto task,
+        JobworkerMigrationKeysTxProto transaction) {
       this.taskKey = taskKey;
       this.transactionKey = transactionKey;
-      this.updatedTask = updatedTask;
+      this.task = task;
+      this.transaction = transaction;
     }
 
     public String getTaskKey() {
@@ -227,8 +292,12 @@ public class OMMigrationKeyDBUpdateResponse extends OMClientResponse {
       return transactionKey;
     }
 
-    public JobworkerMigrationKeysTaskProto getUpdatedTask() {
-      return updatedTask;
+    public JobworkerMigrationKeysTaskProto getTask() {
+      return task;
+    }
+
+    public JobworkerMigrationKeysTxProto getTransaction() {
+      return transaction;
     }
   }
 }

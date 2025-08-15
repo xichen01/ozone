@@ -18,6 +18,19 @@
 
 package org.apache.hadoop.ozone.om.jobworker;
 
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Random;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import org.apache.commons.lang3.RandomStringUtils;
+import org.apache.hadoop.hdds.client.OzoneStoragePolicy;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTaskProto;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTxProto;
@@ -25,6 +38,8 @@ import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerTaskStatus;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.MigrationKeyProto;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.StoragePolicyProto;
 import org.apache.hadoop.hdds.server.ServerUtils;
+import org.apache.hadoop.hdds.utils.db.cache.CacheKey;
+import org.apache.hadoop.hdds.utils.db.cache.CacheValue;
 import org.apache.hadoop.ozone.om.OMConfigKeys;
 import org.apache.hadoop.ozone.om.OMMetadataManager;
 import org.apache.hadoop.ozone.om.OmTestManagers;
@@ -34,14 +49,6 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-
-import java.io.File;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Tests for {@link MigrationTaskManager} with real OM in HA mode.
@@ -56,6 +63,7 @@ public class TestMigrationTaskManager {
   private MigrationTaskManager migrationTaskManager;
   private OMMetadataManager metadataManager;
   private OzoneManager ozoneManager;
+  private final Random random = new Random();
 
   @BeforeEach
   public void setup() throws Exception {
@@ -120,7 +128,7 @@ public class TestMigrationTaskManager {
 
     // 4. Test mark scanning completed
     Assertions.assertFalse(updatedTask.getCompleteScanning());
-    migrationTaskManager.markScanningCompleted(taskKey);
+    migrationTaskManager.markScanningCompletedIfPresent(taskKey);
     updatedTask = migrationTaskManager.getTask(taskKey);
     Assertions.assertTrue(updatedTask.getCompleteScanning());
 
@@ -160,7 +168,7 @@ public class TestMigrationTaskManager {
           JobworkerMigrationKeysTxProto transaction = createMigrationTransaction(transactionKey, taskKey, 5);
           metadataManager.getJobworkerMigrationKeysTxTable().put(transactionKey, transaction);
           
-          allTransactions.add(new TransactionInfo(taskKey, txId, transactionKey, failedKeyPerTx));
+          allTransactions.add(new TransactionInfo(taskKey, txId, transactionKey, (int)failedKeyPerTx));
         }
         index++;
       }
@@ -207,14 +215,339 @@ public class TestMigrationTaskManager {
     }
   }
 
+  @Test
+  public void testCreateTaskIfAbsent() throws Exception {
+    String taskKey = MigrationTaskManager.generateTaskKey("vol1", "bucket1", random.nextLong());
+    Assertions.assertFalse(migrationTaskManager.isTaskExists(taskKey));
+    Assertions.assertTrue(migrationTaskManager.createTaskIfAbsent(taskKey, "RuleId1", OzoneStoragePolicy.COLD));
+    
+    // Verify task was created
+    Assertions.assertTrue(migrationTaskManager.isTaskExists(taskKey));
+    JobworkerMigrationKeysTaskProto createdTask = migrationTaskManager.getTask(taskKey);
+    Assertions.assertNotNull(createdTask);
+    Assertions.assertEquals(JobworkerTaskStatus.PENDING, createdTask.getMigrationStatus());
+    Assertions.assertEquals("RuleId1", createdTask.getRuleId());
+    Assertions.assertEquals(OzoneStoragePolicy.COLD,
+        OzoneStoragePolicy.fromProto(createdTask.getStoragePolicy()));
+    Assertions.assertTrue(createdTask.getStartTime() > 0);
+    Assertions.assertTrue(createdTask.getLastUpdateTime() > 0);
+
+    // Call again - should not create duplicate
+    long originalStartTime = createdTask.getStartTime();
+    Assertions.assertFalse(migrationTaskManager.createTaskIfAbsent(taskKey, "RuleId1", OzoneStoragePolicy.COLD));
+    JobworkerMigrationKeysTaskProto unchangedTask = migrationTaskManager.getTask(taskKey);
+    Assertions.assertEquals(originalStartTime, unchangedTask.getStartTime());
+  }
+
+  @Test
+  public void testAddNewTransaction() throws Exception {
+    String taskKey = MigrationTaskManager.generateTaskKey("vol1", "bucket1", random.nextLong());
+    long txId = 98765L;
+    String transactionKey = MigrationTaskManager.getTransactionKey(taskKey, txId);
+    
+    JobworkerMigrationKeysTaskProto task = createMigrationTask(10, 5, 0);
+    metadataManager.getJobworkerMigrationKeysTaskTable().put(taskKey, task);
+    JobworkerMigrationKeysTxProto transaction = createMigrationTransaction(transactionKey, taskKey, 3);
+    migrationTaskManager.addNewTransaction(taskKey, transaction);
+    
+    // Verify transaction was added
+    Assertions.assertTrue(migrationTaskManager.isTransactionExists(transactionKey));
+
+    // Verify task migrated count was updated
+    JobworkerMigrationKeysTaskProto updatedTask = migrationTaskManager.getTask(taskKey);
+    Assertions.assertEquals(5, updatedTask.getMigratedKeyCount());
+    Assertions.assertEquals(13, updatedTask.getTotalKeyCount()); // 10 + 3
+  }
+
+  @Test
+  public void testAddNewTransactionTaskNotExists() throws Exception {
+    String taskKey = MigrationTaskManager.generateTaskKey("vol1", "bucket1", random.nextLong());
+    long txId = 98765L;
+    String transactionKey = MigrationTaskManager.getTransactionKey(taskKey, txId);
+    JobworkerMigrationKeysTxProto transaction = createMigrationTransaction(transactionKey, taskKey, 3);
+    
+    // Should throw exception for non-existent task
+    Assertions.assertThrows(IOException.class, () -> {
+      migrationTaskManager.addNewTransaction(taskKey, transaction);
+    });
+  }
+
+  @Test
+  public void testListTransactionsForTask() throws Exception {
+    // Create transactions for task1 (5 transactions)
+    String task1Key = MigrationTaskManager.generateTaskKey("vol1", "bucket1", random.nextLong());
+    List<String> expectedTask1Tx = new ArrayList<>();
+    for (int i = 0; i < 5; i++) {
+      long txId = 1000L + i;
+      String transactionKey = MigrationTaskManager.getTransactionKey(task1Key, txId);
+      expectedTask1Tx.add(transactionKey);
+      JobworkerMigrationKeysTxProto transaction = createMigrationTransaction(transactionKey, task1Key, i + 1);
+      metadataManager.getJobworkerMigrationKeysTxTable().put(transactionKey, transaction);
+    }
+    
+    // Create transactions for task2 (3 transactions)
+    String task2Key = MigrationTaskManager.generateTaskKey("vol2", "bucket2", random.nextLong());
+    List<String> expectedTask2Tx = new ArrayList<>();
+    for (int i = 0; i < 3; i++) {
+      long txId = 2000L + i;
+      String transactionKey = MigrationTaskManager.getTransactionKey(task2Key, txId);
+      expectedTask2Tx.add(transactionKey);
+      JobworkerMigrationKeysTxProto transaction = createMigrationTransaction(transactionKey, task2Key, i + 1);
+      metadataManager.getJobworkerMigrationKeysTxTable().put(transactionKey, transaction);
+    }
+
+    // Test pagination with different limits for both tasks
+    testPaginationWithDifferentLimits(task1Key, expectedTask1Tx);
+    testPaginationWithDifferentLimits(task2Key, expectedTask2Tx);
+  }
+
+  private void testPaginationWithDifferentLimits(String taskKey, List<String> expectedKeys) throws IOException {
+    for (int limit = 1; limit <= expectedKeys.size(); limit++) {
+      List<MigrationTaskManager.TransactionEntry> allTransactions = new ArrayList<>();
+      String startKey = null;
+      int loopCount = 0;
+      int maxLoops = expectedKeys.size() + 1; // Prevent infinite loops
+      
+      // Fetch all transactions using the specified limit
+      while (loopCount < maxLoops) {
+        List<MigrationTaskManager.TransactionEntry> pageResult = migrationTaskManager.listTransactionsForTask(
+            taskKey, startKey, limit);
+        allTransactions.addAll(pageResult);
+        
+        if (pageResult.size() < limit) {
+          break; // Reached the end
+        }
+        
+        startKey = pageResult.get(pageResult.size() - 1).getTransactionKey();
+        loopCount++;
+      }
+      
+      Assertions.assertEquals(expectedKeys.size(), allTransactions.size());
+      // Verify no duplicates and all expected keys are present
+      Set<String> actualKeys = new HashSet<>();
+      for (MigrationTaskManager.TransactionEntry entry : allTransactions) {
+        Assertions.assertTrue(expectedKeys.contains(entry.getTransactionKey()));
+        Assertions.assertTrue(entry.getTransactionKey().startsWith(taskKey + "/"));
+        Assertions.assertNotNull(entry.getTransaction());
+        actualKeys.add(entry.getTransactionKey());
+      }
+      Assertions.assertEquals(expectedKeys.size(), actualKeys.size());
+    }
+  }
+
+  @Test
+  public void testListTransactionsForTaskWithCacheAndDeletes() throws Exception {
+    String taskKey = MigrationTaskManager.generateTaskKey("vol1", "bucket1", random.nextLong());
+    
+    // Create transactions in DB
+    List<String> dbTransactionKeys = new ArrayList<>();
+    for (int i = 0; i < 3; i++) {
+      long txId = 1000L + i;
+      String transactionKey = MigrationTaskManager.getTransactionKey(taskKey, txId);
+      dbTransactionKeys.add(transactionKey);
+      
+      JobworkerMigrationKeysTxProto transaction = createMigrationTransaction(transactionKey, taskKey, i + 1);
+      metadataManager.getJobworkerMigrationKeysTxTable().put(transactionKey, transaction);
+    }
+    
+    // Add some transactions to cache
+    List<String> cacheTransactionKeys = new ArrayList<>();
+    for (int i = 3; i < 5; i++) {
+      long txId = 1000L + i;
+      String transactionKey = MigrationTaskManager.getTransactionKey(taskKey, txId);
+      cacheTransactionKeys.add(transactionKey);
+      
+      JobworkerMigrationKeysTxProto transaction = createMigrationTransaction(transactionKey, taskKey, i + 1);
+      metadataManager.getJobworkerMigrationKeysTxTable().addCacheEntry(
+          new CacheKey<>(transactionKey), 
+          CacheValue.get(i, transaction));
+    }
+    
+    // Mark one DB transaction as deleted in cache
+    String deletedKey = dbTransactionKeys.get(1);
+    metadataManager.getJobworkerMigrationKeysTxTable().addCacheEntry(
+        new CacheKey<>(deletedKey), 
+        CacheValue.get(6L));
+    
+    // List transactions
+    List<MigrationTaskManager.TransactionEntry> transactions = 
+        migrationTaskManager.listTransactionsForTask(taskKey, null, Integer.MAX_VALUE);
+    
+    // Should have 4 transactions (3 from DB - 1 deleted + 2 from cache)
+    Assertions.assertEquals(4, transactions.size());
+    
+    // Verify deleted transaction is not included
+    boolean foundDeleted = false;
+    for (MigrationTaskManager.TransactionEntry entry : transactions) {
+      if (entry.getTransactionKey().equals(deletedKey)) {
+        foundDeleted = true;
+        break;
+      }
+    }
+    Assertions.assertFalse(foundDeleted);
+    
+    // Verify cache transactions are included
+    for (String cacheKey : cacheTransactionKeys) {
+      boolean foundCacheEntry = false;
+      for (MigrationTaskManager.TransactionEntry entry : transactions) {
+        if (entry.getTransactionKey().equals(cacheKey)) {
+          foundCacheEntry = true;
+          break;
+        }
+      }
+      Assertions.assertTrue(foundCacheEntry, "Cache transaction not found: " + cacheKey);
+    }
+  }
+
+  @Test
+  public void testListTask() throws Exception {
+    String volume = "test-volume";
+    String bucket = "test-bucket";
+    
+    // Create multiple tasks for the volume/bucket
+    List<String> expectedTaskKeys = new ArrayList<>();
+    for (int i = 0; i < 4; i++) {
+      String taskKey = MigrationTaskManager.generateTaskKey(volume, bucket, i);
+      expectedTaskKeys.add(taskKey);
+      
+      JobworkerMigrationKeysTaskProto task = createMigrationTask(10 + i, 5 + i, i);
+      metadataManager.getJobworkerMigrationKeysTaskTable().put(taskKey, task);
+    }
+    
+    // Create some tasks for different volume/bucket to ensure filtering
+    String otherVolume = "other-volume";
+    String otherBucket = "other-bucket";
+    for (int i = 0; i < 2; i++) {
+      String taskKey = MigrationTaskManager.generateTaskKey(otherVolume, otherBucket, i);
+      JobworkerMigrationKeysTaskProto task = createMigrationTask(20 + i, 10 + i, i);
+      metadataManager.getJobworkerMigrationKeysTaskTable().put(taskKey, task);
+    }
+    
+    // List tasks for our volume/bucket
+    List<MigrationTaskManager.TaskEntry> tasks = 
+        migrationTaskManager.listTask(volume, bucket);
+    
+    // Verify correct tasks were returned
+    Assertions.assertEquals(4, tasks.size());
+    for (MigrationTaskManager.TaskEntry entry : tasks) {
+      Assertions.assertTrue(expectedTaskKeys.contains(entry.getTaskKey()));
+      Assertions.assertTrue(entry.getTaskKey().startsWith(volume + "/" + bucket + "/"));
+      Assertions.assertNotNull(entry.getTask());
+    }
+    
+    // Verify tasks are sorted by key
+    for (int i = 1; i < tasks.size(); i++) {
+      Assertions.assertTrue(
+          tasks.get(i - 1).getTaskKey().compareTo(
+              tasks.get(i).getTaskKey()) < 0);
+    }
+  }
+
+  @Test
+  public void testGetAllTasks() throws Exception {
+    // Create tasks across different volumes/buckets
+    String volume1 = "vol1";
+    String bucket1 = "bucket1";
+    String volume2 = "vol2";
+    String bucket2 = "bucket2";
+    
+    List<String> allTaskKeys = new ArrayList<>();
+    
+    // Tasks for vol1/bucket1
+    for (int i = 0; i < 2; i++) {
+      String taskKey = MigrationTaskManager.generateTaskKey(volume1, bucket1, i);
+      allTaskKeys.add(taskKey);
+      JobworkerMigrationKeysTaskProto task = createMigrationTask(10 + i, 5 + i, i);
+      metadataManager.getJobworkerMigrationKeysTaskTable().put(taskKey, task);
+    }
+    
+    // Tasks for vol2/bucket2
+    for (int i = 0; i < 3; i++) {
+      String taskKey = MigrationTaskManager.generateTaskKey(volume2, bucket2, i);
+      allTaskKeys.add(taskKey);
+      JobworkerMigrationKeysTaskProto task = createMigrationTask(20 + i, 10 + i, i);
+      metadataManager.getJobworkerMigrationKeysTaskTable().put(taskKey, task);
+    }
+    
+    // Get all tasks
+    List<MigrationTaskManager.TaskEntry> allTasks = migrationTaskManager.getAllTasks();
+    
+    // Verify all tasks were returned
+    Assertions.assertEquals(5, allTasks.size());
+    for (MigrationTaskManager.TaskEntry entry : allTasks) {
+      Assertions.assertTrue(allTaskKeys.contains(entry.getTaskKey()));
+      Assertions.assertNotNull(entry.getTask());
+    }
+  }
+
+  @Test
+  public void testListTaskWithCacheAndDeletes() throws Exception {
+    String volume = "cache-test-vol";
+    String bucket = "cache-test-bucket";
+    
+    // Create tasks in DB
+    List<String> dbTaskKeys = new ArrayList<>();
+    for (int i = 0; i < 3; i++) {
+      String taskKey = MigrationTaskManager.generateTaskKey(volume, bucket, i);
+      dbTaskKeys.add(taskKey);
+      JobworkerMigrationKeysTaskProto task = createMigrationTask(10 + i, 5 + i, i);
+      metadataManager.getJobworkerMigrationKeysTaskTable().put(taskKey, task);
+    }
+    
+    // Add some tasks to cache
+    List<String> cacheTaskKeys = new ArrayList<>();
+    for (int i = 3; i < 5; i++) {
+      String taskKey = MigrationTaskManager.generateTaskKey(volume, bucket, i);
+      cacheTaskKeys.add(taskKey);
+      JobworkerMigrationKeysTaskProto task = createMigrationTask(30 + i, 15 + i, i);
+      metadataManager.getJobworkerMigrationKeysTaskTable().addCacheEntry(
+          new CacheKey<>(taskKey), 
+          CacheValue.get(1L, task));
+    }
+    
+    // Mark one DB task as deleted in cache
+    String deletedKey = dbTaskKeys.get(1);
+    metadataManager.getJobworkerMigrationKeysTaskTable().addCacheEntry(
+        new CacheKey<>(deletedKey), 
+        CacheValue.get(2L));
+    
+    // List tasks
+    List<MigrationTaskManager.TaskEntry> tasks = migrationTaskManager.listTask(volume, bucket);
+    
+    // Should have 4 tasks (3 from DB - 1 deleted + 2 from cache)
+    Assertions.assertEquals(4, tasks.size());
+    
+    // Verify deleted task is not included
+    boolean foundDeleted = false;
+    for (MigrationTaskManager.TaskEntry entry : tasks) {
+      if (entry.getTaskKey().equals(deletedKey)) {
+        foundDeleted = true;
+        break;
+      }
+    }
+    Assertions.assertFalse(foundDeleted);
+    
+    // Verify cache tasks are included
+    for (String cacheKey : cacheTaskKeys) {
+      boolean foundCacheEntry = false;
+      for (MigrationTaskManager.TaskEntry entry : tasks) {
+        if (entry.getTaskKey().equals(cacheKey)) {
+          foundCacheEntry = true;
+          break;
+        }
+      }
+      Assertions.assertTrue(foundCacheEntry, "Cache task not found: " + cacheKey);
+    }
+  }
+
   // Helper class to store transaction information
   private static class TransactionInfo {
     private final String taskKey;
     private final long txId;
     private final String transactionKey;
-    private final long failedKeys;
+    private final int failedKeys;
     
-    TransactionInfo(String taskKey, long txId, String transactionKey, long failedKeys) {
+    TransactionInfo(String taskKey, long txId, String transactionKey, int failedKeys) {
       this.taskKey = taskKey;
       this.txId = txId;
       this.transactionKey = transactionKey;
@@ -231,13 +564,26 @@ public class TestMigrationTaskManager {
         .setStartTime(System.currentTimeMillis())
         .setLastUpdateTime(System.currentTimeMillis())
         .setCompleteScanning(false)
+        .setRuleId(RandomStringUtils.randomAlphanumeric(32))
+        .setStoragePolicy(StoragePolicyProto.WARM)
         .build();
   }
 
   private JobworkerMigrationKeysTxProto createMigrationTransaction(String transactionKey, 
       String taskKey, int keyCount) {
+    // Extract transaction ID from the transaction key for proto
+    long txId = 1;
+    if (transactionKey.contains("/")) {
+      String[] parts = transactionKey.split("/");
+      try {
+        txId = Long.parseLong(parts[parts.length - 1]);
+      } catch (NumberFormatException e) {
+        txId = System.currentTimeMillis(); // fallback to timestamp
+      }
+    }
+    
     JobworkerMigrationKeysTxProto.Builder builder = JobworkerMigrationKeysTxProto.newBuilder()
-        .setTxId(System.currentTimeMillis())
+        .setTxId(txId)
         .setVolume("test-volume")
         .setBucket("test-bucket")
         .setStoragePolicy(StoragePolicyProto.HOT)

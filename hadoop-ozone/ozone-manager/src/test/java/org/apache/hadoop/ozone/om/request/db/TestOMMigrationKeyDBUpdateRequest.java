@@ -19,6 +19,10 @@
 
 package org.apache.hadoop.ozone.om.request.db;
 
+import java.util.Random;
+import org.apache.commons.lang3.RandomStringUtils;
+import org.apache.hadoop.hdds.client.OzoneStoragePolicy;
+import org.apache.hadoop.hdds.client.StoragePolicy;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTaskProto;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTxProto;
@@ -33,9 +37,11 @@ import org.apache.hadoop.ozone.om.OMMetadataManager;
 import org.apache.hadoop.ozone.om.OMMetrics;
 import org.apache.hadoop.ozone.om.OmMetadataManagerImpl;
 import org.apache.hadoop.ozone.om.OzoneManager;
+import org.apache.hadoop.ozone.om.jobworker.MigrationTaskManager;
 import org.apache.hadoop.ozone.om.request.migrationKey.OMMigrationKeyDBUpdateRequest;
 import org.apache.hadoop.ozone.om.response.OMClientResponse;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.MigrationKeyArgs;
+import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.MigrationKeyArgs.CreateTask;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.MigrationKeyDBUpdateRequest;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.MigrationKeyOperationType;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.OMRequest;
@@ -63,6 +69,7 @@ public class TestOMMigrationKeyDBUpdateRequest {
   private OzoneManager ozoneManager;
   private OMMetrics omMetrics;
   private OMMetadataManager omMetadataManager;
+  private final Random random = new Random();
 
   @BeforeEach
   public void setup(@TempDir File tempDir) throws Exception {
@@ -94,8 +101,9 @@ public class TestOMMigrationKeyDBUpdateRequest {
   @Test
   public void testValidateAndUpdateCacheCompleteMigrationTransaction() throws Exception {
     // Setup test data
-    String taskKey = "migration-task-1";
-    String transactionKey = "migration-tx-1";
+    String taskKey = MigrationTaskManager.generateTaskKey("vol1", "bucket1", random.nextLong());
+    long txId = random.nextLong();
+    String transactionKey = MigrationTaskManager.getTransactionKey(taskKey, txId);
     int failedKeyCount = 2;
     
     // Create migration task
@@ -103,7 +111,7 @@ public class TestOMMigrationKeyDBUpdateRequest {
     omMetadataManager.getJobworkerMigrationKeysTaskTable().put(taskKey, migrationTask);
     
     // Create migration transaction
-    JobworkerMigrationKeysTxProto migrationTx = createMigrationTransaction(transactionKey, taskKey, 5);
+    JobworkerMigrationKeysTxProto migrationTx = createMigrationTransaction(txId, taskKey, 5);
     omMetadataManager.getJobworkerMigrationKeysTxTable().put(transactionKey, migrationTx);
     
     OMRequest omRequest = createCompleteMigrationTransactionRequest(taskKey, transactionKey, failedKeyCount);
@@ -128,7 +136,7 @@ public class TestOMMigrationKeyDBUpdateRequest {
   @Test
   public void testValidateAndUpdateCacheUpdateTaskStatus() throws Exception {
     // Setup test data
-    String taskKey = "migration-task-1";
+    String taskKey = MigrationTaskManager.generateTaskKey("vol1", "bucket1", random.nextLong());
     JobworkerTaskStatus newStatus = JobworkerTaskStatus.COMPLETED;
     
     // Create migration task
@@ -156,7 +164,7 @@ public class TestOMMigrationKeyDBUpdateRequest {
   @Test
   public void testValidateAndUpdateCacheMarkScanningCompleted() throws Exception {
     // Setup test data
-    String taskKey = "migration-task-1";
+    String taskKey = MigrationTaskManager.generateTaskKey("vol1", "bucket1", random.nextLong());
     
     // Create migration task
     JobworkerMigrationKeysTaskProto migrationTask = createMigrationTask(taskKey, 10, 5, 0);
@@ -183,7 +191,7 @@ public class TestOMMigrationKeyDBUpdateRequest {
   @Test
   public void testValidateAndUpdateCacheCleanupTask() throws Exception {
     // Setup test data
-    String taskKey = "migration-task-1";
+    String taskKey = MigrationTaskManager.generateTaskKey("vol1", "bucket1", random.nextLong());
     
     // Create migration task
     JobworkerMigrationKeysTaskProto migrationTask = createMigrationTask(taskKey, 10, 5, 0);
@@ -203,9 +211,155 @@ public class TestOMMigrationKeyDBUpdateRequest {
 
   @Test
   public void testValidateAndUpdateCacheWithNonExistentTask() throws Exception {
-    String taskKey = "non-existent-task";
+    String taskKey = MigrationTaskManager.generateTaskKey("vol1", "bucket1", random.nextLong());
     
     OMRequest omRequest = createUpdateTaskStatusRequest(taskKey, JobworkerTaskStatus.COMPLETED);
+    omRequest = new OMMigrationKeyDBUpdateRequest(omRequest).preExecute(ozoneManager);
+    
+    OMMigrationKeyDBUpdateRequest omDBUpdateRequest = new OMMigrationKeyDBUpdateRequest(omRequest);
+    long updateID = 1000;
+    OMClientResponse omClientResponse = 
+        omDBUpdateRequest.validateAndUpdateCache(ozoneManager, updateID);
+    
+    Assertions.assertFalse(omClientResponse.getOMResponse().getSuccess());
+    Assertions.assertEquals(Status.INVALID_REQUEST, omClientResponse.getOMResponse().getStatus());
+  }
+
+  @Test
+  public void testValidateAndUpdateCacheCreateTask() throws Exception {
+    String taskKey = MigrationTaskManager.generateTaskKey("vol1", "bucket1", random.nextLong());
+    
+    // Verify task doesn't exist initially
+    Assertions.assertNull(omMetadataManager.getJobworkerMigrationKeysTaskTable().get(taskKey));
+    
+    OMRequest omRequest = createCreateTaskRequest(taskKey, "123456", OzoneStoragePolicy.WARM);
+    omRequest = new OMMigrationKeyDBUpdateRequest(omRequest).preExecute(ozoneManager);
+    
+    OMMigrationKeyDBUpdateRequest omDBUpdateRequest = new OMMigrationKeyDBUpdateRequest(omRequest);
+    long updateID = 1000;
+    OMClientResponse omClientResponse = 
+        omDBUpdateRequest.validateAndUpdateCache(ozoneManager, updateID);
+    
+    Assertions.assertTrue(omClientResponse.getOMResponse().getSuccess());
+    Assertions.assertEquals(Status.OK, omClientResponse.getOMResponse().getStatus());
+    
+    // Verify task was created with correct initial values
+    JobworkerMigrationKeysTaskProto createdTask = 
+        omMetadataManager.getJobworkerMigrationKeysTaskTable().get(taskKey);
+    Assertions.assertNotNull(createdTask);
+    Assertions.assertEquals(JobworkerTaskStatus.PENDING, createdTask.getMigrationStatus());
+    Assertions.assertTrue(createdTask.getStartTime() > 0);
+    Assertions.assertTrue(createdTask.getLastUpdateTime() > 0);
+    Assertions.assertEquals(createdTask.getStartTime(), createdTask.getLastUpdateTime());
+    Assertions.assertFalse(createdTask.getCompleteScanning());
+    Assertions.assertEquals(OzoneStoragePolicy.WARM, OzoneStoragePolicy.fromProto(createdTask.getStoragePolicy()));
+    Assertions.assertEquals("123456", createdTask.getRuleId());
+    Assertions.assertEquals(0, createdTask.getTotalKeyCount());
+    Assertions.assertEquals(0, createdTask.getMigratedKeyCount());
+    Assertions.assertEquals(0, createdTask.getFailedKeyCount());
+  }
+
+  @Test
+  public void testValidateAndUpdateCacheCreateTaskAlreadyExists() throws Exception {
+    // Setup test data
+    String taskKey = MigrationTaskManager.generateTaskKey("vol1", "bucket1", random.nextLong());
+    
+    // Create existing task
+    JobworkerMigrationKeysTaskProto existingTask = createMigrationTask(taskKey, 10, 5, 0);
+    omMetadataManager.getJobworkerMigrationKeysTaskTable().put(taskKey, existingTask);
+    
+    OMRequest omRequest = createCreateTaskRequest(taskKey, "123", OzoneStoragePolicy.WARM);
+    omRequest = new OMMigrationKeyDBUpdateRequest(omRequest).preExecute(ozoneManager);
+    
+    OMMigrationKeyDBUpdateRequest omDBUpdateRequest = new OMMigrationKeyDBUpdateRequest(omRequest);
+    long updateID = 1000;
+    OMClientResponse omClientResponse = 
+        omDBUpdateRequest.validateAndUpdateCache(ozoneManager, updateID);
+    
+    Assertions.assertFalse(omClientResponse.getOMResponse().getSuccess());
+    Assertions.assertEquals(Status.INVALID_REQUEST, omClientResponse.getOMResponse().getStatus());
+  }
+
+  @Test
+  public void testValidateAndUpdateCacheAddTransaction() throws Exception {
+    String taskKey = MigrationTaskManager.generateTaskKey("vol1", "bucket1", random.nextLong());
+    long txId = random.nextLong();
+    int originalKeyCount = 10;
+    int originalMigratedKeyCount = 5;
+    int newAddKeyCount = 3;
+
+    // Create migration task
+    JobworkerMigrationKeysTaskProto migrationTask = createMigrationTask(
+        taskKey, originalKeyCount, originalMigratedKeyCount, 0);
+    omMetadataManager.getJobworkerMigrationKeysTaskTable().put(taskKey, migrationTask);
+    
+    // Create migration transaction
+    JobworkerMigrationKeysTxProto migrationTx = createMigrationTransaction(txId, taskKey, newAddKeyCount);
+    OMRequest omRequest = createAddTransactionRequest(taskKey, txId, migrationTx);
+    Thread.sleep(1); // make the Time.now() in the preExecute generate a difference value for the test
+    omRequest = new OMMigrationKeyDBUpdateRequest(omRequest).preExecute(ozoneManager);
+    
+    OMMigrationKeyDBUpdateRequest omDBUpdateRequest = new OMMigrationKeyDBUpdateRequest(omRequest);
+    long updateID = 1000;
+    OMClientResponse omClientResponse = 
+        omDBUpdateRequest.validateAndUpdateCache(ozoneManager, updateID);
+    
+    Assertions.assertTrue(omClientResponse.getOMResponse().getSuccess());
+    Assertions.assertEquals(Status.OK, omClientResponse.getOMResponse().getStatus());
+    
+    // Verify task was updated correctly
+    JobworkerMigrationKeysTaskProto updatedTask = 
+        omMetadataManager.getJobworkerMigrationKeysTaskTable().get(taskKey);
+    Assertions.assertNotNull(updatedTask);
+    Assertions.assertEquals(originalKeyCount + newAddKeyCount, updatedTask.getTotalKeyCount());
+    Assertions.assertEquals(originalMigratedKeyCount, updatedTask.getMigratedKeyCount());
+    Assertions.assertEquals(0, updatedTask.getFailedKeyCount());
+    Assertions.assertTrue(updatedTask.getLastUpdateTime() > migrationTask.getLastUpdateTime());
+    
+    // Verify transaction was added
+    String transactionKey = MigrationTaskManager.getTransactionKey(taskKey, txId);
+    JobworkerMigrationKeysTxProto addedTransaction = 
+        omMetadataManager.getJobworkerMigrationKeysTxTable().get(transactionKey);
+    Assertions.assertNotNull(addedTransaction);
+    Assertions.assertEquals(migrationTx.getTxId(), addedTransaction.getTxId());
+    Assertions.assertEquals(3, addedTransaction.getMigrationKeysCount());
+  }
+
+  @Test
+  public void testValidateAndUpdateCacheAddTransactionTaskNotExists() throws Exception {
+    String taskKey = MigrationTaskManager.generateTaskKey("vol1", "bucket1", random.nextLong());
+    long txId = random.nextLong();
+    
+    JobworkerMigrationKeysTxProto migrationTx = createMigrationTransaction(txId, taskKey, 3);
+    OMRequest omRequest = createAddTransactionRequest(taskKey, txId, migrationTx);
+    omRequest = new OMMigrationKeyDBUpdateRequest(omRequest).preExecute(ozoneManager);
+    
+    OMMigrationKeyDBUpdateRequest omDBUpdateRequest = new OMMigrationKeyDBUpdateRequest(omRequest);
+    long updateID = 1000;
+    OMClientResponse omClientResponse = 
+        omDBUpdateRequest.validateAndUpdateCache(ozoneManager, updateID);
+    
+    Assertions.assertFalse(omClientResponse.getOMResponse().getSuccess());
+    Assertions.assertEquals(Status.INVALID_REQUEST, omClientResponse.getOMResponse().getStatus());
+  }
+
+  @Test
+  public void testValidateAndUpdateCacheAddTransactionAlreadyExists() throws Exception {
+    String taskKey = MigrationTaskManager.generateTaskKey("vol1", "bucket1", random.nextLong());
+    long txId = random.nextLong();
+    String transactionKey = MigrationTaskManager.getTransactionKey(taskKey, txId);
+    
+    // Create migration task
+    JobworkerMigrationKeysTaskProto migrationTask = createMigrationTask(taskKey, 10, 5, 0);
+    omMetadataManager.getJobworkerMigrationKeysTaskTable().put(taskKey, migrationTask);
+    
+    // Create existing transaction
+    JobworkerMigrationKeysTxProto existingTx = createMigrationTransaction(txId, taskKey, 2);
+    omMetadataManager.getJobworkerMigrationKeysTxTable().put(transactionKey, existingTx);
+    
+    // Try to add duplicate transaction
+    JobworkerMigrationKeysTxProto migrationTx = createMigrationTransaction(txId, taskKey, 3);
+    OMRequest omRequest = createAddTransactionRequest(taskKey, txId, migrationTx);
     omRequest = new OMMigrationKeyDBUpdateRequest(omRequest).preExecute(ozoneManager);
     
     OMMigrationKeyDBUpdateRequest omDBUpdateRequest = new OMMigrationKeyDBUpdateRequest(omRequest);
@@ -287,6 +441,47 @@ public class TestOMMigrationKeyDBUpdateRequest {
         .build();
   }
 
+  private OMRequest createCreateTaskRequest(String taskKey, String ruleId, StoragePolicy storagePolicy) {
+    return OMRequest.newBuilder()
+        .setClientId(UUID.randomUUID().toString())
+        .setCmdType(MigrationKeyDBUpdate)
+        .setMigrationKeyDBUpdateRequest(
+            MigrationKeyDBUpdateRequest.newBuilder()
+                .setType(MigrationKeyOperationType.KEY_MIGRATION_CREATE_TASK)
+                .setMigrationKeyArgs(
+                    MigrationKeyArgs.newBuilder()
+                        .setTaskKey(taskKey)
+                        .setCreateTask(
+                            CreateTask.newBuilder()
+                                .setRuleId(ruleId)
+                                .setStoragePolicy(OzoneStoragePolicy.toProto(storagePolicy))
+                                .build())
+                        .build())
+                .build())
+        .build();
+  }
+
+  private OMRequest createAddTransactionRequest(String taskKey, long txId, 
+      JobworkerMigrationKeysTxProto migrationTx) {
+    return OMRequest.newBuilder()
+        .setClientId(UUID.randomUUID().toString())
+        .setCmdType(MigrationKeyDBUpdate)
+        .setMigrationKeyDBUpdateRequest(
+            MigrationKeyDBUpdateRequest.newBuilder()
+                .setType(MigrationKeyOperationType.KEY_MIGRATION_ADD_TRANSACTION)
+                .setMigrationKeyArgs(
+                    MigrationKeyArgs.newBuilder()
+                        .setTaskKey(taskKey)
+                        .setAddTransaction(
+                            MigrationKeyArgs.AddTransaction.newBuilder()
+                                .setTxId(txId)
+                                .setMigrationKeysTxProto(migrationTx)
+                                .build())
+                        .build())
+                .build())
+        .build();
+  }
+
   private JobworkerMigrationKeysTaskProto createMigrationTask(String taskKey,
       int totalKeys, int migratedKeys, int failedKeys) {
     return JobworkerMigrationKeysTaskProto.newBuilder()
@@ -297,13 +492,15 @@ public class TestOMMigrationKeyDBUpdateRequest {
         .setStartTime(System.currentTimeMillis())
         .setLastUpdateTime(System.currentTimeMillis())
         .setCompleteScanning(false)
+        .setRuleId(RandomStringUtils.randomAlphanumeric(32))
+        .setStoragePolicy(StoragePolicyProto.WARM)
         .build();
   }
 
-  private JobworkerMigrationKeysTxProto createMigrationTransaction(String transactionKey,
+  private JobworkerMigrationKeysTxProto createMigrationTransaction(long txId,
       String taskKey, int keyCount) {
     JobworkerMigrationKeysTxProto.Builder builder = JobworkerMigrationKeysTxProto.newBuilder()
-        .setTxId(1)
+        .setTxId(txId)
         .setVolume("test-volume")
         .setBucket("test-bucket")
         .setStoragePolicy(StoragePolicyProto.HOT)

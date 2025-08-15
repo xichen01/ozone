@@ -18,173 +18,367 @@
 
 package org.apache.hadoop.ozone.om.jobworker;
 
-import com.google.common.util.concurrent.Striped;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.TreeMap;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.hadoop.hdds.client.StoragePolicy;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTaskProto;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTxProto;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerTaskStatus;
 import org.apache.hadoop.hdds.utils.db.Table;
+import org.apache.hadoop.hdds.utils.db.Table.KeyValue;
+import org.apache.hadoop.hdds.utils.db.TableIterator;
+import org.apache.hadoop.hdds.utils.db.cache.CacheKey;
+import org.apache.hadoop.hdds.utils.db.cache.CacheValue;
 import org.apache.hadoop.ozone.om.OMMetadataManager;
 import org.apache.hadoop.ozone.om.OzoneManager;
 import org.apache.hadoop.ozone.om.ha.MigrationKeyDBUpdateManager;
-
-import java.io.IOException;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReadWriteLock;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * Manages migration tasks with striped locks to ensure thread safety.
- * This class provides synchronized access to migration task tables and status.
- * 
- * All write operations use HA-compatible writes through DBUpdateManager
- * for consistency across OM instances in HA mode.
+ * Utilities to read and update migration tasks and transactions via OM HA.
+ *
+ * - Write operations are executed through {@link MigrationKeyDBUpdateManager}.
+ * - Read/list operations are lock-free and rely on iterator snapshot semantics;
+ *   results are eventually consistent.
  */
 public class MigrationTaskManager {
+  private static final Logger LOG = LoggerFactory.getLogger(MigrationTaskManager.class);
 
-  private final Striped<ReadWriteLock> stripedLock;
   private final Table<String, JobworkerMigrationKeysTaskProto> taskTable;
   private final Table<String, JobworkerMigrationKeysTxProto> transactionTable;
   private final MigrationKeyDBUpdateManager dbUpdateManager;
-  private static final int LOCK_STRIPE_SIZE = 512;
 
   /**
-   * Constructs transaction key from task key and transaction ID.
+   * Generates a migration task key from volume, bucket and taskId.
+   * @param volume volume name
+   * @param bucket bucket name
+   * @param taskId task ID
+   * @return task key in format "volume/bucket/taskId"
+   */
+  public static String generateTaskKey(String volume, String bucket, long taskId) {
+    return String.join("/", volume, bucket, String.valueOf(taskId));
+  }
+
+  /**
+   * Generates the prefix for task keys of a volume/bucket.
+   * @param volume volume name
+   * @param bucket bucket name
+   * @return prefix string "volume/bucket/"
+   */
+  public static String generateTaskKeyPrefix(String volume, String bucket) {
+    return String.join("/", volume, bucket) + "/";
+  }
+
+  /**
+   * Constructs a transaction key from task key and transaction ID.
    * @param taskKey The task key
    * @param txId The transaction ID
    * @return The transaction key in format "taskKey/txId"
    */
   public static String getTransactionKey(String taskKey, long txId) {
-    return taskKey + "/" + txId;
+    return String.join("/", taskKey, String.valueOf(txId));
+  }
+
+  /**
+   * Extracts the task key prefix from a transaction key.
+   * @param transactionKey transaction key "taskKey/txId"
+   * @return taskKey portion of the given transactionKey
+   */
+  public static String extractTaskKeyFromTransactionKey(String transactionKey) throws IOException {
+    int lastSlashIndex = transactionKey.lastIndexOf('/');
+    if (lastSlashIndex == -1) {
+      throw new IOException("Invalid transaction key format: " + transactionKey);
+    }
+    return transactionKey.substring(0, lastSlashIndex);
   }
 
   public MigrationTaskManager(OMMetadataManager metadataManager, OzoneManager ozoneManager, OzoneConfiguration conf) {
     this.taskTable = metadataManager.getJobworkerMigrationKeysTaskTable();
     this.transactionTable = metadataManager.getJobworkerMigrationKeysTxTable();
-    this.stripedLock = Striped.readWriteLock(LOCK_STRIPE_SIZE);
     this.dbUpdateManager = new MigrationKeyDBUpdateManager(ozoneManager);
   }
 
   /**
-   * Gets the read lock for the given task key.
-   * @param taskKey The task key to lock
-   * @return Lock for the task
-   */
-  private Lock readLock(String taskKey) {
-    return stripedLock.get(taskKey).readLock();
-  }
-
-  /**
-   * Gets the write lock for the given task key.
-   * @param taskKey The task key to lock
-   * @return Lock for the task
-   */
-  private Lock writeLock(String taskKey) {
-    return stripedLock.get(taskKey).writeLock();
-  }
-
-  /**
-   * Checks if a task exists in the task table.
-   * @param taskKey The task key to check
-   * @return true if the task exists
-   * @throws IOException if there is an error accessing the table
+   * Checks if a task exists.
    */
   public boolean isTaskExists(String taskKey) throws IOException {
-    readLock(taskKey).lock();
-    try {
-      return taskTable.isExist(taskKey);
-    } finally {
-      readLock(taskKey).unlock();
-    }
+    return taskTable.isExist(taskKey);
   }
 
   /**
-   * Checks if a transaction exists in the transaction table.
-   * @param transactionKey The transaction key to check
-   * @return true if the transaction exists
-   * @throws IOException if there is an error accessing the table
+   * Checks if a transaction exists.
    */
   public boolean isTransactionExists(String transactionKey) throws IOException {
-    readLock(transactionKey).lock();
-    try {
-      return transactionTable.isExist(transactionKey);
-    } finally {
-      readLock(transactionKey).unlock();
-    }
+    return transactionTable.isExist(transactionKey);
   }
 
   /**
-   * Gets the task for a given task key.
-   * @param taskKey The task key to get status for
-   * @return The task status, or null if not found
-   * @throws IOException if there is an error accessing the table
+   * Gets the task record for a given key, or null if not found.
    */
   public JobworkerMigrationKeysTaskProto getTask(String taskKey) throws IOException {
-    readLock(taskKey).lock();
-    try {
-      return taskTable.get(taskKey);
-    } finally {
-      readLock(taskKey).unlock();
-    }
+    return taskTable.get(taskKey);
   }
 
   /**
-   * Updates the task status with HA-compatible atomic operation.
-   * @param taskKey The task key to update
-   * @param newStatus The new status to set
-   * @throws IOException if there is an error updating the status
+   * Requests OM to update the task status.
    */
   public void updateTaskStatus(String taskKey, JobworkerTaskStatus newStatus) throws IOException {
-    writeLock(taskKey).lock();
-    try {
-      dbUpdateManager.keyMigrationUpdateTaskStatus(taskKey, newStatus);
-    } finally {
-      writeLock(taskKey).unlock();
-    }
+    dbUpdateManager.keyMigrationUpdateTaskStatus(taskKey, newStatus);
   }
 
   /**
-   * Completes a migration transaction by removing the transaction entry and updating the task status
-   * using HA-compatible writes.
-   *
-   * @param taskKey        The task key
-   * @param txId           The transaction ID for constructing transaction key
-   * @param failedKeyCount Number of failed keys
-   * @throws IOException if there is an error completing the transaction
+   * Requests OM to complete a transaction: remove the tx and update task counts.
    */
-  public void completeTransaction(String taskKey, long txId, long failedKeyCount) throws IOException {
-    writeLock(taskKey).lock();
-    try {
-      dbUpdateManager.keyMigrationCompleteTransaction(taskKey, txId, failedKeyCount);
-    } finally {
-      writeLock(taskKey).unlock();
-    }
+  public void completeTransaction(String taskKey, long txId, int failedKeyCount) throws IOException {
+    dbUpdateManager.keyMigrationCompleteTransaction(taskKey, txId, failedKeyCount);
   }
 
   /**
-   * Marks scanning as completed for a task using HA-compatible writes.
-   * @param taskKey The task key to mark scanning as completed
-   * @throws IOException if there is an error marking scanning as completed
+   * Marks scanning as completed if the task exists; otherwise no-op.
    */
-  public void markScanningCompleted(String taskKey) throws IOException {
-    writeLock(taskKey).lock();
-    try {
-      dbUpdateManager.keyMigrationMarkScanningCompleted(taskKey);
-    } finally {
-      writeLock(taskKey).unlock();
-    }
+  public void markScanningCompletedIfPresent(String taskKey) throws IOException {
+    dbUpdateManager.keyMigrationMarkScanningCompleted(taskKey);
   }
 
   /**
-   * Cleans up a completed task using HA-compatible writes.
-   * @param taskKey The task key to clean up
-   * @throws IOException if there is an error cleaning up the task
+   * Creates a new task if it does not already exist.
+   * Returns true if created, false if it already existed (race-safe).
+   */
+  public boolean createTaskIfAbsent(String taskKey, String ruleId, StoragePolicy storagePolicy)
+      throws IOException {
+    // Fast-path: if already exists, return false
+    if (taskTable.isExist(taskKey)) {
+      return false;
+    }
+    dbUpdateManager.keyMigrationCreateTask(taskKey, ruleId, storagePolicy);
+    return true;
+  }
+
+  /**
+   * Adds a transaction to the task. OM validates existence and duplicates.
+   */
+  public void addNewTransaction(String taskKey, JobworkerMigrationKeysTxProto migrationKeysTxProto)
+      throws IOException {
+    dbUpdateManager.keyMigrationAddTransaction(taskKey,
+        migrationKeysTxProto.getTxId(), migrationKeysTxProto);
+  }
+
+  /**
+   * Requests OM to delete a task and its metadata.
    */
   public void cleanupTask(String taskKey) throws IOException {
-    writeLock(taskKey).lock();
-    try {
-      dbUpdateManager.keyMigrationCleanupTask(taskKey);
-    } finally {
-      writeLock(taskKey).unlock();
+    dbUpdateManager.keyMigrationCleanupTask(taskKey);
+  }
+
+  /**
+   * Lists all transactions across all tasks.
+   */
+  public List<TransactionEntry> getAllTransactions() throws IOException {
+    return listTransactionsFor("", null, Integer.MAX_VALUE);
+  }
+
+  /**
+   * Lists transactions for a specific task with pagination support.
+   * @param taskKey The task key to list transactions for
+   * @param startTransactionKey Key from which listing needs to start. If null, starts from the beginning.
+   * @param maxTransactions Maximum number of transactions to return.
+   * @return List of transactions. If the returned size equals maxTransactions, there may be more results available.
+   */
+  public List<TransactionEntry> listTransactionsForTask(String taskKey, String startTransactionKey, 
+                                                       int maxTransactions) throws IOException {
+    if (StringUtils.isEmpty(taskKey)) {
+      throw new IOException("Task key cannot be null or empty");
+    }
+    if (maxTransactions <= 0) {
+      return new ArrayList<>();
+    }
+    if (!taskKey.endsWith("/")) {
+      taskKey = taskKey + "/";
+    }
+    return listTransactionsFor(taskKey, startTransactionKey, maxTransactions);
+  }
+
+  private List<TransactionEntry> listTransactionsFor(String taskKey, String startTransactionKey,
+      int maxTransactions) throws IOException {
+    if (maxTransactions <= 0) {
+      return new ArrayList<>();
+    }
+    TreeMap<String, TransactionEntry> cacheTransactionMap = new TreeMap<>();
+    HashSet<String> deletedKeys = new HashSet<>();
+    String seekKey = taskKey;
+    if (StringUtils.isNotEmpty(startTransactionKey)) {
+      // If startTransactionKey is provided, start from there
+      seekKey = startTransactionKey;
+    }
+    boolean hasStartKey = StringUtils.isNotEmpty(startTransactionKey);
+
+    Iterator<Entry<CacheKey<String>, CacheValue<JobworkerMigrationKeysTxProto>>> cacheIterator =
+        transactionTable.cacheIterator();
+    while (cacheTransactionMap.size() < maxTransactions && cacheIterator.hasNext()) {
+      Map.Entry<CacheKey<String>, CacheValue<JobworkerMigrationKeysTxProto>> cacheEntry =
+          cacheIterator.next();
+      String transactionKey = cacheEntry.getKey().getCacheKey();
+      CacheValue<JobworkerMigrationKeysTxProto> cacheValue = cacheEntry.getValue();
+      if (transactionKey.startsWith(taskKey) && 
+          (!hasStartKey || transactionKey.compareTo(startTransactionKey) >= 0)) {
+        if (hasStartKey && transactionKey.equals(startTransactionKey)) {
+          continue; // Skip the start key itself
+        }
+        JobworkerMigrationKeysTxProto transaction = cacheValue.getCacheValue();
+        if (transaction != null) {
+          // Entry exists in cache
+          cacheTransactionMap.put(transactionKey, new TransactionEntry(transactionKey, transaction));
+        } else {
+          deletedKeys.add(transactionKey);
+        }
+      }
+    }
+
+    List<TransactionEntry> resultTransactions = new ArrayList<>(cacheTransactionMap.values());
+
+    // Only access DB if we haven't reached the limit from cache
+    if (resultTransactions.size() < maxTransactions) {
+      try (TableIterator<String, ? extends KeyValue<String, JobworkerMigrationKeysTxProto>>
+               iterator = transactionTable.iterator()) {
+        iterator.seek(seekKey);
+        while (iterator.hasNext()) {
+          Table.KeyValue<String, JobworkerMigrationKeysTxProto> entry = iterator.next();
+          String transactionKey = entry.getKey();
+          // Check if this transaction belongs to our task
+          if (!transactionKey.startsWith(taskKey)) {
+            break; // No more transactions for this task
+          }
+          // Skip if already processed from cache
+          if (cacheTransactionMap.containsKey(transactionKey)) {
+            continue;
+          }
+          if (deletedKeys.contains(transactionKey)) {
+            continue;
+          }
+          // Skip the start key itself
+          if (hasStartKey && transactionKey.equals(startTransactionKey)) {
+            continue;
+          }
+          
+          resultTransactions.add(new TransactionEntry(transactionKey, entry.getValue()));
+        }
+      }
+    }
+    return resultTransactions;
+  }
+
+  /**
+   * Lists all migration tasks. Results are eventually consistent.
+   */
+  public List<TaskEntry> getAllTasks() throws IOException {
+    return listTask("");
+  }
+
+  /**
+   * Lists all tasks for a specific volume and bucket. Results are eventually consistent.
+   */
+  public List<TaskEntry> listTask(String volume, String bucket) throws IOException {
+    return listTask(generateTaskKeyPrefix(volume, bucket));
+  }
+
+  private List<TaskEntry> listTask(String taskKeyPrefix) throws IOException {
+    TreeMap<String, TaskEntry> taskMap = new TreeMap<>();
+
+    // First, find tasks in table cache
+    Iterator<Map.Entry<CacheKey<String>, CacheValue<JobworkerMigrationKeysTaskProto>>>
+        cacheIterator = taskTable.cacheIterator();
+    while (cacheIterator.hasNext()) {
+      Map.Entry<CacheKey<String>, CacheValue<JobworkerMigrationKeysTaskProto>> cacheEntry =
+          cacheIterator.next();
+      String taskKey = cacheEntry.getKey().getCacheKey();
+      CacheValue<JobworkerMigrationKeysTaskProto> cacheValue = cacheEntry.getValue();
+      if (taskKey.startsWith(taskKeyPrefix)) {
+        JobworkerMigrationKeysTaskProto task = cacheValue.getCacheValue();
+        if (task != null) {
+          // Entry exists in cache
+          taskMap.put(taskKey, new TaskEntry(taskKey, task));
+        } else {
+          // Entry is deleted in cache, mark for exclusion
+          taskMap.put(taskKey, null);
+        }
+      }
+    }
+
+    // Then, find tasks in DB
+    try (TableIterator<String, ? extends Table.KeyValue<String, JobworkerMigrationKeysTaskProto>>
+             iterator = taskTable.iterator()) {
+      iterator.seek(taskKeyPrefix);
+      while (iterator.hasNext()) {
+        Table.KeyValue<String, JobworkerMigrationKeysTaskProto> entry = iterator.next();
+        String taskKey = entry.getKey();
+        if (!taskKey.startsWith(taskKeyPrefix)) {
+          break; // No more tasks for this volume/bucket
+        }
+        // Only add from DB if not already processed from cache
+        if (!taskMap.containsKey(taskKey)) {
+          taskMap.put(taskKey, new TaskEntry(taskKey, entry.getValue()));
+        }
+      }
+    }
+
+    List<TaskEntry> tasks = new ArrayList<>();
+    for (TaskEntry entry : taskMap.values()) {
+      if (entry != null) { // Skip deleted entries
+        tasks.add(entry);
+      }
+    }
+
+    return tasks;
+  }
+
+  /**
+   * Simple data class to hold task information.
+   */
+  public static class TaskEntry {
+    private final String taskKey;
+    private final JobworkerMigrationKeysTaskProto task;
+
+    public TaskEntry(String taskKey, JobworkerMigrationKeysTaskProto task) {
+      this.taskKey = taskKey;
+      this.task = task;
+    }
+
+    public String getTaskKey() {
+      return taskKey;
+    }
+
+    public JobworkerMigrationKeysTaskProto getTask() {
+      return task;
+    }
+  }
+
+  /**
+   * Simple data class to hold transaction information.
+   */
+  public static class TransactionEntry {
+    private final String transactionKey;
+    private final JobworkerMigrationKeysTxProto transaction;
+
+    public TransactionEntry(String transactionKey, JobworkerMigrationKeysTxProto transaction) {
+      this.transactionKey = transactionKey;
+      this.transaction = transaction;
+    }
+
+    public String getTransactionKey() {
+      return transactionKey;
+    }
+
+    public JobworkerMigrationKeysTxProto getTransaction() {
+      return transaction;
     }
   }
 }

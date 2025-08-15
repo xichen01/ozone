@@ -664,6 +664,8 @@ message JobworkerMigrationKeysTaskProto {
     required int64 lastUpdateTime = 6;
     required bool completeScanning = 7;
     optional string lastScanKey = 8;   // for breakpoint scanning function
+    required string ruleId = 9;
+    required hadoop.hdds.StoragePolicyProto storagePolicy = 10;
 }
 
 message JobworkerMigrationKeysTxProto {

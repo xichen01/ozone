@@ -19,6 +19,8 @@
 
 package org.apache.hadoop.ozone.om.response.db;
 
+import java.util.Random;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTaskProto;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTxProto;
@@ -29,6 +31,7 @@ import org.apache.hadoop.hdds.utils.db.BatchOperation;
 import org.apache.hadoop.ozone.om.OMConfigKeys;
 import org.apache.hadoop.ozone.om.OMMetadataManager;
 import org.apache.hadoop.ozone.om.OmMetadataManagerImpl;
+import org.apache.hadoop.ozone.om.jobworker.MigrationTaskManager;
 import org.apache.hadoop.ozone.om.response.migrationKey.OMMigrationKeyDBUpdateResponse;
 import org.apache.hadoop.ozone.om.response.migrationKey.OMMigrationKeyDBUpdateResponse.DBUpdateResult;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.MigrationKeyDBUpdateResponse;
@@ -53,6 +56,7 @@ public class TestOMMigrationKeyDBUpdateResponse {
 
   private OMMetadataManager omMetadataManager;
   private BatchOperation batchOperation;
+  private final Random random = new Random();
 
   @BeforeEach
   public void setup() throws Exception {
@@ -72,8 +76,8 @@ public class TestOMMigrationKeyDBUpdateResponse {
 
   @Test
   public void testAddToDBBatchCompleteMigrationTransaction() throws Exception {
-    String taskKey = "migration-task-1";
-    String transactionKey = "migration-tx-1";
+    String taskKey = MigrationTaskManager.generateTaskKey("vol1", "bucket1", random.nextLong());
+    String transactionKey = MigrationTaskManager.getTransactionKey(taskKey, random.nextLong());
     JobworkerMigrationKeysTaskProto initialTask = createMigrationTask(taskKey, 10, 5, 0);
     omMetadataManager.getJobworkerMigrationKeysTaskTable()
         .putWithBatch(batchOperation, taskKey, initialTask);
@@ -109,7 +113,7 @@ public class TestOMMigrationKeyDBUpdateResponse {
   @Test
   public void testAddToDBBatchUpdateTaskStatus() throws Exception {
     // Setup test data
-    String taskKey = "migration-task-1";
+    String taskKey = MigrationTaskManager.generateTaskKey("vol1", "bucket1", random.nextLong());
     JobworkerMigrationKeysTaskProto initialTask = createMigrationTask(taskKey, 10, 5, 0);
     omMetadataManager.getJobworkerMigrationKeysTaskTable()
         .putWithBatch(batchOperation, taskKey, initialTask);
@@ -137,7 +141,7 @@ public class TestOMMigrationKeyDBUpdateResponse {
 
   @Test
   public void testAddToDBBatchMarkScanningCompleted() throws Exception {
-    String taskKey = "migration-task-1";
+    String taskKey = MigrationTaskManager.generateTaskKey("vol1", "bucket1", random.nextLong());
     JobworkerMigrationKeysTaskProto initialTask = createMigrationTask(taskKey, 10, 5, 0);
     omMetadataManager.getJobworkerMigrationKeysTaskTable()
         .putWithBatch(batchOperation, taskKey, initialTask);
@@ -168,7 +172,7 @@ public class TestOMMigrationKeyDBUpdateResponse {
   @Test
   public void testAddToDBBatchCleanupTask() throws Exception {
     // Setup test data
-    String taskKey = "migration-task-1";
+    String taskKey = MigrationTaskManager.generateTaskKey("vol1", "bucket1", random.nextLong());
     JobworkerMigrationKeysTaskProto initialTask = createMigrationTask(taskKey, 10, 5, 0);
     omMetadataManager.getJobworkerMigrationKeysTaskTable()
         .putWithBatch(batchOperation, taskKey, initialTask);
@@ -197,6 +201,85 @@ public class TestOMMigrationKeyDBUpdateResponse {
     });
   }
 
+  @Test
+  public void testAddToDBBatchCreateTask() throws Exception {
+    // Setup test data
+    String taskKey = MigrationTaskManager.generateTaskKey("vol1", "bucket1", random.nextLong());
+    JobworkerMigrationKeysTaskProto createdTask = createMigrationTask(taskKey, 0, 0, 0)
+        .toBuilder()
+        .setMigrationStatus(JobworkerTaskStatus.PENDING)
+        .build();
+    
+    // Verify task doesn't exist initially
+    Assertions.assertFalse(omMetadataManager.getJobworkerMigrationKeysTaskTable()
+        .isExist(taskKey));
+    
+    // Create response
+    OMResponse omResponse = createSuccessResponse();
+    DBUpdateResult dbUpdateResult = DBUpdateResult.createMigrationCreateTaskResult(
+        taskKey, createdTask);
+    OMMigrationKeyDBUpdateResponse omDBUpdateResponse = 
+        new OMMigrationKeyDBUpdateResponse(omResponse, dbUpdateResult);
+    
+    // Execute batch operation
+    batchOperation = omMetadataManager.getStore().initBatchOperation();
+    omDBUpdateResponse.addToDBBatch(omMetadataManager, batchOperation);
+    omMetadataManager.getStore().commitBatchOperation(batchOperation);
+    
+    // Verify task was created
+    JobworkerMigrationKeysTaskProto resultTask = 
+        omMetadataManager.getJobworkerMigrationKeysTaskTable().get(taskKey);
+    Assertions.assertNotNull(resultTask);
+    Assertions.assertEquals(JobworkerTaskStatus.PENDING, resultTask.getMigrationStatus());
+    Assertions.assertEquals(0, resultTask.getTotalKeyCount());
+    Assertions.assertEquals(0, resultTask.getMigratedKeyCount());
+    Assertions.assertEquals(0, resultTask.getFailedKeyCount());
+  }
+
+  @Test
+  public void testAddToDBBatchAddTransaction() throws Exception {
+    // Setup test data
+    String taskKey = MigrationTaskManager.generateTaskKey("vol1", "bucket1", random.nextLong());
+    String transactionKey = MigrationTaskManager.getTransactionKey(taskKey, random.nextLong());
+    JobworkerMigrationKeysTaskProto initialTask = createMigrationTask(taskKey, 10, 5, 0);
+    omMetadataManager.getJobworkerMigrationKeysTaskTable()
+        .putWithBatch(batchOperation, taskKey, initialTask);
+    omMetadataManager.getStore().commitBatchOperation(batchOperation);
+    
+    JobworkerMigrationKeysTaskProto updatedTask = initialTask.toBuilder()
+        .setMigratedKeyCount(8)  // 5 + 3
+        .setLastUpdateTime(System.currentTimeMillis())
+        .build();
+    
+    JobworkerMigrationKeysTxProto addedTransaction = createMigrationTransaction(
+        transactionKey, taskKey, 3);
+    
+    // Create response
+    OMResponse omResponse = createSuccessResponse();
+    DBUpdateResult dbUpdateResult = DBUpdateResult.createMigrationAddTransactionResult(
+        taskKey, transactionKey, updatedTask, addedTransaction);
+    OMMigrationKeyDBUpdateResponse omDBUpdateResponse = 
+        new OMMigrationKeyDBUpdateResponse(omResponse, dbUpdateResult);
+    
+    // Execute batch operation
+    batchOperation = omMetadataManager.getStore().initBatchOperation();
+    omDBUpdateResponse.addToDBBatch(omMetadataManager, batchOperation);
+    omMetadataManager.getStore().commitBatchOperation(batchOperation);
+    
+    // Verify task was updated
+    JobworkerMigrationKeysTaskProto resultTask = 
+        omMetadataManager.getJobworkerMigrationKeysTaskTable().get(taskKey);
+    Assertions.assertNotNull(resultTask);
+    Assertions.assertEquals(8, resultTask.getMigratedKeyCount());
+    
+    // Verify transaction was added
+    JobworkerMigrationKeysTxProto resultTransaction = 
+        omMetadataManager.getJobworkerMigrationKeysTxTable().get(transactionKey);
+    Assertions.assertNotNull(resultTransaction);
+    Assertions.assertEquals(3, resultTransaction.getMigrationKeysCount());
+    Assertions.assertEquals(addedTransaction.getTxId(), resultTransaction.getTxId());
+  }
+
   private OMResponse createSuccessResponse() {
     return OMResponse.newBuilder()
         .setMigrationKeyDBUpdateResponse(MigrationKeyDBUpdateResponse.newBuilder()
@@ -217,13 +300,26 @@ public class TestOMMigrationKeyDBUpdateResponse {
         .setStartTime(System.currentTimeMillis())
         .setLastUpdateTime(System.currentTimeMillis())
         .setCompleteScanning(false)
+        .setRuleId(RandomStringUtils.randomAlphabetic(32))
+        .setStoragePolicy(StoragePolicyProto.WARM)
         .build();
   }
 
   private JobworkerMigrationKeysTxProto createMigrationTransaction(String transactionKey, 
       String taskKey, int keyCount) {
+    // Extract transaction ID from the transaction key for proto
+    long txId = 1;
+    if (transactionKey.contains("/")) {
+      String[] parts = transactionKey.split("/");
+      try {
+        txId = Long.parseLong(parts[parts.length - 1]);
+      } catch (NumberFormatException e) {
+        txId = 1; // fallback
+      }
+    }
+    
     JobworkerMigrationKeysTxProto.Builder builder = JobworkerMigrationKeysTxProto.newBuilder()
-        .setTxId(1)
+        .setTxId(txId)
         .setVolume("test-volume")
         .setBucket("test-bucket")
         .setStoragePolicy(StoragePolicyProto.HOT)

@@ -19,6 +19,9 @@ package org.apache.hadoop.ozone.om.ha;
 
 import java.io.IOException;
 import com.google.protobuf.ServiceException;
+import org.apache.hadoop.hdds.client.OzoneStoragePolicy;
+import org.apache.hadoop.hdds.client.StoragePolicy;
+import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTxProto;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerTaskStatus;
 import org.apache.hadoop.ozone.om.OzoneManager;
 import org.apache.hadoop.ozone.om.helpers.OMRatisHelper;
@@ -26,9 +29,10 @@ import org.apache.hadoop.ozone.om.jobworker.MigrationTaskManager;
 import org.apache.hadoop.ozone.om.ratis.OzoneManagerRatisServer;
 import org.apache.hadoop.ozone.om.ratis.utils.OzoneManagerRatisUtils;
 import org.apache.hadoop.ozone.om.request.OMClientRequest;
+import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.MigrationKeyArgs.AddTransaction;
+import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.MigrationKeyArgs.CreateTask;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.MigrationKeyOperationType;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.MigrationKeyDBUpdateRequest;
-import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.MigrationKeyDBUpdateResponse;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.MigrationKeyArgs;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.MigrationKeyArgs.CompleteTransaction;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.MigrationKeyArgs.UpdateTaskStatus;
@@ -63,7 +67,6 @@ public class MigrationKeyDBUpdateManager {
 
   /**
    * Complete a migration transaction.
-   * This is equivalent to MigrationTaskManager.completeTransaction() but uses HA writes.
    *
    * @param taskKey        The task key
    * @param transactionId  The transaction ID
@@ -71,7 +74,7 @@ public class MigrationKeyDBUpdateManager {
    * @throws IOException if the operation fails
    */
   public void keyMigrationCompleteTransaction(
-      String taskKey, long transactionId, long failedKeyCount) throws IOException {
+      String taskKey, long transactionId, int failedKeyCount) throws IOException {
 
     String transactionKey = MigrationTaskManager.getTransactionKey(taskKey, transactionId);
 
@@ -95,7 +98,6 @@ public class MigrationKeyDBUpdateManager {
 
   /**
    * Update migration task status.
-   * This is equivalent to MigrationTaskManager.updateTaskStatus() but uses HA writes.
    *
    * @param taskKey   The task key
    * @param newStatus The new status
@@ -122,7 +124,6 @@ public class MigrationKeyDBUpdateManager {
 
   /**
    * Mark scanning as completed for a migration task.
-   * This is equivalent to MigrationTaskManager.markScanningCompleted() but uses HA writes.
    *
    * @param taskKey The task key
    * @throws IOException if the operation fails
@@ -144,7 +145,6 @@ public class MigrationKeyDBUpdateManager {
 
   /**
    * Cleanup a migration task.
-   * This is equivalent to MigrationTaskManager.cleanupTask() but uses HA writes.
    *
    * @param taskKey The task key
    * @throws IOException if the operation fails
@@ -162,6 +162,61 @@ public class MigrationKeyDBUpdateManager {
 
     executeOperation(request);
     LOG.debug("Successfully cleaned up migration task: {}", taskKey);
+  }
+
+  /**
+   * Create a new migration task.
+   *
+   * @param taskKey       The task key
+   * @param storagePolicy
+   * @throws IOException if the operation fails
+   */
+  public void keyMigrationCreateTask(String taskKey, String ruleId, StoragePolicy storagePolicy) throws IOException {
+
+    MigrationKeyArgs migrationKeyArgs = MigrationKeyArgs.newBuilder()
+        .setTaskKey(taskKey)
+        .setCreateTask(CreateTask
+            .newBuilder()
+            .setRuleId(ruleId)
+            .setStoragePolicy(OzoneStoragePolicy.toProto(storagePolicy))
+            .build())
+        .build();
+
+    MigrationKeyDBUpdateRequest request = MigrationKeyDBUpdateRequest.newBuilder()
+        .setType(MigrationKeyOperationType.KEY_MIGRATION_CREATE_TASK)
+        .setMigrationKeyArgs(migrationKeyArgs)
+        .build();
+
+    executeOperation(request);
+    LOG.debug("Successfully created a migration task: {}", taskKey);
+  }
+
+  /**
+   * Add a new migration transaction for the specific migration task.
+   *
+   * @param taskKey The task key
+   * @throws IOException if the operation fails
+   */
+  public void keyMigrationAddTransaction(String taskKey,
+      long txId, JobworkerMigrationKeysTxProto migrationKeysTxProto) throws IOException {
+
+    AddTransaction addTransaction = AddTransaction.newBuilder()
+        .setTxId(txId)
+        .setMigrationKeysTxProto(migrationKeysTxProto)
+        .build();
+
+    MigrationKeyArgs migrationKeyArgs = MigrationKeyArgs.newBuilder()
+        .setTaskKey(taskKey)
+        .setAddTransaction(addTransaction)
+        .build();
+
+    MigrationKeyDBUpdateRequest request = MigrationKeyDBUpdateRequest.newBuilder()
+        .setType(MigrationKeyOperationType.KEY_MIGRATION_ADD_TRANSACTION)
+        .setMigrationKeyArgs(migrationKeyArgs)
+        .build();
+
+    executeOperation(request);
+    LOG.debug("Successfully added a migration transaction for the task: {}", taskKey);
   }
 
   /**
@@ -187,7 +242,6 @@ public class MigrationKeyDBUpdateManager {
 
   /**
    * Create an OM request for the database update operation.
-   * Based on KeyTrashCleanupService.createRequest()
    *
    * @param request The database update request
    * @return OMRequest to be submitted
@@ -202,7 +256,6 @@ public class MigrationKeyDBUpdateManager {
 
   /**
    * Submit request through Ratis or direct OM call and wait for response.
-   * Based on KeyTrashCleanupService.submitRequest()
    *
    * @param omRequest The OM request to submit
    * @return OMResponse from the operation
