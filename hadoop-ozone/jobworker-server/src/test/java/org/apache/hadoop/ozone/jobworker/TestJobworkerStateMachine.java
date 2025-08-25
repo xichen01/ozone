@@ -91,11 +91,11 @@ public class TestJobworkerStateMachine {
     return Stream.of(
         Arguments.of("Empty OM service ID", ImmutableMap.of(
             OZONE_OM_ADDRESS_KEY, "",
-            OMConfigKeys.OZONE_OM_SERVICE_IDS_KEY, ""
+            JobworkerConfiguration.OZONE_JOBWORKER_OM_SERVICE_IDS_KEY, ""
         )),
 
         Arguments.of("Bad address in HA config", ImmutableMap.<String, String>builder()
-            .put(OMConfigKeys.OZONE_OM_SERVICE_IDS_KEY, "omServiceId1")
+            .put(JobworkerConfiguration.OZONE_JOBWORKER_OM_SERVICE_IDS_KEY, "omServiceId1")
             .put(OZONE_OM_NODES_KEY + ".omServiceId1", "om1,om2,om3")
             .putAll(OM_SERVICE1_HOST_ADDRESS)
             .put(getGrpcPortKey() + ".omServiceId1.om1", "xyz")
@@ -109,7 +109,7 @@ public class TestJobworkerStateMachine {
         ),
 
         Arguments.of("Cannot resolve address in HA config", ImmutableMap.of(
-            OMConfigKeys.OZONE_OM_SERVICE_IDS_KEY, "omServiceId1",
+            JobworkerConfiguration.OZONE_JOBWORKER_OM_SERVICE_IDS_KEY, "omServiceId1",
             OZONE_OM_NODES_KEY + ".omServiceId1", "om1,om2,om3",
             OZONE_OM_ADDRESS_KEY + ".omServiceId1.om1", "localhost:1234",
             OZONE_OM_ADDRESS_KEY + ".omServiceId1.om2", "localhost:1235",
@@ -117,19 +117,19 @@ public class TestJobworkerStateMachine {
         ),
 
         Arguments.of("Missing all OZONE_OM_ADDRESS_KEY", ImmutableMap.of(
-            OMConfigKeys.OZONE_OM_SERVICE_IDS_KEY, "omServiceId1",
+            JobworkerConfiguration.OZONE_JOBWORKER_OM_SERVICE_IDS_KEY, "omServiceId1",
             OZONE_OM_NODES_KEY + ".omServiceId1", "om1,om2,om3")
         ),
 
         Arguments.of("Missing some of OZONE_OM_ADDRESS_KEY", ImmutableMap.of(
-            OMConfigKeys.OZONE_OM_SERVICE_IDS_KEY, "omServiceId1",
+            JobworkerConfiguration.OZONE_JOBWORKER_OM_SERVICE_IDS_KEY, "omServiceId1",
             OZONE_OM_NODES_KEY + ".omServiceId1", "om1,om2,om3",
             OZONE_OM_ADDRESS_KEY + ".omServiceId1.om1", "localhost",
             OZONE_OM_ADDRESS_KEY + ".omServiceId1.om2", "localhost")
         ),
 
         Arguments.of("Missing omServiceId2 OZONE_OM_ADDRESS_KEY", ImmutableMap.<String, String>builder()
-            .put(OMConfigKeys.OZONE_OM_SERVICE_IDS_KEY, "omServiceId1, omServiceId2")
+            .put(JobworkerConfiguration.OZONE_JOBWORKER_OM_SERVICE_IDS_KEY, "omServiceId1, omServiceId2")
             .put(OZONE_OM_NODES_KEY + ".omServiceId1", "om1,om2,om3")
             .putAll(OM_SERVICE1_HOST_ADDRESS)
             .put(OZONE_OM_NODES_KEY + ".omServiceId2", "om1,om2,om3")
@@ -137,7 +137,7 @@ public class TestJobworkerStateMachine {
         ),
 
         Arguments.of("Duplicate Address in an OM Group", ImmutableMap.<String, String>builder()
-            .put(OMConfigKeys.OZONE_OM_SERVICE_IDS_KEY, "omServiceId1")
+            .put(JobworkerConfiguration.OZONE_JOBWORKER_OM_SERVICE_IDS_KEY, "omServiceId1")
             .put(OZONE_OM_NODES_KEY + ".omServiceId1", "om1,om2,om3")
             .putAll(OM_SERVICE1_HOST_ADDRESS)
             .put(getGrpcPortKey() + ".omServiceId1.om1", "1233")
@@ -147,7 +147,7 @@ public class TestJobworkerStateMachine {
         ),
 
         Arguments.of("Duplicate Address in different OM Group", ImmutableMap.<String, String>builder()
-            .put(OMConfigKeys.OZONE_OM_SERVICE_IDS_KEY, "omServiceId1, omServiceId2")
+            .put(JobworkerConfiguration.OZONE_JOBWORKER_OM_SERVICE_IDS_KEY, "omServiceId1, omServiceId2")
             .put(OZONE_OM_NODES_KEY + ".omServiceId1", "om1,om2,om3")
             .putAll(OM_SERVICE1_HOST_ADDRESS)
             .put(getGrpcPortKey() + ".omServiceId1.om1", "1233")
@@ -176,7 +176,7 @@ public class TestJobworkerStateMachine {
     for (int i = 0; i < OM_GROUP_COUNT; i++) {
       omServiceIds.add(OM_SERVICE_ID + i);
     }
-    conf.set(OMConfigKeys.OZONE_OM_SERVICE_IDS_KEY, String.join(",", omServiceIds));
+    conf.set(JobworkerConfiguration.OZONE_JOBWORKER_OM_SERVICE_IDS_KEY, String.join(",", omServiceIds));
 
     for (int i = 0; i < OM_GROUP_COUNT; i++) {
       List<String> serverAddresses = new ArrayList<>();

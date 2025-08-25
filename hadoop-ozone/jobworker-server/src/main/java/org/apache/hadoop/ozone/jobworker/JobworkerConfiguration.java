@@ -190,4 +190,26 @@ public class JobworkerConfiguration {
     this.commandStatusReportInterval = commandStatusReportInterval;
   }
 
+
+  @Config(key = "om.service.ids",
+      type = ConfigType.STRING,
+      tags = {ConfigTag.JOBWORKER, ConfigTag.OM},
+      defaultValue = "",
+      description = "Comma-separated list of OM service Ids for jobworker to connect. Note that these OM service IDs" +
+          " should have the same cluster ID (i.e. connects to the same SCM service) since jobworker currently " +
+          " can only serve a cluster. This is the main reason why there is a separate configuration from the usual" +
+          " ozone.om.service.ids. The ozone.om.service.ids will be used by the jobworker for other use cases " +
+          " such as creating OzoneClient that will be used for bucket replication.")
+  private String omServiceIds;
+
+  public static final String OZONE_JOBWORKER_OM_SERVICE_IDS_KEY = "ozone.jobworker.om.service.ids";
+
+  public String getOmServiceIds() {
+    return omServiceIds;
+  }
+
+  public void setOmServiceIds(String omServiceIds) {
+    this.omServiceIds = omServiceIds;
+  }
+
 }

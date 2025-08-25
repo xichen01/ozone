@@ -89,6 +89,7 @@ public class TestJobworkerWithOzoneHA {
         .setClusterId(clusterID)
         .setScmId(scmID)
         .setOMServiceIds(omServiceIds)
+        .setJobworkerOMServiceIds(omServiceIds)
         .setNumOfOMsPerService(NUM_OF_OMS_PER_SERVICE)
         .setNumOfJobworkers(NUM_OF_JOBWORKERS)
         .setNumOfVolumesPerJobworker(NUM_OF_VOLUMES_PER_JOBWORKER)

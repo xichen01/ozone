@@ -72,7 +72,7 @@ public class TestJobworkerEndpoint {
     serverAddress = address + ":" + port;
 
     // Configure OM addresses in the config
-    ozoneConf.setStrings(OMConfigKeys.OZONE_OM_SERVICE_IDS_KEY, "omServiceId1");
+    ozoneConf.setStrings(JobworkerConfiguration.OZONE_JOBWORKER_OM_SERVICE_IDS_KEY, "omServiceId1");
     ozoneConf.setStrings(OMConfigKeys.OZONE_OM_NODES_KEY + ".omServiceId1", "om1");
     ozoneConf.setStrings(OMConfigKeys.OZONE_OM_ADDRESS_KEY + ".omServiceId1.om1", serverAddress);
   }

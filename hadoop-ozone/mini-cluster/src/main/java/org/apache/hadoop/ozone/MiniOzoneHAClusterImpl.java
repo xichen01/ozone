@@ -450,6 +450,9 @@ public class MiniOzoneHAClusterImpl extends MiniOzoneClusterImpl {
 
     public Builder setOMServiceId(String serviceId) {
       this.omServiceId = serviceId;
+      if (jobworkerOmServiceIds == null) {
+        jobworkerOmServiceIds = singletonList(serviceId);
+      }
       return this;
     }
 

@@ -969,8 +969,9 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
         return Collections.emptyList();
       }
       OzoneConfiguration jwConf = new OzoneConfiguration(conf);
+
       JobworkerConfiguration jobworkerConfig = jwConf.getObject(JobworkerConfiguration.class);
-      configureJobworker();
+      configureJobworker(jobworkerConfig);
       List<JobworkerService> jobworkers = new ArrayList<>();
       for (int i = 0; i < numOfJobworkers; i++) {
         List<String> volumeRoots = new ArrayList<>();
@@ -989,6 +990,12 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
         jobworkers.add(jobworker);
       }
       return jobworkers;
+    }
+
+    private void configureJobworker(JobworkerConfiguration jobworkerConfiguration) {
+      if (jobworkerOmServiceIds != null && !jobworkerOmServiceIds.isEmpty()) {
+        jobworkerConfiguration.setOmServiceIds(String.join(",", jobworkerOmServiceIds));
+      }
     }
 
   }

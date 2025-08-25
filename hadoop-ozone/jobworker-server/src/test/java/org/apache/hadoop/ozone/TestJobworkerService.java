@@ -31,6 +31,7 @@ import java.util.Set;
 import java.util.concurrent.TimeoutException;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
+import org.apache.hadoop.ozone.jobworker.JobworkerConfiguration;
 import org.apache.hadoop.ozone.jobworker.JobworkerConnectionManager;
 import org.apache.hadoop.ozone.jobworker.JobworkerStates;
 import org.apache.hadoop.ozone.om.OMConfigKeys;
@@ -115,7 +116,6 @@ public class TestJobworkerService {
   private Set<String> configureOMs(int omGroupCount, int omCountPerGroup) {
     Set<String> serviceIds = new HashSet<>();
     for (int i = 0; i < omGroupCount; i++) {
-      conf.unset(OMConfigKeys.OZONE_OM_SERVICE_IDS_KEY);
       String serviceId = "omservice" + i;
       serviceIds.add(serviceId);
       ArrayList<String> omIds = new ArrayList<>();
@@ -128,7 +128,7 @@ public class TestJobworkerService {
       }
       conf.set(OMConfigKeys.OZONE_OM_NODES_KEY + "." + serviceId, String.join(", ", omIds));
     }
-    conf.set(OMConfigKeys.OZONE_OM_SERVICE_IDS_KEY, String.join(", ", serviceIds));
+    conf.set(JobworkerConfiguration.OZONE_JOBWORKER_OM_SERVICE_IDS_KEY, String.join(",", serviceIds));
     return serviceIds;
   }
 }

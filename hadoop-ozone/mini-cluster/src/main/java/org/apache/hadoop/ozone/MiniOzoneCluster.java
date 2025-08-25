@@ -288,6 +288,7 @@ public interface MiniOzoneCluster extends AutoCloseable {
     protected int numOfJobworkers = 0;
     protected int numOfVolumesPerJobworker = 0;
     protected boolean startJobworkers = true;
+    protected List<String> jobworkerOmServiceIds;
     protected CertificateClient certClient;
     protected SecretKeyClient secretKeyClient;
     protected DatanodeFactory dnFactory = UniformDatanodesFactory.newBuilder().build();
@@ -418,6 +419,12 @@ public interface MiniOzoneCluster extends AutoCloseable {
     /** Sets whether Jobworkers should be started automatically. */
     public Builder setStartJobworkers(boolean start) {
       startJobworkers = start;
+      return this;
+    }
+
+    /** Sets the OM service IDs used by Jobworkers in HA tests. */
+    public Builder setJobworkerOMServiceIds(List<String> serviceIds) {
+      jobworkerOmServiceIds = serviceIds;
       return this;
     }
 

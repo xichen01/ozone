@@ -23,7 +23,6 @@ import static org.apache.hadoop.hdds.HddsUtils.getHostNameFromConfigKeys;
 import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_OM_ADDRESS_KEY;
 import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_OM_DECOMMISSIONED_NODES_KEY;
 import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_OM_NODES_KEY;
-import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_OM_SERVICE_IDS_KEY;
 
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
@@ -38,6 +37,7 @@ import org.apache.hadoop.hdds.conf.ConfigurationSource;
 import org.apache.hadoop.net.NetUtils;
 import org.apache.hadoop.ozone.conf.OMJobworkerConfiguration;
 import org.apache.hadoop.ozone.ha.ConfUtils;
+import org.apache.hadoop.ozone.jobworker.JobworkerConfiguration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -62,7 +62,9 @@ public final class JobworkerUtils {
   public static Map<String, List<InetSocketAddress>> getOmJobworkerHAAddressesById(
       ConfigurationSource conf) {
     Map<String, List<InetSocketAddress>> result = new HashMap<>();
-    for (String serviceId : conf.getTrimmedStringCollection(OZONE_OM_SERVICE_IDS_KEY)) {
+    JobworkerConfiguration jobworkerConfiguration = conf.getObject(JobworkerConfiguration.class);
+    for (String serviceId : org.apache.hadoop.util.StringUtils.getTrimmedStringCollection(
+        jobworkerConfiguration.getOmServiceIds())) {
       result.computeIfAbsent(serviceId, x -> new ArrayList<>());
       for (String nodeId : getActiveOMNodeIds(conf, serviceId)) {
         String rpcAddr = getOmJobWorkerRpcAddress(conf, serviceId, nodeId);
@@ -174,7 +176,7 @@ public final class JobworkerUtils {
       throw new IllegalStateException(String.format("OM address is not configured properly. "
               + "Please set either %s with per-node addresses (for HA), "
               + "or configure a valid value for %s for non-HA mode.",
-          OZONE_OM_SERVICE_IDS_KEY, OZONE_OM_ADDRESS_KEY));
+          JobworkerConfiguration.OZONE_JOBWORKER_OM_SERVICE_IDS_KEY, OZONE_OM_ADDRESS_KEY));
     }
     return Collections.singletonMap(DEFAULT_OM_SERVICE_ID,
         Collections.singletonList(NetUtils.createSocketAddr(omAddress)));
