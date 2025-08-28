@@ -21,6 +21,7 @@ package org.apache.hadoop.ozone.om.jobworker;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Maps;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.JobworkerMockCommandProto;
 import org.apache.hadoop.hdds.server.events.EventPublisher;
 import org.apache.hadoop.ozone.jobworker.commands.OMJobworkerCommand;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
@@ -148,6 +149,11 @@ public class JobworkerProtocolServerImpl implements JobworkerProtocol {
       return builder
           .setCommandType(Type.reregisterCommand)
           .setJobworkerReregisterCommandProto(JobworkerReregisterCommandProto.getDefaultInstance())
+          .build();
+    case mockCommand: // This is only for test
+      return builder
+          .setCommandType(Type.mockCommand)
+          .setJobworkerMockCommandProto(JobworkerMockCommandProto.getDefaultInstance())
           .build();
     case unknownCommand:
       throw new IllegalArgumentException("Unknown OMJobworker command");

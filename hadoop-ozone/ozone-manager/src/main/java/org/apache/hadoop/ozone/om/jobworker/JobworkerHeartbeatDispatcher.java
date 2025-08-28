@@ -64,6 +64,8 @@ public class JobworkerHeartbeatDispatcher {
     if (!nodeManager.isJobworkerNodeRegistered(jobworkerDetails.getUuid())) {
       LOG.info("OM received heartbeat from an unregistered jobworker {}. " +
           "Asking jobworker to re-register.", jobworkerDetails);
+      // TODO(JW): We might want to ensure that a single JobworkerReregisterCommand is sent if there
+      //  are multiple reregister commands to the same JW
       nodeManager.addOMJobworkerCommand(jobworkerDetails.getUuid(), new JobworkerReregisterCommand());
     } else {
       LOG.debug("Processing jobworker {} Report.", jobworkerDetails);

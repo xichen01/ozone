@@ -47,6 +47,7 @@ import org.apache.hadoop.ozone.grpc.metrics.GrpcMetricsServerResponseInterceptor
 import org.apache.hadoop.ozone.grpc.metrics.GrpcMetricsServerTransportFilter;
 import org.apache.hadoop.ozone.ha.ConfUtils;
 import org.apache.hadoop.ozone.om.helpers.OMNodeDetails;
+import org.apache.hadoop.ozone.om.jobworker.command.OMJobworkerCommandManager;
 import org.apache.hadoop.ozone.util.RemoteAddressInterceptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -73,7 +74,8 @@ public class JobworkerGrpcServer {
   private final OMNodeDetails omNodeDetails;
 
   public JobworkerGrpcServer(OzoneConfiguration config,
-      JobworkerProtocolServerImpl jobworkerServerImpl, OMNodeDetails nodeDetails) {
+      JobworkerProtocolServerImpl jobworkerServerImpl, OMNodeDetails nodeDetails,
+      OMJobworkerCommandManager jobworkerCommandManager) {
     omNodeDetails = nodeDetails;
     OMJobworkerConfiguration jobworkerServiceConfig = config.getObject(OMJobworkerConfiguration.class);
     port = getGrpcPort(config, jobworkerServiceConfig);
@@ -84,10 +86,11 @@ public class JobworkerGrpcServer {
     threadNamePrefix = serviceName;
     protocolMessageMetrics = getProtocolMessageMetrics(config);
     jobworkerGrpcMetrics = GrpcMetrics.create(config, serviceName);
-    init(jobworkerServerImpl);
+    init(jobworkerServerImpl, jobworkerCommandManager);
   }
 
-  private void init(JobworkerProtocolServerImpl jobworkerServerImpl) {
+  private void init(JobworkerProtocolServerImpl jobworkerServerImpl,
+      OMJobworkerCommandManager jobworkerCommandManager) {
     readExecutors = new ThreadPoolExecutor(grpcExecutorSize, grpcExecutorSize,
         60, TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(),
@@ -118,7 +121,7 @@ public class JobworkerGrpcServer {
         .channelType(channelType)
         .executor(readExecutors)
         .addService(ServerInterceptors.intercept(
-            new JobworkerGrpcRequestHandler(jobworkerServerImpl, protocolMessageMetrics),
+            new JobworkerGrpcRequestHandler(jobworkerServerImpl, protocolMessageMetrics, jobworkerCommandManager),
             new GrpcMetricsServerRequestInterceptor(jobworkerGrpcMetrics),
             new GrpcMetricsServerResponseInterceptor(jobworkerGrpcMetrics)))
         .addTransportFilter(new GrpcMetricsServerTransportFilter(jobworkerGrpcMetrics))

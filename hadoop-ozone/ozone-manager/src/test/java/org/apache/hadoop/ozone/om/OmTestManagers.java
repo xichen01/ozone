@@ -29,11 +29,13 @@ import org.apache.hadoop.hdds.scm.ScmConfigKeys;
 import org.apache.hadoop.hdds.scm.client.ScmTopologyClient;
 import org.apache.hadoop.hdds.scm.protocol.ScmBlockLocationProtocol;
 import org.apache.hadoop.hdds.scm.protocol.StorageContainerLocationProtocol;
-import org.apache.hadoop.hdds.security.token.OzoneBlockTokenSecretManager;
+import org.apache.hadoop.hdds.server.events.EventQueue;
 import org.apache.hadoop.metrics2.lib.DefaultMetricsSystem;
-import org.apache.hadoop.ozone.client.OzoneClient;
 import org.apache.hadoop.ozone.client.OzoneClientFactory;
+import org.apache.hadoop.ozone.om.jobworker.command.OMJobworkerCommandManager;
 import org.apache.hadoop.ozone.om.protocol.OzoneManagerProtocol;
+import org.apache.hadoop.hdds.security.token.OzoneBlockTokenSecretManager;
+import org.apache.hadoop.ozone.client.OzoneClient;
 import org.apache.hadoop.ozone.om.ratis.OzoneManagerRatisServer.RaftServerStatus;
 import org.apache.hadoop.security.authentication.client.AuthenticationException;
 
@@ -52,6 +54,8 @@ public final class OmTestManagers {
   private final PrefixManager prefixManager;
   private final ScmBlockLocationProtocol scmBlockClient;
   private final OzoneClient rpcClient;
+  private final OMJobworkerCommandManager omJobworkerCommandManager;
+  private final EventQueue eventQueue;
 
   public OzoneManager getOzoneManager() {
     return om;
@@ -87,6 +91,12 @@ public final class OmTestManagers {
 
   public OzoneClient getRpcClient() {
     return rpcClient;
+  }
+  public OMJobworkerCommandManager getOmJobworkerCommandManager() {
+    return omJobworkerCommandManager;
+  }
+  public EventQueue getEventQueue() {
+    return eventQueue;
   }
 
   public OmTestManagers(OzoneConfiguration conf)
@@ -143,6 +153,10 @@ public final class OmTestManagers {
         .getInternalState(om, "bucketManager");
     prefixManager = (PrefixManagerImpl)HddsWhiteboxTestUtils
         .getInternalState(om, "prefixManager");
+    omJobworkerCommandManager = (OMJobworkerCommandManager)HddsWhiteboxTestUtils
+        .getInternalState(om, "omJobworkerCommandManager");
+    eventQueue = (EventQueue)HddsWhiteboxTestUtils
+        .getInternalState(om, "eventQueue");
   }
 
   //initializing and returning a mock kmsProvider

@@ -37,6 +37,7 @@ import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolP
 import org.apache.hadoop.hdds.server.events.EventPublisher;
 import org.apache.hadoop.ozone.jobworker.client.JobworkerClient;
 import org.apache.hadoop.ozone.om.OzoneManager;
+import org.apache.hadoop.ozone.om.jobworker.command.OMJobworkerCommandManager;
 import org.apache.hadoop.ozone.om.jobworker.node.JobworkerNodeManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -52,6 +53,7 @@ public class TestJobworkerGrpcServer {
   private JobworkerGrpcServer server;
   private JobworkerClient client;
   private JobworkerProtocolServerImpl jobworkerProtocolServer;
+  private OMJobworkerCommandManager commandManager;
 
   @BeforeEach
   public void setUp() throws IOException {
@@ -62,8 +64,9 @@ public class TestJobworkerGrpcServer {
         GetOMVersionResponse.newBuilder().setSoftwareVersion(0).build());
     when(ozoneManager.getJobworkerNodemanager()).thenReturn(jobworkerNodemanager);
     jobworkerProtocolServer =
-        spy(new JobworkerProtocolServerImpl(ozoneManager, mock(JobworkerNodeManager.class), mock(EventPublisher.class)));
-    server = new JobworkerGrpcServer(conf, jobworkerProtocolServer, null);
+        spy(new JobworkerProtocolServerImpl(ozoneManager, jobworkerNodemanager, mock(EventPublisher.class)));
+    commandManager = new OMJobworkerCommandManager(jobworkerNodemanager, "omServiceId");
+    server = new JobworkerGrpcServer(conf, jobworkerProtocolServer, null, commandManager);
     server.start();
     client = new JobworkerClient("localhost", conf);
   }

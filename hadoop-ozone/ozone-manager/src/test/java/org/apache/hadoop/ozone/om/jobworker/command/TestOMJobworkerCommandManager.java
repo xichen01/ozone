@@ -16,16 +16,14 @@
  */
 package org.apache.hadoop.ozone.om.jobworker.command;
 
-import static org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandResultCode.UNKNOWN_CODE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 
+import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -35,25 +33,32 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+
+import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
 import org.apache.hadoop.hdds.protocol.MockJobworkerDetails;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandExecutionResultsProto;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandResultCode;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatus;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatusReportsProto;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.MockCommandResultsProto;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto;
+import org.apache.hadoop.hdds.server.ServerUtils;
 import org.apache.hadoop.hdds.server.events.EventQueue;
+import org.apache.hadoop.ozone.jobworker.client.JobworkerClient;
 import org.apache.hadoop.ozone.jobworker.commands.OMJobworkerCommand;
+import org.apache.hadoop.ozone.om.OmTestManagers;
+import org.apache.hadoop.ozone.om.OzoneManager;
 import org.apache.hadoop.ozone.om.jobworker.JobworkerHeartbeatDispatcher.CommandStatusReportFromJobworker;
 import org.apache.hadoop.ozone.om.jobworker.OMJobworkerEvents;
 import org.apache.hadoop.ozone.om.jobworker.node.JobworkerNodeManager;
-import org.apache.hadoop.ozone.om.jobworker.node.StaleJobworkerHandler;
 import org.apache.ozone.test.GenericTestUtils;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Integration test for OMJobworkerCommandManager with JobworkerCommandListener
@@ -63,36 +68,55 @@ public class TestOMJobworkerCommandManager {
 
   private JobworkerNodeManager nodeManager;
   private OMJobworkerCommandManager commandManager;
-  private TestCommandListener testListener;
+  private TestCommandListener testReregisterCommandListener;
+  private TestCommandListener testMockCommandListener;
   private UUID jobworkerUuid;
   private JobworkerDetails jobworkerDetails;
   private EventQueue eventQueue;
-  private JobworkerCommandStatusReportHandler commandStatusReportHandler;
+  private JobworkerClient client;
   private final int timeoutCheckIntervalSeconds = 2;
 
+  @TempDir
+  private Path folder;
+  private OzoneManager ozoneManager;
+  private String omServiceId;
+
   @BeforeEach
-  public void setUp() {
-    nodeManager = mock(JobworkerNodeManager.class);
+  public void setUp() throws Exception {
+    OzoneConfiguration conf = createNewTestPath();
     OMJobworkerCommandManager.CommandTimeoutChecker.setCheckIntervalForTesting(timeoutCheckIntervalSeconds);
-    commandManager = new OMJobworkerCommandManager(nodeManager, "omServiceId");
-    testListener = new TestCommandListener();
+    OmTestManagers omTestManagers = new OmTestManagers(conf);
+    ozoneManager = omTestManagers.getOzoneManager();
+    omServiceId = ozoneManager.getOMServiceId();
+
+    client = new JobworkerClient("localhost", conf);
+
+    nodeManager = ozoneManager.getJobworkerNodemanager();
+    commandManager = omTestManagers.getOmJobworkerCommandManager();
+
     jobworkerUuid = UUID.randomUUID();
     jobworkerDetails = MockJobworkerDetails.createJobworkerDetails(jobworkerUuid.toString());
-    eventQueue = new EventQueue();
-    commandStatusReportHandler = new JobworkerCommandStatusReportHandler(commandManager);
-    StaleJobworkerHandler staleJobworkerHandler =
-        new StaleJobworkerHandler(nodeManager, commandManager);
-    eventQueue.addHandler(OMJobworkerEvents.JW_COMMAND_STATUS_REPORT, commandStatusReportHandler);
-    eventQueue.addHandler(OMJobworkerEvents.STALE_JOBWORKER, staleJobworkerHandler);
+    eventQueue = omTestManagers.getEventQueue();
 
-    // Register the test listener for both command types
-    commandManager.registerHandler(OMJobworkerCommandProto.Type.reregisterCommand, testListener);
-    commandManager.registerHandler(OMJobworkerCommandProto.Type.mockCommand, testListener);
+    // Overwrite both command types with a testMockCommandListener
+    testReregisterCommandListener = new TestCommandListener();
+    testMockCommandListener = new TestCommandListener();
+    commandManager.registerHandler(OMJobworkerCommandProto.Type.reregisterCommand, testReregisterCommandListener);
+    commandManager.registerHandler(OMJobworkerCommandProto.Type.mockCommand, testMockCommandListener);
+
+    // Send a register command so that heartbeat in the test will implicitly trigger a reregister command
+    // when handling a heartbeat (used to trigger onSendCommand)and simplifying the test assertions
+    sendRegister();
   }
 
   @AfterEach
-  public void tearDown() {
-    commandManager.close();
+  public void tearDown() throws Exception {
+    if (ozoneManager != null) {
+      ozoneManager.close();
+    }
+    if (client != null) {
+      client.close();
+    }
   }
 
   @Test
@@ -102,9 +126,15 @@ public class TestOMJobworkerCommandManager {
 
     long commandId = commandManager.sendCommand(jobworkerUuid, command);
     assertEquals(1L, commandId);
-    verify(nodeManager).addOMJobworkerCommand(eq(jobworkerUuid), eq(command));
 
-    waitAndAssert(testListener.sentLatch, testListener.sentCount, 1);
+    // Sent will be incremented only when heartbeat is returned
+    assertEquals(0, testReregisterCommandListener.sentCount.get());
+    assertEquals(0, testMockCommandListener.sentCount.get());
+    sendHeartbeat();
+    waitAndAssert(testMockCommandListener.sentLatch, testMockCommandListener.sentCount, 1);
+    // The reregister sentCount remains zero since the jobworker has been registered by calling sendRegister
+    // during the test setup
+    assertEquals(0, testReregisterCommandListener.sentCount.get());
 
     // 1. PENDING -> EXECUTING
     CommandStatus executingStatus = createCommandStatus(
@@ -117,10 +147,10 @@ public class TestOMJobworkerCommandManager {
         new CommandStatusReportFromJobworker(jobworkerDetails, executingReport));
 
     // Wait for the handler to be called
-    waitAndAssert(testListener.executingLatch, testListener.executingCount, 1);
-    assertEquals(0, testListener.successCount.get());
-    assertEquals(0, testListener.failureCount.get());
-    assertEquals(1, testListener.sentCount.get());
+    waitAndAssert(testMockCommandListener.executingLatch, testMockCommandListener.executingCount, 1);
+    assertEquals(0, testMockCommandListener.successCount.get());
+    assertEquals(0, testMockCommandListener.failureCount.get());
+    assertEquals(1, testMockCommandListener.sentCount.get());
 
     // 2. EXECUTING -> SUCCEEDED
     CommandStatus succeededStatus = createCommandStatus(
@@ -140,13 +170,13 @@ public class TestOMJobworkerCommandManager {
         new CommandStatusReportFromJobworker(jobworkerDetails, succeededReport));
 
     // Wait for the handler to be called
-    waitAndAssert(testListener.successLatch, testListener.successCount, 1);
-    waitAndAssert(testListener.executingLatch, testListener.executingCount, 1);
-    assertEquals(0, testListener.failureCount.get());
-    assertEquals(1, testListener.sentCount.get());
-    assertNotNull(testListener.lastExecutionResultsProto);
+    waitAndAssert(testMockCommandListener.successLatch, testMockCommandListener.successCount, 1);
+    waitAndAssert(testMockCommandListener.executingLatch, testMockCommandListener.executingCount, 1);
+    assertEquals(0, testMockCommandListener.failureCount.get());
+    assertEquals(1, testMockCommandListener.sentCount.get());
+    assertNotNull(testMockCommandListener.lastExecutionResultsProto);
     assertEquals(CommandResultCode.SUCCESS,
-        testListener.lastExecutionResultsProto.getMockCommandResults().getResultCode());
+        testMockCommandListener.lastExecutionResultsProto.getMockCommandResults().getResultCode());
   }
 
   @Test
@@ -161,8 +191,10 @@ public class TestOMJobworkerCommandManager {
     commandManager.sendCommand(jobworkerUuid, command1);
     commandManager.sendCommand(jobworkerUuid, command2);
     commandManager.sendCommand(jobworkerUuid, command3);
+    sendHeartbeat();
 
-    GenericTestUtils.waitFor(() -> testListener.sentCount.get() == 3, 100, 5000);
+    GenericTestUtils.waitFor(() -> testMockCommandListener.sentCount.get() == 2
+        && testReregisterCommandListener.sentCount.get() == 1, 100, 5000);
     List<CommandStatus> statuses = Arrays.asList(
         // Command 1: PENDING -> EXECUTING
         createCommandStatus(1L, OMJobworkerCommandProto.Type.mockCommand, CommandStatus.Status.EXECUTING),
@@ -181,11 +213,13 @@ public class TestOMJobworkerCommandManager {
     eventQueue.fireEvent(OMJobworkerEvents.JW_COMMAND_STATUS_REPORT,
         new CommandStatusReportFromJobworker(jobworkerDetails, multiReport));
 
-    waitAndAssert(testListener.executingLatch, testListener.executingCount, 2);
-    waitAndAssert(testListener.failureLatch, testListener.failureCount, 1);
-    assertEquals(0, testListener.successCount.get());
-    assertEquals(3, testListener.sentCount.get());
-
+    waitAndAssert(testMockCommandListener.executingLatch, testMockCommandListener.executingCount, 1);
+    waitAndAssert(testReregisterCommandListener.executingLatch, testReregisterCommandListener.executingCount, 1);
+    waitAndAssert(testMockCommandListener.failureLatch, testMockCommandListener.failureCount, 1);
+    assertEquals(0, testMockCommandListener.successCount.get());
+    assertEquals(0, testReregisterCommandListener.successCount.get());
+    assertEquals(2, testMockCommandListener.sentCount.get());
+    assertEquals(1, testReregisterCommandListener.sentCount.get());
 
     CommandExecutionResultsProto failedResult = CommandExecutionResultsProto.newBuilder()
         .setMockCommandResults(MockCommandResultsProto
@@ -212,14 +246,18 @@ public class TestOMJobworkerCommandManager {
         new CommandStatusReportFromJobworker(jobworkerDetails, finalReport));
 
     // Wait for success handler to be called
-    waitAndAssert(testListener.successLatch, testListener.successCount, 1);
-    waitAndAssert(testListener.executingLatch, testListener.executingCount, 2); // Commands 1 and 2
-    waitAndAssert(testListener.failureLatch, testListener.failureCount, 2);  // Commands 2 and 3
-    assertEquals("error msg", testListener.lastCommandInfo.getMessage());
-    assertEquals(CommandResultCode.UNKNOWN_CODE, testListener.lastCommandInfo.getResultCode());
+    waitAndAssert(testMockCommandListener.successLatch, testMockCommandListener.successCount, 1); // Command 1
+    waitAndAssert(testMockCommandListener.executingLatch, testMockCommandListener.executingCount, 1); // Command 1 (previous)
+    waitAndAssert(testReregisterCommandListener.executingLatch, testReregisterCommandListener.executingCount, 1); // Command 2 (previous)
+    waitAndAssert(testReregisterCommandListener.failureLatch, testReregisterCommandListener.failureCount, 1); // Command 2
+    waitAndAssert(testMockCommandListener.failureLatch, testMockCommandListener.failureCount, 1);  // Commands 3
+    waitAndAssert(testMockCommandListener.executingLatch, testMockCommandListener.executingCount, 1); // Commands 1
+    assertEquals("error msg", testReregisterCommandListener.lastCommandInfo.getMessage());
+    assertEquals(CommandResultCode.UNKNOWN_CODE, testReregisterCommandListener.lastCommandInfo.getResultCode());
     assertEquals(CommandResultCode.BUCKET_NOT_FOUND,
-        testListener.lastExecutionResultsProto.getMockCommandResults().getResultCode());
-    assertEquals(3, testListener.sentCount.get());
+        testReregisterCommandListener.lastExecutionResultsProto.getMockCommandResults().getResultCode());
+    assertEquals(2, testMockCommandListener.sentCount.get());
+    assertEquals(1, testReregisterCommandListener.executingCount.get());
   }
 
   @Test
@@ -229,7 +267,8 @@ public class TestOMJobworkerCommandManager {
 
     commandManager.sendCommand(jobworkerUuid, command);
 
-    waitAndAssert(testListener.sentLatch, testListener.sentCount, 1);
+    sendHeartbeat();
+    waitAndAssert(testMockCommandListener.sentLatch, testMockCommandListener.sentCount, 1);
     // First make a valid transition: PENDING -> EXECUTING
     CommandStatus executingStatus = createCommandStatus(
         1L, OMJobworkerCommandProto.Type.mockCommand, CommandStatus.Status.EXECUTING);
@@ -240,7 +279,7 @@ public class TestOMJobworkerCommandManager {
     eventQueue.fireEvent(OMJobworkerEvents.JW_COMMAND_STATUS_REPORT,
         new CommandStatusReportFromJobworker(jobworkerDetails, validReport));
 
-    waitAndAssert(testListener.executingLatch, testListener.executingCount, 1);
+    waitAndAssert(testMockCommandListener.executingLatch, testMockCommandListener.executingCount, 1);
 
     // Now try an invalid transition: EXECUTING -> PENDING (should not be allowed)
     CommandStatus pendingStatus = createCommandStatus(
@@ -253,10 +292,10 @@ public class TestOMJobworkerCommandManager {
         new CommandStatusReportFromJobworker(jobworkerDetails, invalidReport));
 
     // Verify that the listener counts didn't change (invalid transition was ignored)
-    waitAndAssert(testListener.executingLatch, testListener.executingCount, 1);
-    assertEquals(0, testListener.successCount.get());
-    assertEquals(0, testListener.failureCount.get());
-    assertEquals(1, testListener.sentCount.get());
+    waitAndAssert(testMockCommandListener.executingLatch, testMockCommandListener.executingCount, 1);
+    assertEquals(0, testMockCommandListener.successCount.get());
+    assertEquals(0, testMockCommandListener.failureCount.get());
+    assertEquals(1, testMockCommandListener.sentCount.get());
 
     // Now try a valid transition: EXECUTING -> SUCCEEDED
     CommandStatus succeededStatus = createCommandStatus(
@@ -268,8 +307,8 @@ public class TestOMJobworkerCommandManager {
         new CommandStatusReportFromJobworker(jobworkerDetails, finalReport));
 
     // Verify that the success listener was called
-    waitAndAssert(testListener.successLatch, testListener.successCount, 1);
-    assertEquals(1, testListener.sentCount.get());
+    waitAndAssert(testMockCommandListener.successLatch, testMockCommandListener.successCount, 1);
+    assertEquals(1, testMockCommandListener.sentCount.get());
   }
 
   @Test
@@ -285,7 +324,8 @@ public class TestOMJobworkerCommandManager {
         1L, OMJobworkerCommandProto.Type.mockCommand);
     commandManager.sendCommand(jobworkerUuid, command);
 
-    waitAndAssert(testListener.sentLatch, testListener.sentCount, 1);
+    sendHeartbeat();
+    waitAndAssert(testMockCommandListener.sentLatch, testMockCommandListener.sentCount, 1);
     // Verify the command was added to the command info map
     Map<OMJobworkerCommandProto.Type, Map<Long, JobworkerCommandInfo>> commandInfoMaps =
         commandManager.getCommandInfoMaps();
@@ -301,7 +341,7 @@ public class TestOMJobworkerCommandManager {
         .build();
     eventQueue.fireEvent(OMJobworkerEvents.JW_COMMAND_STATUS_REPORT,
         new CommandStatusReportFromJobworker(jobworkerDetails, statusReport));
-    waitAndAssert(testListener.executingLatch, testListener.executingCount, 1);
+    waitAndAssert(testMockCommandListener.executingLatch, testMockCommandListener.executingCount, 1);
 
     // Before updated timeout, the command will not be lectured
     int checkedTimes = OMJobworkerCommandManager.CommandTimeoutChecker.getCheckTimes();
@@ -313,10 +353,11 @@ public class TestOMJobworkerCommandManager {
     mockClock.set(initialTime + timeoutMs + 1000); // Add an extra second
 
     // Wait for the scheduled timeout checker to run
-    waitAndAssert(testListener.timeoutLatch, testListener.timeoutCount, 1);
+    waitAndAssert(testMockCommandListener.timeoutLatch, testMockCommandListener.timeoutCount, 1);
     // Command should be removed from a tracking map after timeout
     GenericTestUtils.waitFor(() -> !mockCommandInfoMap.containsKey(1L), 200, 3000);
-    assertEquals(1, testListener.sentCount.get());
+    sendHeartbeat();
+    assertEquals(1, testMockCommandListener.sentCount.get());
   }
 
   @Test
@@ -334,9 +375,6 @@ public class TestOMJobworkerCommandManager {
     commandManager.sendCommand(jobworkerUuid, command2);
     commandManager.sendCommand(jobworkerUuid, command3);
 
-    GenericTestUtils.waitFor(() -> testListener.sentCount.get() == 3, 100, 5000);
-    Mockito.when(nodeManager.pollJobworkerCommand(jobworkerUuid))
-        .thenReturn(Arrays.asList(command1, command2, command3));
     Map<OMJobworkerCommandProto.Type, Map<Long, JobworkerCommandInfo>> commandInfoMaps =
         commandManager.getCommandInfoMaps();
     Map<Long, JobworkerCommandInfo> mockCommandInfoMap =
@@ -349,14 +387,14 @@ public class TestOMJobworkerCommandManager {
 
     eventQueue.fireEvent(OMJobworkerEvents.STALE_JOBWORKER, jobworkerDetails);
 
-    waitAndAssert(testListener.failureLatch, testListener.failureCount, 3);
+    waitAndAssert(testMockCommandListener.failureLatch, testMockCommandListener.failureCount, 2);
+    waitAndAssert(testReregisterCommandListener.failureLatch, testReregisterCommandListener.failureCount, 1);
 
     // Retrieve command info maps
     // Verify that all commands are marked as failed and removed from the mapping
     assertFalse(mockCommandInfoMap.containsKey(1L));
     assertFalse(mockCommandInfoMap.containsKey(3L));
     assertFalse(reregisterCommandInfoMap.containsKey(2L));
-    assertEquals(3, testListener.sentCount.get());
   }
 
   /**
@@ -378,7 +416,7 @@ public class TestOMJobworkerCommandManager {
     private volatile JobworkerCommandInfo lastCommandInfo = null;
 
     @Override
-    public void onSendCommand(OMJobworkerCommand command, UUID jobworkerUuid) {
+    public void onSendCommand(OMJobworkerCommandProto command, UUID jobworkerUuid) {
       sentCount.incrementAndGet();
       sentLatch.countDown();
     }
@@ -453,9 +491,42 @@ public class TestOMJobworkerCommandManager {
   private void waitAndAssert(CountDownLatch latch, AtomicInteger counter,
                              int expectedValue) throws InterruptedException, TimeoutException {
     assertTrue(latch.await(10, TimeUnit.SECONDS),
-        "Latch should have been released within " + 10 + " seconds");
+        "Latch should have been released within " + 10 + " seconds, current latch count: " +
+            latch.getCount());
     if (expectedValue != counter.get()) {
       GenericTestUtils.waitFor(() -> expectedValue == counter.get(), 500, 5000);
     }
+  }
+
+  private void sendHeartbeat() throws IOException {
+    JobworkerServiceProtocolProtos.SendHeartbeatRequest heartbeatRequest =
+        JobworkerServiceProtocolProtos.SendHeartbeatRequest.newBuilder()
+        .setJobworkerDetails(jobworkerDetails.getProtoBufMessage())
+        .setOmServiceId(omServiceId)
+        .build();
+    JobworkerServiceProtocolProtos.SendHeartbeatResponseProto heartbeatResponse =
+        client.sendHeartbeat(heartbeatRequest);
+    assertNotNull(heartbeatResponse);
+  }
+
+  private void sendRegister() throws IOException {
+    JobworkerServiceProtocolProtos.RegisterJobworkerRequest registerJobworkerRequest =
+        JobworkerServiceProtocolProtos.RegisterJobworkerRequest.newBuilder()
+        .setExtendedJobWorkDetailsProto(jobworkerDetails.getExtendedProtoBufMessage())
+        .build();
+    JobworkerServiceProtocolProtos.RegisterJobworkerResponse registerJobworkerResponse =
+        client.register(registerJobworkerRequest);
+    assertNotNull(registerJobworkerResponse);
+  }
+
+
+  private OzoneConfiguration createNewTestPath() throws IOException {
+    OzoneConfiguration conf = new OzoneConfiguration();
+    File newFolder = folder.toFile();
+    if (!newFolder.exists()) {
+      Assertions.assertTrue(newFolder.mkdirs());
+    }
+    ServerUtils.setOzoneMetaDirPath(conf, newFolder.toString());
+    return conf;
   }
 }

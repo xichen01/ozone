@@ -222,7 +222,8 @@ public class OMJobworkerCommandManager {
   }
 
   /**
-   * Send a command to a JobWorker and track its status.
+   * Queue a command to a JobWorker and track its status.
+   * TODO(JW): Since this is queueing, we can rename this to addCommand / queueCommand
    *
    * @param jobworkerUuid UUID of the target JobWorker
    * @param command command to send
@@ -244,9 +245,17 @@ public class OMJobworkerCommandManager {
     commandInfoMap.put(command.getId(), commandInfo);
 
     jobworkerNodeManager.addOMJobworkerCommand(jobworkerUuid, command);
-    listener.onSendCommand(command, jobworkerUuid);
-    LOG.debug("Sent command {} of type {} to JobWorker {}", command.getId(), command.getType(), jobworkerUuid);
+    LOG.debug("Queued command {} of type {} to JobWorker {}", command.getId(), command.getType(), jobworkerUuid);
     return command.getId();
+  }
+
+  public void markCommandSentForJobworker(OMJobworkerCommandProto command, UUID jobworkerUuid) {
+    JobworkerCommandListener listener = listeners.get(command.getCommandType());
+    if (listener == null) {
+      LOG.warn("Encountered command with unknown type {}", command.getCommandType());
+      return;
+    }
+    listener.onSendCommand(command, jobworkerUuid);
   }
 
   /**

@@ -24,12 +24,21 @@ import com.google.protobuf.ServiceException;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import java.io.IOException;
+import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
+
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceGrpc;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.JobworkerRequest;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.JobworkerResponse;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto;
+import org.apache.hadoop.hdds.protocol.proto.HddsProtos;
 import org.apache.hadoop.hdds.server.OzoneProtocolMessageDispatcher;
 import org.apache.hadoop.hdds.utils.ProtocolMessageMetrics;
 import org.apache.hadoop.ozone.jobworker.protocol.JobworkerProtocol;
+import org.apache.hadoop.ozone.om.jobworker.command.JobworkerCommandListener;
+import org.apache.hadoop.ozone.om.jobworker.command.OMJobworkerCommandManager;
+import org.apache.hadoop.util.ProtobufUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,13 +54,16 @@ public class JobworkerGrpcRequestHandler extends
   private final JobworkerProtocol jobworkerProtocol;
   private final OzoneProtocolMessageDispatcher<JobworkerRequest,
       JobworkerResponse, ProtocolMessageEnum> dispatcher;
+  private final OMJobworkerCommandManager omJobworkerCommandManager;
 
   public JobworkerGrpcRequestHandler(
       JobworkerProtocol jobworkerProtocol,
-      ProtocolMessageMetrics<ProtocolMessageEnum> protocolMessageMetrics) {
+      ProtocolMessageMetrics<ProtocolMessageEnum> protocolMessageMetrics,
+      OMJobworkerCommandManager omJobworkerCommandManager) {
     this.jobworkerProtocol = jobworkerProtocol;
     dispatcher = new OzoneProtocolMessageDispatcher<>("OMJobworkerProtocol",
         protocolMessageMetrics, LOG);
+    this.omJobworkerCommandManager = Objects.requireNonNull(omJobworkerCommandManager);
   }
 
   @Override
@@ -63,6 +75,7 @@ public class JobworkerGrpcRequestHandler extends
       JobworkerResponse response = dispatcher.processRequest(request, this::processMessage,
           request.getCmdType(), request.getTraceID());
       responseObserver.onNext(response);
+      handlePostResponse(request, response);
     } catch (ServiceException e) {
       LOG.error("Failed to process Jobworker request", e);
       responseObserver.onError(
@@ -99,6 +112,27 @@ public class JobworkerGrpcRequestHandler extends
       return responseBuilder.build();
     } catch (IOException e) {
       throw new ServiceException(e);
+    }
+  }
+
+  private void handlePostResponse(JobworkerRequest request, JobworkerResponse response) {
+    try {
+      if (request.hasSendHeartbeatRequest() && response.hasSendHeartbeatResponseProto() &&
+          !response.getSendHeartbeatResponseProto().getCommandsList().isEmpty()) {
+
+        List<OMJobworkerCommandProto> sentCommands = response.getSendHeartbeatResponseProto().getCommandsList();
+        HddsProtos.UUID uuid = request.getSendHeartbeatRequest().getJobworkerDetails().getUuid128();
+        UUID jobworkerUuid = ProtobufUtils.fromProtobuf(uuid);
+        for (OMJobworkerCommandProto sentCommand : sentCommands) {
+          // TODO(JW): We might need to add cmdId to OMJobworkerCommandProto (similar to OMJobworkerCommand), instead
+          //  of adding it in the underlying command implementation proto
+          LOG.debug("Sent command of type {} to JobWorker {}", sentCommand.getCommandType(),
+              jobworkerUuid);
+          omJobworkerCommandManager.markCommandSentForJobworker(sentCommand, jobworkerUuid);
+        }
+      }
+    } catch (Exception e) {
+      LOG.error("Error when handling command of type {}", request.getCmdType(), e);
     }
   }
 }

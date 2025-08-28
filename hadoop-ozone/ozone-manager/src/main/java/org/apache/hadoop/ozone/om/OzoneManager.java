@@ -801,10 +801,13 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
     eventQueue = new EventQueue(threadPrefix + "EventQueue");
     jobworkerNodemanager = new JobworkerNodeManager(
         this::resolveNodeLocation, clusterMap, omStorage, omNodeDetails, conf, eventQueue);
+    omJobworkerCommandManager = new OMJobworkerCommandManager(
+        jobworkerNodemanager, omNodeDetails.getServiceId());
     addEventQueue(eventQueue, jobworkerNodemanager);
     jobworkerServerProtocol =
         new JobworkerProtocolServerImpl(this, jobworkerNodemanager, eventQueue);
-    jobworkerGrpcServer = getJobworkerGrpcServer(conf, jobworkerServerProtocol);
+    jobworkerGrpcServer = getJobworkerGrpcServer(
+        conf, jobworkerServerProtocol, omJobworkerCommandManager);
 
 
     // Start Om Rpc Server.
@@ -846,7 +849,6 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
               .setNameFormat("Warm Up EDEK Cache Thread #%d")
               .build());
       warmUpEdekCache(edekCacheLoader, edekCacheLoaderDelay, edekCacheLoaderInterval, edekCacheLoaderMaxRetries);
-    }
   }
 
   static class EDEKCacheLoader implements Runnable {
@@ -941,7 +943,6 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
         new JobworkerNodeReportHandler(nodeManager);
     NewJobworkerHandler newJobworkerHandler =
         new NewJobworkerHandler(nodeManager);
-    omJobworkerCommandManager = new OMJobworkerCommandManager(nodeManager, omNodeDetails.getServiceId());
     StaleJobworkerHandler staleJobworkerHandler =
         new StaleJobworkerHandler(nodeManager, omJobworkerCommandManager);
     JobworkerCommandStatusReportHandler commandStatusReportHandler =
@@ -1712,8 +1713,9 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
    * @throws IOException if there is an I/O error while creating RPC server
    */
   private JobworkerGrpcServer getJobworkerGrpcServer(
-      OzoneConfiguration conf, JobworkerProtocolServerImpl serverSideTranslatorPB) {
-    return new JobworkerGrpcServer(conf, serverSideTranslatorPB, omNodeDetails);
+      OzoneConfiguration conf, JobworkerProtocolServerImpl serverSideTranslatorPB,
+      OMJobworkerCommandManager jobworkerCommandManager) {
+    return new JobworkerGrpcServer(conf, serverSideTranslatorPB, omNodeDetails, jobworkerCommandManager);
   }
 
   private static boolean isOzoneSecurityEnabled() {
@@ -2218,7 +2220,8 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
       omS3gGrpcServer.start();
       isOmGrpcServerRunning = true;
     }
-    jobworkerGrpcServer = getJobworkerGrpcServer(configuration, jobworkerServerProtocol);
+    jobworkerGrpcServer = getJobworkerGrpcServer(
+        configuration, jobworkerServerProtocol, omJobworkerCommandManager);
     jobworkerGrpcServer.start();
     startJVMPauseMonitor();
     setStartTime();
