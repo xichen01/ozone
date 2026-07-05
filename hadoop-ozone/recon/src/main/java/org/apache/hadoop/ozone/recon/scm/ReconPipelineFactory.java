@@ -17,6 +17,7 @@
 
 package org.apache.hadoop.ozone.recon.scm;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Set;
 import org.apache.commons.collections4.map.DefaultedMap;
@@ -64,7 +65,7 @@ public class ReconPipelineFactory extends PipelineFactory {
 
     @Override
     public Pipeline create(ReplicationConfig config,
-                           List<DatanodeDetails> nodes) {
+                           List<DatanodeDetails> nodes, StorageTier storageTier) {
       throw new UnsupportedOperationException(
           "Trying to create pipeline in Recon, which is prohibited!");
     }
