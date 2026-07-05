@@ -18,14 +18,9 @@
 package org.apache.hadoop.hdds.scm.pipeline;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.Objects;
-import java.util.Set;
 import java.util.concurrent.TimeoutException;
 import org.apache.hadoop.hdds.client.RatisReplicationConfig;
-import org.apache.hadoop.hdds.client.StorageTier;
 import org.apache.hadoop.hdds.conf.ConfigurationSource;
 import org.apache.hadoop.hdds.protocol.DatanodeDetails;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.ReplicationFactor;
@@ -34,7 +29,6 @@ import org.apache.hadoop.hdds.protocol.proto.StorageContainerDatanodeProtocolPro
 import org.apache.hadoop.hdds.scm.events.SCMEvents;
 import org.apache.hadoop.hdds.scm.exceptions.SCMException;
 import org.apache.hadoop.hdds.scm.ha.SCMContext;
-import org.apache.hadoop.hdds.scm.node.NodeUtils;
 import org.apache.hadoop.hdds.scm.safemode.SafeModeManager;
 import org.apache.hadoop.hdds.scm.server.SCMDatanodeHeartbeatDispatcher.PipelineReportFromDatanode;
 import org.apache.hadoop.hdds.server.events.EventHandler;
@@ -125,7 +119,6 @@ public class PipelineReportHandler implements
 
     setReportedDatanode(pipeline, dn);
     setPipelineLeaderId(report, pipeline, dn);
-    updateSupportedStorageTiers(pipeline);
 
     if (pipeline.getPipelineState() == Pipeline.PipelineState.ALLOCATED) {
       if (LOGGER.isDebugEnabled()) {
@@ -143,28 +136,6 @@ public class PipelineReportHandler implements
       if (scmSafeModeManager.getInSafeMode()) {
         publisher.fireEvent(SCMEvents.OPEN_PIPELINE, pipeline);
       }
-    }
-  }
-
-  private void updateSupportedStorageTiers(Pipeline pipeline) {
-    try {
-      Set<StorageTier> currentSupportedTiers =
-          pipeline.getSupportedStorageTier() != null
-              ? new HashSet<>(pipeline.getSupportedStorageTier())
-              : Collections.emptySet();
-
-      Set<StorageTier> newSupportedTiers =
-          new HashSet<>(NodeUtils.getDatanodesStorageTypes(pipeline.getNodes(),
-              scmContext.getScm().getScmNodeManager()));
-
-      if (!currentSupportedTiers.equals(newSupportedTiers)) {
-        pipeline.setSupportedStorageTier(new ArrayList<>(newSupportedTiers));
-        LOGGER.info("Updated supported storage tiers for Pipeline ID {} from {} to {}",
-            pipeline.getId(), currentSupportedTiers, newSupportedTiers);
-      }
-    } catch (Exception e) {
-      LOGGER.warn("Failed to update supported storage tiers for Pipeline ID {} due to: {}",
-          pipeline.getId(), e.getMessage(), e);
     }
   }
 

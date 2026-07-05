@@ -420,7 +420,7 @@ public class TestPipelineManagerImpl {
   }
 
   @Test
-  public void testPipelineReportUpdateSupportedStorageTier() throws Exception {
+  public void testPipelineReportDoesNotUpdateSupportedStorageTier() throws Exception {
     // Set Env
     int nodeCount = 3;
     MockNodeManager localNodeManager = new MockNodeManager(true, nodeCount, StorageType.DISK);
@@ -437,7 +437,8 @@ public class TestPipelineManagerImpl {
     assertEquals(nodeCount, nodes.size());
     Pipeline pipeline = pipelineManager.createPipeline(RatisReplicationConfig
         .getInstance(ReplicationFactor.THREE));
-    assertTrue(pipeline.getSupportedStorageTier().contains(StorageTier.DISK));
+    assertEquals(Collections.singletonList(StorageTier.DISK),
+        pipeline.getSupportedStorageTier());
 
     assertFalse(pipelineManager.getPipeline(pipeline.getId()).isHealthy());
     PipelineReportHandler pipelineReportHandler = new PipelineReportHandler(
@@ -450,31 +451,27 @@ public class TestPipelineManagerImpl {
     // All the Datanode Volume StorageType is DISK so the Pipeline StorageTier will be StorageTier.DISK
     assertTrue(pipelineManager.getPipeline(pipeline.getId()).isHealthy());
     assertTrue(pipelineManager.getPipeline(pipeline.getId()).isOpen());
-    assertEquals(1, pipeline.getSupportedStorageTier().size());
-    assertTrue(pipeline.getSupportedStorageTier().contains(StorageTier.DISK));
+    assertEquals(Collections.singletonList(StorageTier.DISK),
+        pipeline.getSupportedStorageTier());
 
     // Only the first Datanode updated its NodeReport to SSD,
-    // Pipeline's Datanode StorageType [SSD, DISK, DISK] is not a valid StorageTier
+    // but the Pipeline supportedStorageTier keeps the StorageTier selected at creation.
     localNodeManager.setStorageTypeForNode(nodes.get(0).getID(), StorageType.SSD);
     sendPipelineReport(nodes.get(0), pipeline, pipelineReportHandler, false);
-    assertEquals(0,
-        pipelineManager.getPipeline(pipeline.getId()).getSupportedStorageTier().size());
+    assertEquals(Collections.singletonList(StorageTier.DISK),
+        pipelineManager.getPipeline(pipeline.getId()).getSupportedStorageTier());
 
     // The first and second Datanode updated its NodeReport to SSD
-    // Pipeline's Datanode StorageType [SSD, SSD, DISK] is not a valid StorageTier
     localNodeManager.setStorageTypeForNode(nodes.get(1).getID(), StorageType.SSD);
     sendPipelineReport(nodes.get(1), pipeline, pipelineReportHandler, false);
-    assertEquals(0,
-        pipelineManager.getPipeline(pipeline.getId()).getSupportedStorageTier().size());
+    assertEquals(Collections.singletonList(StorageTier.DISK),
+        pipelineManager.getPipeline(pipeline.getId()).getSupportedStorageTier());
 
     // The first and second Datanode updated its NodeReport to SSD
-    // Pipeline's Datanode StorageType [SSD, SSD, SSD] is StorageTier.SSD
     localNodeManager.setStorageTypeForNode(nodes.get(2).getID(), StorageType.SSD);
     sendPipelineReport(nodes.get(2), pipeline, pipelineReportHandler, true);
-    assertEquals(1,
-        pipelineManager.getPipeline(pipeline.getId()).getSupportedStorageTier().size());
-    assertTrue(pipelineManager.getPipeline(pipeline.getId())
-        .getSupportedStorageTier().contains(StorageTier.SSD));
+    assertEquals(Collections.singletonList(StorageTier.DISK),
+        pipelineManager.getPipeline(pipeline.getId()).getSupportedStorageTier());
 
     // close the pipeline and clean up
     pipelineManager.closePipeline(pipeline.getId());

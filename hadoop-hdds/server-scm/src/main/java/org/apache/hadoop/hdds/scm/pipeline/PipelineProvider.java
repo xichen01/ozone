@@ -74,8 +74,8 @@ public abstract class PipelineProvider<REPLICATION_CONFIG
 
   protected abstract Pipeline create(
       REPLICATION_CONFIG replicationConfig,
-      List<DatanodeDetails> nodes
-  );
+      List<DatanodeDetails> nodes,
+      StorageTier storageTier) throws IOException;
 
   protected abstract Pipeline createForRead(
       REPLICATION_CONFIG replicationConfig,

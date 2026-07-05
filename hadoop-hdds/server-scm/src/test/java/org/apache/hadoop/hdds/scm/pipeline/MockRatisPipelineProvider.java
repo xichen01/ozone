@@ -18,6 +18,7 @@
 package org.apache.hadoop.hdds.scm.pipeline;
 
 import java.io.IOException;
+import java.util.Collections;
 import java.util.List;
 import org.apache.hadoop.hdds.client.RatisReplicationConfig;
 import org.apache.hadoop.hdds.client.ReplicationConfig;
@@ -26,7 +27,6 @@ import org.apache.hadoop.hdds.conf.ConfigurationSource;
 import org.apache.hadoop.hdds.protocol.DatanodeDetails;
 import org.apache.hadoop.hdds.scm.ha.SCMContext;
 import org.apache.hadoop.hdds.scm.node.NodeManager;
-import org.apache.hadoop.hdds.scm.node.NodeUtils;
 import org.apache.hadoop.hdds.server.events.EventPublisher;
 import org.apache.hadoop.hdds.server.events.EventQueue;
 
@@ -72,8 +72,6 @@ public class MockRatisPipelineProvider extends RatisPipelineProvider {
       return super.create(replicationConfig, storageTier);
     } else {
       Pipeline initialPipeline = super.create(replicationConfig, storageTier);
-      List<StorageTier> storageTiers =
-          NodeUtils.getDatanodesStorageTypes(initialPipeline.getNodes(), getNodeManager());
       Pipeline pipeline = Pipeline.newBuilder()
           .setId(initialPipeline.getId())
           // overwrite pipeline state to main ALLOCATED
@@ -82,7 +80,7 @@ public class MockRatisPipelineProvider extends RatisPipelineProvider {
               .fromProtoTypeAndFactor(initialPipeline.getType(),
                   replicationConfig.getReplicationFactor()))
           .setNodes(initialPipeline.getNodes())
-          .setSupportedStorageTier(storageTiers)
+          .setSupportedStorageTier(initialPipeline.getSupportedStorageTier())
           .build();
       return pipeline;
     }
@@ -98,14 +96,14 @@ public class MockRatisPipelineProvider extends RatisPipelineProvider {
 
   @Override
   public Pipeline create(RatisReplicationConfig replicationConfig,
-      List<DatanodeDetails> nodes) {
-    List<StorageTier> storageTiers = NodeUtils.getDatanodesStorageTypes(nodes, getNodeManager());
+      List<DatanodeDetails> nodes, StorageTier storageTier)
+      throws IOException {
     return Pipeline.newBuilder()
         .setId(PipelineID.randomId())
         .setState(Pipeline.PipelineState.OPEN)
         .setReplicationConfig(replicationConfig)
         .setNodes(nodes)
-        .setSupportedStorageTier(storageTiers)
+        .setSupportedStorageTier(Collections.singletonList(storageTier))
         .build();
   }
 

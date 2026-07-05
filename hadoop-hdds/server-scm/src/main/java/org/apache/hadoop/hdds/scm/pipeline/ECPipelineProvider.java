@@ -95,28 +95,26 @@ public class ECPipelineProvider extends PipelineProvider<ECReplicationConfig> {
     List<DatanodeDetails> dns = placementPolicy
         .chooseDatanodes(excludedNodes, favoredNodes,
             replicationConfig.getRequiredNodes(), 0, this.containerSizeBytes, storageType);
-    List<StorageTier> storageTiers =
-        NodeUtils.getDatanodesStorageTypes(dns, getNodeManager());
-    if (!storageTiers.contains(storageTier)) {
-      throw new SCMException(String.format("Cannot create pipeline for StorageTier %s replicationConfig: %s",
-          storageTier, replicationConfig), SCMException.ResultCodes.FAILED_TO_FIND_SUITABLE_NODE);
-    }
-    return create(replicationConfig, dns);
+    return create(replicationConfig, dns, storageTier);
   }
 
   @Override
   protected Pipeline create(ECReplicationConfig replicationConfig,
-      List<DatanodeDetails> nodes) {
-
+      List<DatanodeDetails> nodes, StorageTier storageTier) throws IOException {
+    List<StorageTier> storageTiers = NodeUtils.getDatanodesStorageTypes(nodes, getNodeManager());
+    if (!storageTiers.contains(storageTier)) {
+      throw new SCMException(String.format("Cannot create pipeline for "
+              + "StorageTier %s replicationConfig: %s",
+          storageTier, replicationConfig),
+          SCMException.ResultCodes.FAILED_TO_FIND_SUITABLE_NODE);
+    }
     Map<DatanodeDetails, Integer> dnIndexes = new HashMap<>();
     int ecIndex = 1;
     for (DatanodeDetails dn : nodes) {
       dnIndexes.put(dn, ecIndex);
       ecIndex++;
     }
-    List<StorageTier> storageTiers =
-        NodeUtils.getDatanodesStorageTypes(nodes, getNodeManager());
-    return createPipelineInternal(replicationConfig, nodes, dnIndexes, storageTiers);
+    return createPipelineInternal(replicationConfig, nodes, dnIndexes, Collections.singletonList(storageTier));
   }
 
   @Override

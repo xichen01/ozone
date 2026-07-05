@@ -104,9 +104,15 @@ public class SimplePipelineProvider
 
   @Override
   public Pipeline create(StandaloneReplicationConfig replicationConfig,
-      List<DatanodeDetails> nodes) {
+      List<DatanodeDetails> nodes, StorageTier storageTier) throws IOException {
     List<StorageTier> storageTiers = NodeUtils.getDatanodesStorageTypes(nodes, getNodeManager());
-    return createPipelineInternal(replicationConfig, nodes, storageTiers);
+    if (!storageTiers.contains(storageTier)) {
+      throw new SCMException(String.format("Cannot create pipeline for "
+              + "StorageTier %s replicationConfig: %s",
+          storageTier, replicationConfig),
+          SCMException.ResultCodes.FAILED_TO_FIND_SUITABLE_NODE);
+    }
+    return createPipelineInternal(replicationConfig, nodes, Collections.singletonList(storageTier));
   }
 
   @Override

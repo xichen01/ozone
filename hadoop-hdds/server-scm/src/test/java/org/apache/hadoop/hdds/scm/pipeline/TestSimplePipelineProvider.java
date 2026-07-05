@@ -25,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Stream;
 import org.apache.hadoop.fs.StorageType;
@@ -111,7 +112,8 @@ public class TestSimplePipelineProvider {
     assertEquals(pipeline.getReplicationConfig().getRequiredNodes(), factor.getNumber());
     assertEquals(pipeline.getPipelineState(), Pipeline.PipelineState.OPEN);
     assertEquals(pipeline.getNodes().size(), factor.getNumber());
-    assertTrue(pipeline.getSupportedStorageTier().contains(storageTier));
+    assertEquals(Collections.singletonList(storageTier),
+        pipeline.getSupportedStorageTier());
 
     factor = HddsProtos.ReplicationFactor.ONE;
     Pipeline pipeline1 =
@@ -125,7 +127,8 @@ public class TestSimplePipelineProvider {
             .getReplicationFactor(), factor);
     assertEquals(pipeline1.getPipelineState(), Pipeline.PipelineState.OPEN);
     assertEquals(pipeline1.getNodes().size(), factor.getNumber());
-    assertTrue(pipeline.getSupportedStorageTier().contains(storageTier));
+    assertEquals(Collections.singletonList(storageTier),
+        pipeline1.getSupportedStorageTier());
   }
 
   private List<DatanodeDetails> createListOfNodes(int nodeCount) {
@@ -143,7 +146,8 @@ public class TestSimplePipelineProvider {
     HddsProtos.ReplicationFactor factor = HddsProtos.ReplicationFactor.THREE;
     Pipeline pipeline =
         provider.create(StandaloneReplicationConfig.getInstance(factor),
-            createListOfNodes(factor.getNumber()));
+            createListOfNodes(factor.getNumber()),
+            StorageTier.getDefaultTier());
     assertEquals(pipeline.getType(),
         HddsProtos.ReplicationType.STAND_ALONE);
     assertEquals(
@@ -151,18 +155,21 @@ public class TestSimplePipelineProvider {
             .getReplicationFactor(), factor);
     assertEquals(pipeline.getPipelineState(), Pipeline.PipelineState.OPEN);
     assertEquals(pipeline.getNodes().size(), factor.getNumber());
-    assertTrue(pipeline.getSupportedStorageTier().contains(StorageTier.getDefaultTier()));
+    assertEquals(Collections.singletonList(StorageTier.getDefaultTier()),
+        pipeline.getSupportedStorageTier());
 
     factor = HddsProtos.ReplicationFactor.ONE;
     pipeline = provider.create(StandaloneReplicationConfig.getInstance(factor),
-        createListOfNodes(factor.getNumber()));
+        createListOfNodes(factor.getNumber()),
+        StorageTier.getDefaultTier());
     assertEquals(pipeline.getType(), HddsProtos.ReplicationType.STAND_ALONE);
     assertEquals(
         ((StandaloneReplicationConfig) pipeline.getReplicationConfig())
             .getReplicationFactor(), factor);
     assertEquals(pipeline.getPipelineState(), Pipeline.PipelineState.OPEN);
     assertEquals(pipeline.getNodes().size(), factor.getNumber());
-    assertTrue(pipeline.getSupportedStorageTier().contains(StorageTier.getDefaultTier()));
+    assertEquals(Collections.singletonList(StorageTier.getDefaultTier()),
+        pipeline.getSupportedStorageTier());
   }
 
   @Test

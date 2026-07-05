@@ -138,7 +138,8 @@ public class TestRatisPipelineProvider {
     assertEquals(expectedReplicationType, pipeline.getType());
     assertEquals(expectedFactor.getNumber(), pipeline.getReplicationConfig().getRequiredNodes());
     assertEquals(expectedFactor.getNumber(), pipeline.getNodes().size());
-    assertTrue(pipeline.getSupportedStorageTier().contains(expectedStorageTier));
+    assertEquals(Collections.singletonList(expectedStorageTier),
+        pipeline.getSupportedStorageTier());
   }
 
   private void createPipelineAndAssertions(
@@ -223,13 +224,15 @@ public class TestRatisPipelineProvider {
     HddsProtos.ReplicationFactor factor = HddsProtos.ReplicationFactor.THREE;
     Pipeline pipeline =
         provider.create(RatisReplicationConfig.getInstance(factor),
-            createListOfNodes(factor.getNumber()));
+            createListOfNodes(factor.getNumber()),
+            StorageTier.getDefaultTier());
     assertPipelineProperties(pipeline, factor, REPLICATION_TYPE,
         Pipeline.PipelineState.OPEN, StorageTier.getDefaultTier());
 
     factor = HddsProtos.ReplicationFactor.ONE;
     pipeline = provider.create(RatisReplicationConfig.getInstance(factor),
-        createListOfNodes(factor.getNumber()));
+        createListOfNodes(factor.getNumber()),
+        StorageTier.getDefaultTier());
     assertPipelineProperties(pipeline, factor, REPLICATION_TYPE,
         Pipeline.PipelineState.OPEN, StorageTier.getDefaultTier());
   }
@@ -245,10 +248,10 @@ public class TestRatisPipelineProvider {
 
     Pipeline pipeline1 = provider.create(
         RatisReplicationConfig.getInstance(ReplicationFactor.THREE),
-        healthyNodes);
+        healthyNodes, StorageTier.getDefaultTier());
     Pipeline pipeline2 = provider.create(
         RatisReplicationConfig.getInstance(ReplicationFactor.THREE),
-        healthyNodes);
+        healthyNodes, StorageTier.getDefaultTier());
     Pipeline pipeline3 = provider.createForRead(
         RatisReplicationConfig.getInstance(ReplicationFactor.THREE), replicas);
 

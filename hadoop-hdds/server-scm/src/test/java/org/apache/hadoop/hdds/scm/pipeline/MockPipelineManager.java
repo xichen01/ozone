@@ -30,6 +30,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.hadoop.hdds.client.ReplicationConfig;
+import org.apache.hadoop.hdds.client.StorageTier;
 import org.apache.hadoop.hdds.protocol.DatanodeDetails;
 import org.apache.hadoop.hdds.protocol.MockDatanodeDetails;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos;
@@ -83,7 +84,8 @@ public class MockPipelineManager implements PipelineManager {
       pipeline = createPipeline(replicationConfig,
           ImmutableList.of(MockDatanodeDetails.randomDatanodeDetails(),
               MockDatanodeDetails.randomDatanodeDetails(),
-              MockDatanodeDetails.randomDatanodeDetails()));
+              MockDatanodeDetails.randomDatanodeDetails()),
+          StorageTier.getDefaultTier());
     }
 
     stateManager.addPipeline(pipeline.getProtobufMessage(
@@ -116,11 +118,12 @@ public class MockPipelineManager implements PipelineManager {
 
   @Override
   public Pipeline createPipeline(final ReplicationConfig replicationConfig,
-      final List<DatanodeDetails> nodes) {
+      final List<DatanodeDetails> nodes, StorageTier storageTier) {
     return Pipeline.newBuilder()
         .setId(PipelineID.randomId())
         .setReplicationConfig(replicationConfig)
         .setNodes(nodes)
+        .setSupportedStorageTier(Collections.singletonList(storageTier))
         .setState(Pipeline.PipelineState.OPEN)
         .build();
   }

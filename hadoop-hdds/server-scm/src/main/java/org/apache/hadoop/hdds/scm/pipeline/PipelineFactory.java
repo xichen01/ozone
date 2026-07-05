@@ -108,10 +108,9 @@ public class PipelineFactory {
   }
 
   public Pipeline create(ReplicationConfig replicationConfig,
-      List<DatanodeDetails> nodes
-  ) {
+      List<DatanodeDetails> nodes, StorageTier storageTier) throws IOException {
     return providers.get(replicationConfig.getReplicationType())
-        .create(replicationConfig, nodes);
+        .create(replicationConfig, nodes, storageTier);
   }
 
   public Pipeline createForRead(ReplicationConfig replicationConfig,
