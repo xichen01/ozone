@@ -172,7 +172,7 @@ public class RatisPipelineProvider
     case THREE:
       StorageTierUtil.validateNotEmpty(storageTier);
       StorageType storageType = storageTier.getUniformStorageType();
-      List<DatanodeDetails> excludeDueToEngagement = filterPipelineEngagement();
+      List<DatanodeDetails> excludeDueToEngagement = filterPipelineEngagement(storageTier);
       if (!excludeDueToEngagement.isEmpty()) {
         if (excludedNodes.isEmpty()) {
           excludedNodes = excludeDueToEngagement;
@@ -203,7 +203,7 @@ public class RatisPipelineProvider
         .setNodes(dns)
         .setSuggestedLeaderId(
             suggestedLeader != null ? suggestedLeader.getID() : null)
-        .setSupportedStorageTier(storageTiers)
+        .setSupportedStorageTier(storageTier)
         .build();
 
     // Send command to datanodes to create pipeline
@@ -235,17 +235,17 @@ public class RatisPipelineProvider
           storageTier, replicationConfig),
           SCMException.ResultCodes.FAILED_TO_FIND_SUITABLE_NODE);
     }
-    return createPipelineInternal(replicationConfig, nodes, Collections.singletonList(storageTier));
+    return createPipelineInternal(replicationConfig, nodes, storageTier);
   }
 
   private Pipeline createPipelineInternal(RatisReplicationConfig replicationConfig,
-      List<DatanodeDetails> nodes, List<StorageTier> storageTiers) {
+      List<DatanodeDetails> nodes, StorageTier storageTier) {
     return Pipeline.newBuilder()
         .setId(PipelineID.randomId())
         .setState(PipelineState.ALLOCATED)
         .setReplicationConfig(replicationConfig)
         .setNodes(nodes)
-        .setSupportedStorageTier(storageTiers)
+        .setSupportedStorageTier(storageTier)
         .build();
   }
 
@@ -257,16 +257,18 @@ public class RatisPipelineProvider
     return createPipelineInternal(replicationConfig, replicas
         .stream()
         .map(ContainerReplica::getDatanodeDetails)
-        .collect(Collectors.toList()), new ArrayList<>());
+        .collect(Collectors.toList()), null);
   }
 
-  private List<DatanodeDetails> filterPipelineEngagement() {
+  private List<DatanodeDetails> filterPipelineEngagement(StorageTier storageTier) {
     final NodeManager nodeManager = getNodeManager();
     final PipelineStateManager stateManager = getPipelineStateManager();
     final List<DatanodeDetails> healthyNodes = nodeManager.getNodes(NodeStatus.inServiceHealthy());
     final List<DatanodeDetails> excluded = new ArrayList<>();
+    final StorageType storageType = storageTier.getUniformStorageType();
     for (DatanodeDetails d : healthyNodes) {
-      final int count = PipelinePlacementPolicy.currentRatisThreePipelineCount(nodeManager, stateManager, d);
+      final int count = PipelinePlacementPolicy.currentRatisThreePipelineCount(
+          nodeManager, stateManager, d, storageType);
       if (count >= nodeManager.pipelineLimit(d)) {
         excluded.add(d);
       }

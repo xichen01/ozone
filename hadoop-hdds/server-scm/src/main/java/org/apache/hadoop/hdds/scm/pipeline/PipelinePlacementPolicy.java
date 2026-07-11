@@ -85,7 +85,8 @@ public final class PipelinePlacementPolicy extends SCMCommonPlacementPolicy {
   static int currentRatisThreePipelineCount(
       NodeManager nodeManager,
       PipelineStateManager stateManager,
-      DatanodeDetails datanodeDetails) {
+      DatanodeDetails datanodeDetails,
+      StorageType storageType) {
     // Safe to cast collection's size to int
     return (int) nodeManager.getPipelines(datanodeDetails).stream()
         .map(id -> {
@@ -97,15 +98,15 @@ public final class PipelinePlacementPolicy extends SCMCommonPlacementPolicy {
             return null;
           }
         })
-        .filter(PipelinePlacementPolicy::isNonClosedRatisThreePipeline)
+        .filter(p -> isNonClosedRatisThreePipeline(p, storageType))
         .count();
   }
 
   /** Filter the given datanodes within its pipeline limit. */
-  List<DatanodeDetails> filterPipelineLimit(Iterable<DatanodeDetails> datanodes) {
+  List<DatanodeDetails> filterPipelineLimit(Iterable<DatanodeDetails> datanodes, StorageType storageType) {
     final SortedList<DatanodeDetails> sorted = new SortedList<>(DatanodeDetails.class);
     for (DatanodeDetails d : datanodes) {
-      final int count = currentRatisThreePipelineCount(nodeManager, stateManager, d);
+      final int count = currentRatisThreePipelineCount(nodeManager, stateManager, d, storageType);
       if (count < nodeManager.pipelineLimit(d)) {
         sorted.add(d, count);
       }
@@ -113,10 +114,21 @@ public final class PipelinePlacementPolicy extends SCMCommonPlacementPolicy {
     return sorted;
   }
 
-  private static boolean isNonClosedRatisThreePipeline(Pipeline p) {
+  private static boolean isNonClosedRatisThreePipeline(Pipeline p, StorageType storageType) {
+    boolean matchedTier = false;
+    if (storageType != null) {
+      try {
+        // TODO: Do we need to return true if getSupportedStorageTier() is empty
+        //  otherwise this might cause more pipelines to be created than necessary
+        matchedTier = p.getSupportedStorageTier().getUniformStorageType().equals(storageType);
+      } catch (IllegalArgumentException e) {
+        LOG.debug("Cannot convert pipeline storage tier {} to storage type.", p.getSupportedStorageTier(), e);
+        return false;
+      }
+    }
     return p != null && p.getReplicationConfig()
         .equals(RatisReplicationConfig.getInstance(ReplicationFactor.THREE))
-        && !p.isClosed();
+        && !p.isClosed() && matchedTier;
   }
 
   @Override
@@ -182,7 +194,7 @@ public final class PipelinePlacementPolicy extends SCMCommonPlacementPolicy {
     // filter nodes that meet the size and pipeline engagement criteria.
     // Pipeline placement doesn't take node space left into account.
     // Sort the DNs by pipeline load.
-    final List<DatanodeDetails> healthyList = filterPipelineLimit(healthyNodes);
+    final List<DatanodeDetails> healthyList = filterPipelineLimit(healthyNodes, storageType);
 
     if (healthyList.size() < nodesRequired) {
       if (LOG.isDebugEnabled()) {

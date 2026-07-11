@@ -22,6 +22,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -31,22 +34,29 @@ import java.util.stream.Stream;
 import org.apache.hadoop.fs.StorageType;
 import org.apache.hadoop.hdds.HddsConfigKeys;
 import org.apache.hadoop.hdds.client.RatisReplicationConfig;
+import org.apache.hadoop.hdds.client.ReplicationConfig;
 import org.apache.hadoop.hdds.client.StandaloneReplicationConfig;
 import org.apache.hadoop.hdds.client.StorageTier;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.DatanodeDetails;
+import org.apache.hadoop.hdds.protocol.MockDatanodeDetails;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos;
+import org.apache.hadoop.hdds.protocol.proto.HddsProtos.StorageTypeProto;
+import org.apache.hadoop.hdds.protocol.proto.StorageContainerDatanodeProtocolProtos.StorageReportProto;
+import org.apache.hadoop.hdds.scm.HddsTestUtils;
 import org.apache.hadoop.hdds.scm.container.MockNodeManager;
 import org.apache.hadoop.hdds.scm.exceptions.SCMException;
 import org.apache.hadoop.hdds.scm.ha.SCMHAManager;
 import org.apache.hadoop.hdds.scm.ha.SCMHAManagerStub;
 import org.apache.hadoop.hdds.scm.metadata.SCMDBDefinition;
+import org.apache.hadoop.hdds.scm.node.DatanodeInfo;
 import org.apache.hadoop.hdds.scm.node.NodeManager;
 import org.apache.hadoop.hdds.scm.node.NodeStatus;
 import org.apache.hadoop.hdds.utils.db.DBStore;
 import org.apache.hadoop.hdds.utils.db.DBStoreBuilder;
 import org.apache.hadoop.ozone.ClientVersion;
 import org.apache.hadoop.ozone.container.common.SCMTestUtils;
+import org.apache.hadoop.ozone.container.upgrade.UpgradeUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -112,8 +122,7 @@ public class TestSimplePipelineProvider {
     assertEquals(pipeline.getReplicationConfig().getRequiredNodes(), factor.getNumber());
     assertEquals(pipeline.getPipelineState(), Pipeline.PipelineState.OPEN);
     assertEquals(pipeline.getNodes().size(), factor.getNumber());
-    assertEquals(Collections.singletonList(storageTier),
-        pipeline.getSupportedStorageTier());
+    assertEquals(storageTier, pipeline.getSupportedStorageTier());
 
     factor = HddsProtos.ReplicationFactor.ONE;
     Pipeline pipeline1 =
@@ -127,8 +136,7 @@ public class TestSimplePipelineProvider {
             .getReplicationFactor(), factor);
     assertEquals(pipeline1.getPipelineState(), Pipeline.PipelineState.OPEN);
     assertEquals(pipeline1.getNodes().size(), factor.getNumber());
-    assertEquals(Collections.singletonList(storageTier),
-        pipeline1.getSupportedStorageTier());
+    assertEquals(storageTier, pipeline1.getSupportedStorageTier());
   }
 
   private List<DatanodeDetails> createListOfNodes(int nodeCount) {
@@ -155,8 +163,7 @@ public class TestSimplePipelineProvider {
             .getReplicationFactor(), factor);
     assertEquals(pipeline.getPipelineState(), Pipeline.PipelineState.OPEN);
     assertEquals(pipeline.getNodes().size(), factor.getNumber());
-    assertEquals(Collections.singletonList(StorageTier.getDefaultTier()),
-        pipeline.getSupportedStorageTier());
+    assertEquals(StorageTier.getDefaultTier(), pipeline.getSupportedStorageTier());
 
     factor = HddsProtos.ReplicationFactor.ONE;
     pipeline = provider.create(StandaloneReplicationConfig.getInstance(factor),
@@ -168,8 +175,51 @@ public class TestSimplePipelineProvider {
             .getReplicationFactor(), factor);
     assertEquals(pipeline.getPipelineState(), Pipeline.PipelineState.OPEN);
     assertEquals(pipeline.getNodes().size(), factor.getNumber());
-    assertEquals(Collections.singletonList(StorageTier.getDefaultTier()),
-        pipeline.getSupportedStorageTier());
+    assertEquals(StorageTier.getDefaultTier(), pipeline.getSupportedStorageTier());
+  }
+
+  @Test
+  public void testCreatedPipelineOnlySupportsRequestedStorageTier()
+      throws Exception {
+    NodeManager nodeManager = mock(NodeManager.class);
+    PipelineStateManager pipelineStateManager = mock(PipelineStateManager.class);
+    List<DatanodeDetails> nodes = new ArrayList<>();
+    for (int i = 0; i < HddsProtos.ReplicationFactor.THREE.getNumber(); i++) {
+      nodes.add(createDatanodeInfoWithStorageReports(
+          StorageTypeProto.DISK, StorageTypeProto.SSD));
+    }
+    when(nodeManager.getNodes(NodeStatus.inServiceHealthy()))
+        .thenReturn(nodes);
+    when(nodeManager.getDatanodeInfo(any()))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+    when(pipelineStateManager.getPipelines(
+            any(ReplicationConfig.class)))
+        .thenReturn(Collections.emptyList());
+
+    PipelineProvider pipelineProvider =
+        new SimplePipelineProvider(nodeManager, pipelineStateManager);
+    Pipeline pipeline = pipelineProvider.create(StandaloneReplicationConfig.getInstance(
+        HddsProtos.ReplicationFactor.THREE), StorageTier.DISK);
+
+    assertEquals(StorageTier.DISK, pipeline.getSupportedStorageTier());
+  }
+
+  private DatanodeInfo createDatanodeInfoWithStorageReports(
+      HddsProtos.StorageTypeProto... storageTypes) {
+    DatanodeInfo datanodeInfo = new DatanodeInfo(
+        MockDatanodeDetails.randomDatanodeDetails(),
+        NodeStatus.inServiceHealthy(), UpgradeUtils.defaultLayoutVersionProto(),
+        HddsTestUtils.ROLL_INTERVAL_MS_DEFAULT);
+    List<StorageReportProto> storageReports = new ArrayList<>();
+    for (HddsProtos.StorageTypeProto storageType : storageTypes) {
+      storageReports.add(StorageReportProto.newBuilder()
+          .setStorageUuid(datanodeInfo.getUuidString() + "-" + storageType)
+          .setStorageLocation("/data-" + storageType)
+          .setStorageType(storageType)
+          .build());
+    }
+    datanodeInfo.updateStorageReports(storageReports);
+    return datanodeInfo;
   }
 
   @Test

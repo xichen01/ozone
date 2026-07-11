@@ -89,7 +89,8 @@ public final class Pipeline {
   private Instant creationTimestamp;
   // suggested leader id with high priority
   private final DatanodeID suggestedLeaderId;
-  private List<StorageTier> supportedStorageTier;
+
+  private final StorageTier supportedStorageTier;
 
   private final ReadWriteLock lock;
 
@@ -183,24 +184,12 @@ public final class Pipeline {
    *
    * @return Supported StorageTier
    */
-  public List<StorageTier> getSupportedStorageTier() {
+  public StorageTier getSupportedStorageTier() {
     lock.readLock().lock();
     try {
       return supportedStorageTier;
     } finally {
       lock.readLock().unlock();
-    }
-  }
-
-  /**
-   * Set the storageTier supported by the pipeline.
-   */
-  public void setSupportedStorageTier(List<StorageTier> supportedStorageTier) {
-    lock.writeLock().lock();
-    try {
-      this.supportedStorageTier = supportedStorageTier;
-    } finally {
-      lock.writeLock().unlock();
     }
   }
 
@@ -433,10 +422,10 @@ public final class Pipeline {
       builder.setSuggestedLeaderDatanodeID(suggestedLeaderId.toProto());
     }
 
+    // To simplify Pipeline management, we currently only support Pipelines with a single StorageTier.
+    // However, to facilitate future expansion, StorageTier is still defined using `repeat` in the proto file.
     if (supportedStorageTier != null) {
-      for (StorageTier storageTier : supportedStorageTier) {
-        builder.addSupportedStorageTier(storageTier.toProto());
-      }
+      builder.addSupportedStorageTier(supportedStorageTier.toProto());
     }
 
     // To save the message size on wire, only transfer the node order based on
@@ -528,9 +517,11 @@ public final class Pipeline {
       HddsProtos.UUID uuid = pipeline.getSuggestedLeaderID();
       suggestedLeaderId = DatanodeID.of(uuid);
     }
-    List<StorageTier> supportedStorageTier = new ArrayList<>();
+    StorageTier supportedStorageTier = null;
+    // To simplify Pipeline management, we currently only support Pipelines with a single StorageTier.
+    // However, to facilitate future expansion, StorageTier is still defined using `repeat` in the proto file.
     for (HddsProtos.StorageTierProto storageTierProto : pipeline.getSupportedStorageTierList()) {
-      supportedStorageTier.add(StorageTier.fromProto(storageTierProto));
+      supportedStorageTier = StorageTier.fromProto(storageTierProto);
     }
 
     final ReplicationConfig config = ReplicationConfig
@@ -618,7 +609,7 @@ public final class Pipeline {
     private Instant creationTimestamp = null;
     private DatanodeID suggestedLeaderId = null;
     private Map<DatanodeDetails, Integer> replicaIndexes = ImmutableMap.of();
-    private List<StorageTier> supportedStorageTier;
+    private StorageTier supportedStorageTier;
 
     private Builder() { }
 
@@ -724,7 +715,7 @@ public final class Pipeline {
       return this;
     }
 
-    public Builder setSupportedStorageTier(List<StorageTier> supportedStorageTier) {
+    public Builder setSupportedStorageTier(StorageTier supportedStorageTier) {
       this.supportedStorageTier = supportedStorageTier;
       return this;
     }

@@ -103,7 +103,7 @@ public class MockRatisPipelineProvider extends RatisPipelineProvider {
         .setState(Pipeline.PipelineState.OPEN)
         .setReplicationConfig(replicationConfig)
         .setNodes(nodes)
-        .setSupportedStorageTier(Collections.singletonList(storageTier))
+        .setSupportedStorageTier(storageTier)
         .build();
   }
 

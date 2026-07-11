@@ -47,6 +47,7 @@ import java.util.stream.Collectors;
 import org.apache.hadoop.fs.StorageType;
 import org.apache.hadoop.hdds.client.RatisReplicationConfig;
 import org.apache.hadoop.hdds.client.ReplicationConfig;
+import org.apache.hadoop.hdds.client.StorageTier;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.conf.StorageUnit;
 import org.apache.hadoop.hdds.protocol.DatanodeDetails;
@@ -114,11 +115,13 @@ public class TestPipelinePlacementPolicy {
 
   private List<DatanodeDetails> nodesWithOutRackAwareness = new ArrayList<>();
   private List<DatanodeDetails> nodesWithRackAwareness = new ArrayList<>();
-  private final StorageType storageType = StorageType.DEFAULT;
+  private final StorageTier storageTier = StorageTier.DISK;
+  private StorageType storageType = StorageType.DEFAULT;
 
   @BeforeEach
   public void init() throws Exception {
     cluster = initTopology();
+    storageType = storageTier.getUniformStorageType();
     // start with nodes with rack awareness.
     nodeManager = new MockNodeManager(cluster, getNodesWithRackAwareness(),
         false, PIPELINE_PLACEMENT_MAX_NODES_COUNT, storageType);
@@ -290,6 +293,7 @@ public class TestPipelinePlacementPolicy {
             .setState(Pipeline.PipelineState.ALLOCATED)
             .setReplicationConfig(RatisReplicationConfig.getInstance(
                 ReplicationFactor.THREE))
+            .setSupportedStorageTier(storageTier)
             .setNodes(nodes)
             .build();
         HddsProtos.Pipeline pipelineProto = pipeline.getProtobufMessage(
@@ -647,6 +651,7 @@ public class TestPipelinePlacementPolicy {
               .setReplicationConfig(ReplicationConfig
                   .fromProtoTypeAndFactor(RATIS, THREE))
               .setNodes(dnList)
+              .setSupportedStorageTier(storageTier)
               .build();
 
           pipelineProto = pipeline.getProtobufMessage(
@@ -674,7 +679,7 @@ public class TestPipelinePlacementPolicy {
 
     pipelineCount
         = placementPolicy.currentRatisThreePipelineCount(nodeManager,
-        stateManager, healthyNodes.get(0));
+        stateManager, healthyNodes.get(0), StorageType.DEFAULT);
     assertEquals(pipelineCount, 0);
 
     // Check datanode with one RATIS/ONE pipeline
@@ -684,7 +689,7 @@ public class TestPipelinePlacementPolicy {
 
     pipelineCount
         = placementPolicy.currentRatisThreePipelineCount(nodeManager,
-        stateManager, healthyNodes.get(1));
+        stateManager, healthyNodes.get(1), StorageType.DEFAULT);
     assertEquals(pipelineCount, 0);
 
     // Check datanode with one RATIS/THREE pipeline
@@ -696,7 +701,7 @@ public class TestPipelinePlacementPolicy {
 
     pipelineCount
         = placementPolicy.currentRatisThreePipelineCount(nodeManager,
-        stateManager, healthyNodes.get(2));
+        stateManager, healthyNodes.get(2), StorageType.DEFAULT);
     assertEquals(pipelineCount, 1);
 
     // Check datanode with one RATIS/ONE and one STANDALONE/ONE pipeline
@@ -706,7 +711,7 @@ public class TestPipelinePlacementPolicy {
 
     pipelineCount
         = placementPolicy.currentRatisThreePipelineCount(nodeManager,
-        stateManager, healthyNodes.get(1));
+        stateManager, healthyNodes.get(1), StorageType.DEFAULT);
     assertEquals(pipelineCount, 0);
 
     // Check datanode with one RATIS/ONE and one STANDALONE/ONE pipeline and
@@ -720,7 +725,7 @@ public class TestPipelinePlacementPolicy {
 
     pipelineCount
         = placementPolicy.currentRatisThreePipelineCount(nodeManager,
-        stateManager, healthyNodes.get(1));
+        stateManager, healthyNodes.get(1), StorageType.DEFAULT);
     assertEquals(pipelineCount, 2);
   }
 
@@ -767,7 +772,7 @@ public class TestPipelinePlacementPolicy {
     createPipelineWithReplicationConfig(p2Dns, RATIS, THREE);
 
     assertEquals(2, PipelinePlacementPolicy.currentRatisThreePipelineCount(
-        localNodeManager, localStateManager, target));
+        localNodeManager, localStateManager, target, storageType));
 
     // 3) Verifies node is filtered out when choosing nodes for new pipeline
     int nodesRequired = HddsProtos.ReplicationFactor.THREE.getNumber();
@@ -790,6 +795,7 @@ public class TestPipelinePlacementPolicy {
         .setReplicationConfig(ReplicationConfig
             .fromProtoTypeAndFactor(replicationType, replicationFactor))
         .setNodes(dnList)
+        .setSupportedStorageTier(storageTier)
         .build();
 
     HddsProtos.Pipeline pipelineProto = pipeline.getProtobufMessage(

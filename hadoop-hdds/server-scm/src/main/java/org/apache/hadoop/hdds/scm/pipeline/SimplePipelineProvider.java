@@ -87,18 +87,18 @@ public class SimplePipelineProvider
         .setReplicationConfig(replicationConfig)
         .setNodes(dns.subList(0,
             replicationConfig.getReplicationFactor().getNumber()))
-        .setSupportedStorageTier(storageTiers)
+        .setSupportedStorageTier(storageTier)
         .build();
   }
 
   private Pipeline createPipelineInternal(StandaloneReplicationConfig replicationConfig,
-      List<DatanodeDetails> nodes, List<StorageTier> storageTiers) {
+      List<DatanodeDetails> nodes, StorageTier storageTier) {
     return Pipeline.newBuilder()
         .setId(PipelineID.randomId())
         .setState(PipelineState.OPEN)
         .setReplicationConfig(replicationConfig)
         .setNodes(nodes)
-        .setSupportedStorageTier(storageTiers)
+        .setSupportedStorageTier(storageTier)
         .build();
   }
 
@@ -112,7 +112,7 @@ public class SimplePipelineProvider
           storageTier, replicationConfig),
           SCMException.ResultCodes.FAILED_TO_FIND_SUITABLE_NODE);
     }
-    return createPipelineInternal(replicationConfig, nodes, Collections.singletonList(storageTier));
+    return createPipelineInternal(replicationConfig, nodes, storageTier);
   }
 
   @Override
@@ -122,7 +122,7 @@ public class SimplePipelineProvider
     return createPipelineInternal(replicationConfig, replicas
         .stream()
         .map(ContainerReplica::getDatanodeDetails)
-        .collect(Collectors.toList()), new ArrayList<>());
+        .collect(Collectors.toList()), null);
   }
 
   @Override

@@ -123,7 +123,7 @@ public class MockPipelineManager implements PipelineManager {
         .setId(PipelineID.randomId())
         .setReplicationConfig(replicationConfig)
         .setNodes(nodes)
-        .setSupportedStorageTier(Collections.singletonList(storageTier))
+        .setSupportedStorageTier(storageTier)
         .setState(Pipeline.PipelineState.OPEN)
         .build();
   }
