@@ -18,7 +18,6 @@
 package org.apache.hadoop.hdds.scm.pipeline;
 
 import java.io.IOException;
-import java.util.Collections;
 import java.util.List;
 import org.apache.hadoop.hdds.client.RatisReplicationConfig;
 import org.apache.hadoop.hdds.client.ReplicationConfig;
