@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.NavigableSet;
 import java.util.Set;
 import org.apache.hadoop.hdds.client.ReplicationConfig;
+import org.apache.hadoop.hdds.client.StorageTier;
 import org.apache.hadoop.hdds.protocol.DatanodeDetails;
 import org.apache.hadoop.hdds.scm.container.ContainerID;
 import org.apache.hadoop.hdds.scm.container.ContainerReplica;
@@ -53,8 +54,9 @@ public interface PipelineManager extends Closeable, PipelineManagerMXBean {
 
   Pipeline createPipeline(
       ReplicationConfig replicationConfig,
-      List<DatanodeDetails> nodes
-  );
+      List<DatanodeDetails> nodes,
+      StorageTier storageTier
+  ) throws IOException;
 
   Pipeline createPipelineForRead(
       ReplicationConfig replicationConfig, Set<ContainerReplica> replicas);

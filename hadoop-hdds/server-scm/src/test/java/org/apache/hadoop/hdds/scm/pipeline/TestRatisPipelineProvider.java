@@ -18,10 +18,12 @@
 package org.apache.hadoop.hdds.scm.pipeline;
 
 import static org.apache.commons.collections4.CollectionUtils.intersection;
+import static org.apache.hadoop.hdds.client.StorageTypeUtils.getStorageTypeProto;
 import static org.apache.hadoop.hdds.scm.ScmConfigKeys.OZONE_DATANODE_PIPELINE_LIMIT;
 import static org.apache.hadoop.hdds.scm.ScmConfigKeys.OZONE_DATANODE_RATIS_VOLUME_FREE_SPACE_MIN;
 import static org.apache.hadoop.hdds.scm.ScmConfigKeys.OZONE_SCM_CONTAINER_SIZE;
 import static org.apache.hadoop.hdds.scm.ScmConfigKeys.OZONE_SCM_PIPELINE_PLACEMENT_IMPL_KEY;
+import static org.apache.hadoop.hdds.scm.ScmConfigKeys.OZONE_SCM_RATIS_PIPELINE_LIMIT;
 import static org.apache.hadoop.hdds.scm.exceptions.SCMException.ResultCodes.CANNOT_CREATE_PIPELINE_FOR_EMPTY_TIER;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -29,6 +31,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.spy;
 
 import java.io.File;
 import java.io.IOException;
@@ -48,23 +53,29 @@ import org.apache.hadoop.hdds.client.StorageTier;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.DatanodeDetails;
 import org.apache.hadoop.hdds.protocol.DatanodeID;
-import org.apache.hadoop.hdds.protocol.MockDatanodeDetails;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.ReplicationFactor;
 import org.apache.hadoop.hdds.protocol.proto.StorageContainerDatanodeProtocolProtos;
+import org.apache.hadoop.hdds.protocol.proto.StorageContainerDatanodeProtocolProtos.MetadataStorageReportProto;
+import org.apache.hadoop.hdds.protocol.proto.StorageContainerDatanodeProtocolProtos.StorageReportProto;
+import org.apache.hadoop.hdds.scm.HddsTestUtils;
 import org.apache.hadoop.hdds.scm.ScmConfigKeys;
 import org.apache.hadoop.hdds.scm.container.ContainerID;
 import org.apache.hadoop.hdds.scm.container.ContainerReplica;
 import org.apache.hadoop.hdds.scm.container.MockNodeManager;
 import org.apache.hadoop.hdds.scm.container.placement.algorithms.SCMContainerPlacementRackScatter;
 import org.apache.hadoop.hdds.scm.exceptions.SCMException;
+import org.apache.hadoop.hdds.scm.ha.SCMContext;
 import org.apache.hadoop.hdds.scm.ha.SCMHAManager;
 import org.apache.hadoop.hdds.scm.ha.SCMHAManagerStub;
 import org.apache.hadoop.hdds.scm.metadata.SCMDBDefinition;
+import org.apache.hadoop.hdds.scm.node.DatanodeInfo;
 import org.apache.hadoop.hdds.scm.node.NodeStatus;
+import org.apache.hadoop.hdds.server.events.EventQueue;
 import org.apache.hadoop.hdds.utils.db.DBStore;
 import org.apache.hadoop.hdds.utils.db.DBStoreBuilder;
 import org.apache.hadoop.ozone.ClientVersion;
+import org.apache.hadoop.ozone.container.upgrade.UpgradeUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
@@ -88,6 +99,7 @@ public class TestRatisPipelineProvider {
   private File testDir;
   private DBStore dbStore;
   private int nodeCount = 10;
+  private List<DatanodeDetails> datanodeList;
 
   public void init(int maxPipelinePerNode, StorageTier storageTier) throws Exception {
     init(maxPipelinePerNode, new OzoneConfiguration(), storageTier);
@@ -102,11 +114,12 @@ public class TestRatisPipelineProvider {
       StorageTier storageTier) throws Exception {
     assertTrue(storageTier.isUniform(), "Only support uniform StorageTier");
     assertFalse(storageTier.equals(StorageTier.EMPTY), "not support the EMPTY StorageTier");
-    StorageType storageType = storageTier.getStorageTypes(
-        RatisReplicationConfig.getInstance(ReplicationFactor.ONE).getRequiredNodes()).get(0);
+    StorageType storageType = storageTier.
+        getStorageTypes(ReplicationFactor.ONE.getNumber()).get(0);
     conf.set(HddsConfigKeys.OZONE_METADATA_DIRS, dir.getAbsolutePath());
     dbStore = DBStoreBuilder.createDBStore(conf, SCMDBDefinition.get());
     nodeManager = new MockNodeManager(true, nodeCount, storageType);
+    datanodeList = nodeManager.getNodes(NodeStatus.inServiceHealthy());
     nodeManager.setNumPipelinePerDatanode(maxPipelinePerNode);
     SCMHAManager scmhaManager = SCMHAManagerStub.getInstance(true);
     conf.setInt(OZONE_DATANODE_PIPELINE_LIMIT,
@@ -132,11 +145,12 @@ public class TestRatisPipelineProvider {
   private static void assertPipelineProperties(
       Pipeline pipeline, HddsProtos.ReplicationFactor expectedFactor,
       HddsProtos.ReplicationType expectedReplicationType,
-      Pipeline.PipelineState expectedState) {
+      Pipeline.PipelineState expectedState, StorageTier expectedStorageTier) {
     assertEquals(expectedState, pipeline.getPipelineState());
     assertEquals(expectedReplicationType, pipeline.getType());
     assertEquals(expectedFactor.getNumber(), pipeline.getReplicationConfig().getRequiredNodes());
     assertEquals(expectedFactor.getNumber(), pipeline.getNodes().size());
+    assertEquals(expectedStorageTier, pipeline.getSupportedStorageTier());
   }
 
   private void createPipelineAndAssertions(
@@ -145,7 +159,7 @@ public class TestRatisPipelineProvider {
     Pipeline pipeline = provider.create(RatisReplicationConfig
         .getInstance(factor), storageTier);
     assertPipelineProperties(pipeline, factor, REPLICATION_TYPE,
-        Pipeline.PipelineState.ALLOCATED);
+        Pipeline.PipelineState.ALLOCATED, storageTier);
     HddsProtos.Pipeline pipelineProto = pipeline.getProtobufMessage(
         ClientVersion.CURRENT_VERSION);
     stateManager.addPipeline(pipelineProto);
@@ -156,7 +170,7 @@ public class TestRatisPipelineProvider {
     HddsProtos.Pipeline pipelineProto1 = pipeline1.getProtobufMessage(
         ClientVersion.CURRENT_VERSION);
     assertPipelineProperties(pipeline1, factor, REPLICATION_TYPE,
-        Pipeline.PipelineState.ALLOCATED);
+        Pipeline.PipelineState.ALLOCATED, storageTier);
     // New pipeline should not overlap with the previous created pipeline
     assertThat(intersection(pipeline.getNodes(), pipeline1.getNodes()).size())
         .isLessThan(factor.getNumber());
@@ -181,10 +195,67 @@ public class TestRatisPipelineProvider {
     createPipelineAndAssertions(HddsProtos.ReplicationFactor.ONE, storageTier);
   }
 
+  @Test
+  public void testPipelineEngagementLimitIsStorageTierAware() throws Exception {
+    init(1, StorageTier.DISK);
+    List<DatanodeDetails> diskAndSsdNodes = datanodeList.stream()
+        .map(TestRatisPipelineProvider::datanodeInfoWithDiskAndSsd)
+        .collect(Collectors.toList());
+    MockNodeManager nodeManagerSpy = spy(nodeManager);
+    doAnswer(invocation -> diskAndSsdNodes)
+        .when(nodeManagerSpy).getNodes(any(NodeStatus.class));
+    doAnswer(invocation -> datanodeInfoWithDiskAndSsd(invocation.getArgument(0)))
+        .when(nodeManagerSpy).getDatanodeInfo(any(DatanodeDetails.class));
+    RatisPipelineProvider localProvider = new RatisPipelineProvider(
+        nodeManagerSpy, stateManager, new OzoneConfiguration(), new EventQueue(), SCMContext.emptyContext());
+    for (int i = 0; i < 2; i++) {
+      addPipeline(diskAndSsdNodes.subList(i * 3, i * 3 + 3),
+          Pipeline.PipelineState.OPEN,
+          RatisReplicationConfig.getInstance(ReplicationFactor.THREE),
+          StorageTier.DISK);
+    }
+
+    Pipeline pipeline = localProvider.create(
+        RatisReplicationConfig.getInstance(ReplicationFactor.THREE), StorageTier.SSD);
+
+    assertPipelineProperties(pipeline, ReplicationFactor.THREE,
+        REPLICATION_TYPE, Pipeline.PipelineState.ALLOCATED, StorageTier.SSD);
+  }
+
+  @Test
+  public void testGlobalPipelineNumberLimitIsNotStorageTierAware() throws Exception {
+    OzoneConfiguration pipelineLimitConf = new OzoneConfiguration();
+    pipelineLimitConf.setInt(OZONE_SCM_RATIS_PIPELINE_LIMIT, 1);
+    init(0, pipelineLimitConf, StorageTier.DISK);
+    List<DatanodeDetails> diskAndSsdNodes = datanodeList.stream()
+        .map(TestRatisPipelineProvider::datanodeInfoWithDiskAndSsd)
+        .collect(Collectors.toList());
+    MockNodeManager nodeManagerSpy = spy(nodeManager);
+    doAnswer(invocation -> diskAndSsdNodes)
+        .when(nodeManagerSpy).getNodes(any(NodeStatus.class));
+    doAnswer(invocation -> datanodeInfoWithDiskAndSsd(invocation.getArgument(0)))
+        .when(nodeManagerSpy).getDatanodeInfo(any(DatanodeDetails.class));
+    RatisPipelineProvider localProvider = new RatisPipelineProvider(
+        nodeManagerSpy, stateManager, pipelineLimitConf, new EventQueue(),
+        SCMContext.emptyContext());
+    for (int i = 0; i < 2; i++) {
+      addPipeline(diskAndSsdNodes.subList(i * 3, i * 3 + 3),
+          Pipeline.PipelineState.OPEN,
+          RatisReplicationConfig.getInstance(ReplicationFactor.THREE),
+          StorageTier.DISK);
+    }
+
+    SCMException exception = assertThrows(SCMException.class, () ->
+        localProvider.create(
+            RatisReplicationConfig.getInstance(ReplicationFactor.THREE), StorageTier.SSD));
+
+    assertThat(exception.getMessage()).contains("would exceed the limit");
+  }
+
   private List<DatanodeDetails> createListOfNodes(int count) {
     List<DatanodeDetails> nodes = new ArrayList<>();
     for (int i = 0; i < count; i++) {
-      nodes.add(MockDatanodeDetails.randomDatanodeDetails());
+      nodes.add(datanodeList.get(i));
     }
     return nodes;
   }
@@ -197,7 +268,7 @@ public class TestRatisPipelineProvider {
     Pipeline pipeline = provider.create(RatisReplicationConfig
         .getInstance(factor), storageTier);
     assertPipelineProperties(pipeline, factor, REPLICATION_TYPE,
-        Pipeline.PipelineState.ALLOCATED);
+        Pipeline.PipelineState.ALLOCATED, storageTier);
     HddsProtos.Pipeline pipelineProto = pipeline.getProtobufMessage(
         ClientVersion.CURRENT_VERSION);
     stateManager.addPipeline(pipelineProto);
@@ -206,7 +277,7 @@ public class TestRatisPipelineProvider {
     Pipeline pipeline1 = provider.create(RatisReplicationConfig
         .getInstance(factor), storageTier);
     assertPipelineProperties(pipeline1, factor, REPLICATION_TYPE,
-        Pipeline.PipelineState.ALLOCATED);
+        Pipeline.PipelineState.ALLOCATED, storageTier);
     HddsProtos.Pipeline pipelineProto1 = pipeline1.getProtobufMessage(
         ClientVersion.CURRENT_VERSION);
     stateManager.addPipeline(pipelineProto1);
@@ -221,15 +292,17 @@ public class TestRatisPipelineProvider {
     HddsProtos.ReplicationFactor factor = HddsProtos.ReplicationFactor.THREE;
     Pipeline pipeline =
         provider.create(RatisReplicationConfig.getInstance(factor),
-            createListOfNodes(factor.getNumber()));
+            createListOfNodes(factor.getNumber()),
+            StorageTier.getDefaultTier());
     assertPipelineProperties(pipeline, factor, REPLICATION_TYPE,
-        Pipeline.PipelineState.OPEN);
+        Pipeline.PipelineState.OPEN, StorageTier.getDefaultTier());
 
     factor = HddsProtos.ReplicationFactor.ONE;
     pipeline = provider.create(RatisReplicationConfig.getInstance(factor),
-        createListOfNodes(factor.getNumber()));
+        createListOfNodes(factor.getNumber()),
+        StorageTier.getDefaultTier());
     assertPipelineProperties(pipeline, factor, REPLICATION_TYPE,
-        Pipeline.PipelineState.OPEN);
+        Pipeline.PipelineState.OPEN, StorageTier.getDefaultTier());
   }
 
   @Test
@@ -243,13 +316,12 @@ public class TestRatisPipelineProvider {
 
     Pipeline pipeline1 = provider.create(
         RatisReplicationConfig.getInstance(ReplicationFactor.THREE),
-        healthyNodes);
+        healthyNodes, StorageTier.getDefaultTier());
     Pipeline pipeline2 = provider.create(
         RatisReplicationConfig.getInstance(ReplicationFactor.THREE),
-        healthyNodes);
+        healthyNodes, StorageTier.getDefaultTier());
     Pipeline pipeline3 = provider.createForRead(
-        RatisReplicationConfig.getInstance(ReplicationFactor.THREE),
-        replicas);
+        RatisReplicationConfig.getInstance(ReplicationFactor.THREE), replicas);
 
     assertEquals(pipeline1.getNodeSet(), pipeline2.getNodeSet());
     assertEquals(pipeline2.getNodeSet(), pipeline3.getNodeSet());
@@ -274,21 +346,21 @@ public class TestRatisPipelineProvider {
     for (int i = 0; i < maxPipelinePerNode; i++) {
       // Saturate pipeline counts on all the 1st 3 DNs.
       addPipeline(dns, Pipeline.PipelineState.OPEN,
-          RatisReplicationConfig.getInstance(factor));
+          RatisReplicationConfig.getInstance(factor), storageTier);
     }
     Set<DatanodeDetails> membersOfOpenPipelines = new HashSet<>(dns);
 
     // Use up next 3 DNs for a closed pipeline.
     dns = healthyNodes.subList(3, 6);
     addPipeline(dns, Pipeline.PipelineState.CLOSED,
-        RatisReplicationConfig.getInstance(factor));
+        RatisReplicationConfig.getInstance(factor), storageTier);
     Set<DatanodeDetails> membersOfClosedPipelines = new HashSet<>(dns);
 
     // only 2 healthy DNs left that are not part of any pipeline
     Pipeline pipeline = provider.create(
         RatisReplicationConfig.getInstance(factor), storageTier);
     assertPipelineProperties(pipeline, factor, REPLICATION_TYPE,
-        Pipeline.PipelineState.ALLOCATED);
+        Pipeline.PipelineState.ALLOCATED, storageTier);
     HddsProtos.Pipeline pipelineProto = pipeline.getProtobufMessage(
         ClientVersion.CURRENT_VERSION);
     nodeManager.addPipeline(pipeline);
@@ -459,7 +531,8 @@ public class TestRatisPipelineProvider {
 
     // Validate exception message.
     String expectedError = String.format(
-        "Cannot create pipeline as it would exceed the limit per datanode: %d replicationConfig: RATIS/THREE", limit);
+        "Cannot create pipeline for StorageTier DISK as it would exceed the limit per" +
+            " datanode: %d replicationConfig: RATIS/THREE", limit);
     assertEquals(expectedError, exception.getMessage());
   }
 
@@ -480,13 +553,14 @@ public class TestRatisPipelineProvider {
 
   private void addPipeline(
       List<DatanodeDetails> dns,
-      Pipeline.PipelineState open, ReplicationConfig replicationConfig)
+      Pipeline.PipelineState open, ReplicationConfig replicationConfig, StorageTier storageTier)
       throws IOException, TimeoutException {
     Pipeline openPipeline = Pipeline.newBuilder()
         .setReplicationConfig(replicationConfig)
         .setNodes(dns)
         .setState(open)
         .setId(PipelineID.randomId())
+        .setSupportedStorageTier(storageTier)
         .build();
     HddsProtos.Pipeline pipelineProto = openPipeline.getProtobufMessage(
         ClientVersion.CURRENT_VERSION);
@@ -522,4 +596,24 @@ public class TestRatisPipelineProvider {
         StorageTier.ARCHIVE
     );
   }
+
+  private static DatanodeInfo datanodeInfoWithDiskAndSsd(DatanodeDetails dn) {
+    DatanodeInfo datanodeInfo = new DatanodeInfo(
+        dn, NodeStatus.inServiceHealthy(), UpgradeUtils.defaultLayoutVersionProto(),
+        HddsTestUtils.ROLL_INTERVAL_MS_DEFAULT);
+    List<StorageReportProto> storageReports = new ArrayList<>();
+    long capacity = 10L * 1024 * 1024 * 1024;
+    storageReports.add(HddsTestUtils.createStorageReport(
+        dn.getID(), "/disk-" + dn.getUuidString(),
+        capacity, 0L, capacity, getStorageTypeProto(StorageType.DISK)));
+    storageReports.add(HddsTestUtils.createStorageReport(
+        dn.getID(), "/ssd-" + dn.getUuidString(),
+        capacity, 0L, capacity, getStorageTypeProto(StorageType.SSD)));
+    MetadataStorageReportProto metadataReport = HddsTestUtils.createMetadataStorageReport(
+        "/metadata-" + dn.getUuidString(), capacity, 0L, capacity, null);
+    datanodeInfo.updateStorageReports(storageReports);
+    datanodeInfo.updateMetaDataStorageReports(Collections.singletonList(metadataReport));
+    return datanodeInfo;
+  }
+
 }

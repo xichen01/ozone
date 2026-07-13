@@ -79,6 +79,7 @@ public class MockRatisPipelineProvider extends RatisPipelineProvider {
               .fromProtoTypeAndFactor(initialPipeline.getType(),
                   replicationConfig.getReplicationFactor()))
           .setNodes(initialPipeline.getNodes())
+          .setSupportedStorageTier(initialPipeline.getSupportedStorageTier())
           .build();
       return pipeline;
     }
@@ -94,12 +95,15 @@ public class MockRatisPipelineProvider extends RatisPipelineProvider {
 
   @Override
   public Pipeline create(RatisReplicationConfig replicationConfig,
-      List<DatanodeDetails> nodes) {
+      List<DatanodeDetails> nodes, StorageTier storageTier)
+      throws IOException {
     return Pipeline.newBuilder()
         .setId(PipelineID.randomId())
         .setState(Pipeline.PipelineState.OPEN)
         .setReplicationConfig(replicationConfig)
         .setNodes(nodes)
+        .setSupportedStorageTier(storageTier)
         .build();
   }
+
 }

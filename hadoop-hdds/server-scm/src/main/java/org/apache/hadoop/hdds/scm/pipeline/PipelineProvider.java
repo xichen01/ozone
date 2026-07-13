@@ -74,8 +74,8 @@ public abstract class PipelineProvider<REPLICATION_CONFIG
 
   protected abstract Pipeline create(
       REPLICATION_CONFIG replicationConfig,
-      List<DatanodeDetails> nodes
-  );
+      List<DatanodeDetails> nodes,
+      StorageTier storageTier) throws IOException;
 
   protected abstract Pipeline createForRead(
       REPLICATION_CONFIG replicationConfig,
@@ -89,7 +89,7 @@ public abstract class PipelineProvider<REPLICATION_CONFIG
                                          long dataSizeRequired, StorageTier storageTier)
       throws SCMException {
     StorageTierUtil.validateNotEmpty(storageTier);
-    StorageType storageType = StorageTierUtil.getStorageTypeForUniformStorageTier(storageTier, replicationConfig);
+    StorageType storageType = storageTier.getUniformStorageType();
     int nodesRequired = replicationConfig.getRequiredNodes();
     List<DatanodeDetails> healthyDNs = pickAllNodesNotUsed(replicationConfig);
     List<DatanodeDetails> healthyDNsWithSpace = healthyDNs.stream()

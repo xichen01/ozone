@@ -39,6 +39,7 @@ import org.apache.hadoop.hdds.HddsConfigKeys;
 import org.apache.hadoop.hdds.client.RatisReplicationConfig;
 import org.apache.hadoop.hdds.client.ReplicationConfig;
 import org.apache.hadoop.hdds.client.StandaloneReplicationConfig;
+import org.apache.hadoop.hdds.client.StorageTier;
 import org.apache.hadoop.hdds.conf.ConfigurationSource;
 import org.apache.hadoop.hdds.protocol.DatanodeDetails;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos;
@@ -317,11 +318,12 @@ public class PipelineManagerImpl implements PipelineManager {
   @Override
   public Pipeline createPipeline(
       ReplicationConfig replicationConfig,
-      List<DatanodeDetails> nodes
-  ) {
+      List<DatanodeDetails> nodes,
+      StorageTier storageTier
+  ) throws IOException {
     // This will mostly be used to create dummy pipeline for SimplePipelines.
     // We don't update the metrics for SimplePipelines.
-    return pipelineFactory.create(replicationConfig, nodes);
+    return pipelineFactory.create(replicationConfig, nodes, storageTier);
   }
 
   @Override
