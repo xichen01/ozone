@@ -1379,14 +1379,13 @@ public class SCMClientProtocolServer implements
           .newBuilder()
           .setIsRunning(false)
           .build();
-    } else {
-
-      return ContainerBalancerStatusInfoResponseProto
-          .newBuilder()
-          .setIsRunning(true)
-          .setContainerBalancerStatusInfo(balancerStatusInfo.toProto())
-          .build();
     }
+
+    return ContainerBalancerStatusInfoResponseProto
+        .newBuilder()
+        .setIsRunning(balancerStatusInfo.getConfiguration().getShouldRun())
+        .setContainerBalancerStatusInfo(balancerStatusInfo.toProto())
+        .build();
   }
 
   /**
