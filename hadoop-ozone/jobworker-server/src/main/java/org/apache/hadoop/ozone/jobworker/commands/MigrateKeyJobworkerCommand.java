@@ -20,7 +20,7 @@ package org.apache.hadoop.ozone.jobworker.commands;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
-import javax.annotation.Nullable;
+import jakarta.annotation.Nullable;
 import org.apache.hadoop.hdds.client.ECReplicationConfig;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysCommandProto;
@@ -98,7 +98,7 @@ public final class MigrateKeyJobworkerCommand extends JobworkerCommand<Jobworker
   }
 
   public ECReplicationConfig getReplicationConfig() {
-    return ECReplicationConfig.fromProto(txProto.getEcReplicationConfig());
+    return new ECReplicationConfig(txProto.getEcReplicationConfig());
   }
 
   public List<MigrationKeyProto> getMigrationKeys() {

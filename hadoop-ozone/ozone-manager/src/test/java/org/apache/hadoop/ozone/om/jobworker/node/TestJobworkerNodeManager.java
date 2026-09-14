@@ -71,7 +71,7 @@ import org.apache.hadoop.ozone.om.OzoneManager;
 import org.apache.hadoop.ozone.om.helpers.OMNodeDetails;
 import org.apache.hadoop.ozone.om.jobworker.states.JobworkerNodeNotFoundException;
 import org.apache.hadoop.ozone.util.RemoteAddressInterceptor;
-import org.apache.hadoop.util.ProtobufUtils;
+ import org.apache.hadoop.ozone.util.ProtobufUtils;
 import org.apache.hadoop.util.Time;
 import org.apache.ozone.test.GenericTestUtils;
 import org.junit.jupiter.api.AfterEach;

@@ -36,7 +36,7 @@ import org.apache.hadoop.hdds.utils.db.Codec;
 import org.apache.hadoop.hdds.utils.db.DelegatedCodec;
 import org.apache.hadoop.hdds.utils.db.Proto2Codec;
 import org.apache.hadoop.util.Time;
-import org.jetbrains.annotations.NotNull;
+import jakarta.annotation.Nonnull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -58,7 +58,8 @@ public class JobworkerDetails extends NodeImpl implements
   private static final Codec<JobworkerDetails> CODEC = new DelegatedCodec<>(
       Proto2Codec.get(ExtendedJobWorkDetailsProto.getDefaultInstance()),
       JobworkerDetails::getFromProtoBuf,
-      JobworkerDetails::getExtendedProtoBufMessage);
+      JobworkerDetails::getExtendedProtoBufMessage,
+      JobworkerDetails.class);
 
   /**
    * Get the codec for JobworkerDetails.
@@ -379,7 +380,7 @@ public class JobworkerDetails extends NodeImpl implements
   }
 
   @Override
-  public int compareTo(@NotNull JobworkerDetails that) {
+  public int compareTo(@Nonnull JobworkerDetails that) {
     return this.getUuid().compareTo(that.getUuid());
   }
 

@@ -33,7 +33,7 @@ import org.apache.hadoop.hdds.conf.ConfigType;
 public class OMJobworkerConfiguration {
   static final String CONFIG_PREFIX = "ozone.om.jobworker";
 
-  @Config(key = "grpc.executor.thread.num",
+  @Config(key = "ozone.om.jobworker.grpc.executor.thread.num",
       defaultValue = "32",
       type = ConfigType.INT,
       tags = {ConfigTag.JOBWORKER},
@@ -49,7 +49,7 @@ public class OMJobworkerConfiguration {
     return this;
   }
 
-  @Config(key = "grpc.port",
+  @Config(key = "ozone.om.jobworker.grpc.port",
       type = ConfigType.INT,
       defaultValue = "8982",
       tags = {ConfigTag.JOBWORKER},
@@ -70,7 +70,7 @@ public class OMJobworkerConfiguration {
     return this;
   }
 
-  @Config(key = "grpc.bossgroup.size",
+  @Config(key = "ozone.om.jobworker.grpc.bossgroup.size",
       defaultValue = "1",
       type = ConfigType.INT,
       tags = {ConfigTag.JOBWORKER},
@@ -86,7 +86,7 @@ public class OMJobworkerConfiguration {
     return this;
   }
 
-  @Config(key = "grpc.workergroup.size",
+  @Config(key = "ozone.om.jobworker.grpc.workergroup.size",
       defaultValue = "8",
       type = ConfigType.INT,
       tags = {ConfigTag.JOBWORKER},
@@ -102,7 +102,7 @@ public class OMJobworkerConfiguration {
     return this;
   }
 
-  @Config(key = "grpc.maximum.inbound.length",
+  @Config(key = "ozone.om.jobworker.grpc.maximum.inbound.length",
       defaultValue = "32M",
       type = ConfigType.SIZE,
       tags = {ConfigTag.JOBWORKER},
@@ -118,7 +118,7 @@ public class OMJobworkerConfiguration {
     return this;
   }
 
-  @Config(key = "stalenode.interval",
+  @Config(key = "ozone.om.jobworker.stalenode.interval",
       defaultValue = "300s",
       type = ConfigType.TIME,
       tags = {ConfigTag.JOBWORKER},
@@ -135,7 +135,7 @@ public class OMJobworkerConfiguration {
     return this;
   }
 
-  @Config(key = HEARTBEAT_PROCESS_INTERVAL_KEY,
+  @Config(key = "ozone.om.jobworker.heartbeat.process.interval",
       defaultValue = "30s",
       type = ConfigType.TIME,
       tags = {ConfigTag.JOBWORKER},
@@ -157,7 +157,7 @@ public class OMJobworkerConfiguration {
     return this;
   }
 
-  @Config(key = "removal.timeout.ms",
+  @Config(key = "ozone.om.jobworker.removal.timeout.ms",
       defaultValue = "1h",
       type = ConfigType.TIME,
       tags = {ConfigTag.JOBWORKER},

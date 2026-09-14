@@ -20,7 +20,7 @@ package org.apache.hadoop.ozone.jobworker.commands;
 
 import com.google.common.base.Preconditions;
 import java.util.List;
-import javax.annotation.Nullable;
+import jakarta.annotation.Nullable;
 import org.apache.hadoop.hdds.client.ECReplicationConfig;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysCommandProto;
@@ -40,7 +40,8 @@ public class OMJobworkerMigrateKeyCommand extends OMJobworkerCommand<JobworkerMi
   private static final Codec<OMJobworkerMigrateKeyCommand> CODEC = new DelegatedCodec<>(
       Proto2Codec.get(JobworkerMigrationKeysCommandProto.getDefaultInstance()),
       OMJobworkerMigrateKeyCommand::getFromProto,
-      OMJobworkerMigrateKeyCommand::getProto);
+      OMJobworkerMigrateKeyCommand::getProto,
+      OMJobworkerMigrateKeyCommand.class);
 
   public static Codec<OMJobworkerMigrateKeyCommand> getCodec() {
     return CODEC;
@@ -131,7 +132,7 @@ public class OMJobworkerMigrateKeyCommand extends OMJobworkerCommand<JobworkerMi
   }
 
   public ECReplicationConfig getReplicationConfig() {
-    return ECReplicationConfig.fromProto(migrationKeysTxProto.getEcReplicationConfig());
+    return new ECReplicationConfig(migrationKeysTxProto.getEcReplicationConfig());
   }
 
   public List<MigrationKeyProto> getMigrationKeys() {

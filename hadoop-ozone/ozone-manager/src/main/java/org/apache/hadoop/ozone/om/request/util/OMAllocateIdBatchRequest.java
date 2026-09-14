@@ -29,6 +29,7 @@ import org.apache.hadoop.ozone.audit.AuditLogger;
 import org.apache.hadoop.ozone.om.OMMetadataManager;
 import org.apache.hadoop.ozone.om.OzoneManager;
 import org.apache.hadoop.ozone.om.exceptions.OMException;
+import org.apache.hadoop.ozone.om.execution.flowcontrol.ExecutionContext;
 import org.apache.hadoop.ozone.om.request.OMClientRequest;
 import org.apache.hadoop.ozone.om.response.OMClientResponse;
 import org.apache.hadoop.ozone.om.response.util.OMAllocateIdBatchResponse;
@@ -78,7 +79,8 @@ public class OMAllocateIdBatchRequest extends OMClientRequest {
 
   @Override
   public OMClientResponse validateAndUpdateCache(OzoneManager ozoneManager,
-      long transactionLogIndex) {
+      ExecutionContext context) {
+    long transactionLogIndex = context.getIndex();
     
     AllocateIdBatchRequest allocateIdBatchRequest = getOmRequest().getAllocateIdBatchRequest();
     String sequenceIdName = allocateIdBatchRequest.getSequenceIdName();
@@ -143,7 +145,7 @@ public class OMAllocateIdBatchRequest extends OMClientRequest {
       omClientResponse = new OMAllocateIdBatchResponse(
           createErrorOMResponse(omResponse, ex));
     }
-    auditLog(auditLogger, buildAuditMessage(ALLOCATE_ID_BATCH, auditMap, exception, userInfo));
+    markForAudit(auditLogger, buildAuditMessage(ALLOCATE_ID_BATCH, auditMap, exception, userInfo));
     return omClientResponse;
   }
 }

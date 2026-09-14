@@ -19,7 +19,6 @@
 package org.apache.hadoop.ozone.om.util;
 
 import com.google.common.base.Preconditions;
-import com.google.protobuf.RpcController;
 import com.google.protobuf.ServiceException;
 import java.io.IOException;
 import java.net.InetAddress;
@@ -31,9 +30,6 @@ import org.apache.hadoop.ozone.ClientVersion;
 import org.apache.hadoop.ozone.om.OMConfigKeys;
 import org.apache.hadoop.ozone.om.OzoneManager;
 import org.apache.hadoop.ozone.om.exceptions.OMException;
-import org.apache.hadoop.ozone.om.helpers.OMRatisHelper;
-import org.apache.hadoop.ozone.om.ratis.utils.OzoneManagerRatisUtils;
-import org.apache.hadoop.ozone.om.request.OMClientRequest;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.AllocateIdBatchRequest;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.AllocateIdBatchResponse;
@@ -41,8 +37,6 @@ import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.OMReque
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.OMResponse;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.ratis.protocol.ClientId;
-import org.apache.ratis.protocol.Message;
-import org.apache.ratis.protocol.RaftClientRequest;
 import org.apache.ratis.rpc.CallId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,7 +55,6 @@ import org.slf4j.LoggerFactory;
  */
 public class OMSequenceIdGenerator {
   private static final Logger LOG = LoggerFactory.getLogger(OMSequenceIdGenerator.class);
-  private static final RpcController NULL_RPC_CONTROLLER = null;
   private final ClientId clientId = ClientId.randomId();
   public static final long INVALID_SEQUENCE_ID = -1L;
 
@@ -208,25 +201,8 @@ public class OMSequenceIdGenerator {
 
   protected OMResponse submitRequest(OMRequest omRequest)
       throws ServiceException, IOException {
-    if (ozoneManager.isRatisEnabled()) {
-      OMClientRequest omClientRequest = OzoneManagerRatisUtils.createClientRequest(omRequest, ozoneManager);
-      omRequest = omClientRequest.preExecute(ozoneManager);
-      RaftClientRequest req = getRatisRequest(omRequest);
-      return ozoneManager.getOmRatisServer().submitRequest(omRequest, req);
-    } else {
-      return ozoneManager.getOmServerProtocol().submitRequest(NULL_RPC_CONTROLLER, omRequest);
-    }
-  }
-
-  private RaftClientRequest getRatisRequest(OMRequest omRequest) {
-    return RaftClientRequest.newBuilder()
-        .setClientId(clientId)
-        .setServerId(ozoneManager.getOmRatisServer().getRaftPeerId())
-        .setGroupId(ozoneManager.getOmRatisServer().getRaftGroupId())
-        .setCallId(CallId.getAndIncrement())
-        .setMessage(Message.valueOf(OMRatisHelper.convertRequestToByteString(omRequest)))
-        .setType(RaftClientRequest.writeRequestType())
-        .build();
+    return ozoneManager.getOmRatisServer().submitRequest(
+        omRequest, clientId, CallId.getAndIncrement());
   }
 
   private OzoneManagerProtocolProtos.UserInfo getUserInfo() throws IOException {

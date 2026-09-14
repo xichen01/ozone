@@ -42,7 +42,7 @@ import org.apache.hadoop.ozone.audit.OMAction;
 import org.apache.hadoop.ozone.jobworker.protocol.JobworkerProtocol;
 import org.apache.hadoop.ozone.om.OzoneManager;
 import org.apache.hadoop.ozone.om.jobworker.node.JobworkerNodeManager;
-import org.apache.hadoop.util.ProtobufUtils;
+ import org.apache.hadoop.ozone.util.ProtobufUtils;
 import org.apache.ratis.server.DivisionInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

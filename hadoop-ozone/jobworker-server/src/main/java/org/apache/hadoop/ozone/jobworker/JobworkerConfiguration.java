@@ -31,7 +31,7 @@ import org.apache.hadoop.hdds.conf.ConfigType;
 @ConfigGroup(prefix = "ozone.jobworker")
 public class JobworkerConfiguration {
 
-  @Config(key = "rpc.timeout",
+  @Config(key = "ozone.jobworker.rpc.timeout",
       type = ConfigType.TIME,
       tags = {ConfigTag.JOBWORKER},
       defaultValue = "10s",
@@ -47,7 +47,7 @@ public class JobworkerConfiguration {
     this.rpcTimeout = rpcTimeout;
   }
 
-  @Config(key = "grpc.maximum.inbound.length",
+  @Config(key = "ozone.jobworker.grpc.maximum.inbound.length",
       defaultValue = "32M",
       type = ConfigType.SIZE,
       tags = {ConfigTag.JOBWORKER},
@@ -62,7 +62,7 @@ public class JobworkerConfiguration {
     this.grpcMaximumInboundLength = grpcMaximumInboundLength;
   }
 
-  @Config(key = "heartbeat.interval",
+  @Config(key = "ozone.jobworker.heartbeat.interval",
       type = ConfigType.TIME,
       tags = {ConfigTag.JOBWORKER},
       defaultValue = "30s",
@@ -78,7 +78,7 @@ public class JobworkerConfiguration {
     this.heartbeatInterval = heartbeatInterval;
   }
 
-  @Config(key = "heartbeat.log.warn.interval",
+  @Config(key = "ozone.jobworker.heartbeat.log.warn.interval",
       type = ConfigType.INT,
       tags = {ConfigTag.JOBWORKER},
       defaultValue = "10",
@@ -94,7 +94,7 @@ public class JobworkerConfiguration {
     this.heartbeatLogWarnInterval = heartbeatLogWarnInterval;
   }
 
-  @Config(key = "storage.volume.dirs",
+  @Config(key = "ozone.jobworker.storage.volume.dirs",
       type = ConfigType.STRING,
       tags = {ConfigTag.JOBWORKER},
       defaultValue = "",
@@ -110,7 +110,7 @@ public class JobworkerConfiguration {
     this.storageDirs = dirs;
   }
 
-  @Config(key = "node.report.interval",
+  @Config(key = "ozone.jobworker.node.report.interval",
       type = ConfigType.TIME,
       tags = {ConfigTag.JOBWORKER},
       defaultValue = "60s",
@@ -125,7 +125,7 @@ public class JobworkerConfiguration {
     this.nodeReportInterval = nodeReportInterval;
   }
 
-  @Config(key = "max.report.count",
+  @Config(key = "ozone.jobworker.max.report.count",
       type = ConfigType.INT,
       tags = {ConfigTag.JOBWORKER},
       defaultValue = "4096",
@@ -142,7 +142,7 @@ public class JobworkerConfiguration {
   }
 
 
-  @Config(key = "max.report.size",
+  @Config(key = "ozone.jobworker.max.report.size",
       type = ConfigType.SIZE,
       tags = {ConfigTag.JOBWORKER},
       defaultValue = "8M",
@@ -158,7 +158,7 @@ public class JobworkerConfiguration {
     this.maxReportSizeInBytes = maxReportSizeInBytes;
   }
 
-  @Config(key = "command.queue.limit",
+  @Config(key = "ozone.jobworker.command.queue.limit",
       type = ConfigType.INT,
       tags = {ConfigTag.JOBWORKER},
       defaultValue = "100",
@@ -174,7 +174,7 @@ public class JobworkerConfiguration {
     this.commandQueueLimit = commandQueueLimit;
   }
 
-  @Config(key = "command.status.report.interval",
+  @Config(key = "ozone.jobworker.command.status.report.interval",
       type = ConfigType.TIME,
       tags = {ConfigTag.JOBWORKER},
       defaultValue = "30s",
@@ -191,7 +191,7 @@ public class JobworkerConfiguration {
   }
 
 
-  @Config(key = "om.service.ids",
+  @Config(key = "ozone.jobworker.om.service.ids",
       type = ConfigType.STRING,
       tags = {ConfigTag.JOBWORKER, ConfigTag.OM},
       defaultValue = "",

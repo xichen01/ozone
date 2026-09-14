@@ -33,7 +33,7 @@ import org.apache.hadoop.hdds.conf.ConfigType;
 public class JobWorkerMigrationKeyConfiguration {
   static final String CONFIG_PREFIX = "ozone.jobworker.migration.key";
 
-  @Config(key = "command.max.retry.count",
+  @Config(key = "ozone.jobworker.migration.key.command.max.retry.count",
       defaultValue = "3",
       type = ConfigType.INT,
       tags = {ConfigTag.JOBWORKER},
@@ -49,7 +49,7 @@ public class JobWorkerMigrationKeyConfiguration {
     return this;
   }
 
-  @Config(key = "batch.size",
+  @Config(key = "ozone.jobworker.migration.key.batch.size",
       type = ConfigType.INT,
       tags = {ConfigTag.JOBWORKER},
       defaultValue = "100",
@@ -65,7 +65,7 @@ public class JobWorkerMigrationKeyConfiguration {
     this.batchSize = batchSize;
   }
 
-  @Config(key = "buffer.size",
+  @Config(key = "ozone.jobworker.migration.key.buffer.size",
       type = ConfigType.SIZE,
       tags = {ConfigTag.JOBWORKER},
       defaultValue = "64KB",
@@ -81,7 +81,7 @@ public class JobWorkerMigrationKeyConfiguration {
     this.bufferSize = bufferSize;
   }
 
-  @Config(key = "thread.pool.size",
+  @Config(key = "ozone.jobworker.migration.key.thread.pool.size",
       type = ConfigType.INT,
       tags = {ConfigTag.JOBWORKER},
       defaultValue = "4",
@@ -97,7 +97,7 @@ public class JobWorkerMigrationKeyConfiguration {
     this.threadPoolSize = threadPoolSize;
   }
 
-  @Config(key = "incomplete.task.timeout",
+  @Config(key = "ozone.jobworker.migration.key.incomplete.task.timeout",
       defaultValue = "2d",
       type = ConfigType.TIME,
       tags = {ConfigTag.JOBWORKER},
@@ -115,7 +115,7 @@ public class JobWorkerMigrationKeyConfiguration {
     return this;
   }
 
-  @Config(key = "completed.task.retention.time",
+  @Config(key = "ozone.jobworker.migration.key.completed.task.retention.time",
       defaultValue = "7d",
       type = ConfigType.TIME,
       tags = {ConfigTag.JOBWORKER},
@@ -133,7 +133,7 @@ public class JobWorkerMigrationKeyConfiguration {
     return this;
   }
 
-  @Config(key = "max.concurrent.tasks",
+  @Config(key = "ozone.jobworker.migration.key.max.concurrent.tasks",
       defaultValue = "2",
       type = ConfigType.INT,
       tags = {ConfigTag.JOBWORKER},
@@ -149,7 +149,7 @@ public class JobWorkerMigrationKeyConfiguration {
     return this;
   }
 
-  @Config(key = "max.inflight.command.count",
+  @Config(key = "ozone.jobworker.migration.key.max.inflight.command.count",
       defaultValue = "5",
       type = ConfigType.INT,
       tags = {ConfigTag.JOBWORKER},
@@ -166,7 +166,7 @@ public class JobWorkerMigrationKeyConfiguration {
     return this;
   }
 
-  @Config(key = "max.task.waiting.time",
+  @Config(key = "ozone.jobworker.migration.key.max.task.waiting.time",
       defaultValue = "10m",
       type = ConfigType.TIME,
       tags = {ConfigTag.JOBWORKER},
@@ -182,7 +182,7 @@ public class JobWorkerMigrationKeyConfiguration {
     return this;
   }
 
-  @Config(key = "storage.policy.satisfier.interval",
+  @Config(key = "ozone.jobworker.migration.key.storage.policy.satisfier.interval",
       defaultValue = "10m",
       type = ConfigType.TIME,
       tags = {ConfigTag.JOBWORKER},
@@ -199,7 +199,7 @@ public class JobWorkerMigrationKeyConfiguration {
     return this;
   }
 
-  @Config(key = "storage.policy.satisfier.timeout",
+  @Config(key = "ozone.jobworker.migration.key.storage.policy.satisfier.timeout",
       defaultValue = "1h",
       type = ConfigType.TIME,
       tags = {ConfigTag.JOBWORKER},

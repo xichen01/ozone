@@ -92,7 +92,7 @@ public final class OmKeyInfo extends WithParentObjectId
    * keyName is "a/b/key1" then the fileName stores "key1".
    */
   private String fileName;
-  private final String ownerName;
+  private String ownerName;
 
   /**
    * ACL Information.

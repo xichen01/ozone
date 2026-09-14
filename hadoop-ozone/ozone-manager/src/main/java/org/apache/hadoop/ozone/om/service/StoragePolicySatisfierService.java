@@ -189,7 +189,7 @@ public class StoragePolicySatisfierService extends BackgroundService {
         } catch (InterruptedException e) {
           Thread.currentThread().interrupt();
           LOG.warn("Migration task interrupted for task: {}", taskKey);
-          updateMigrationTaskStatus(taskKey, JobworkerTaskStatus.PAUSED);
+          updateMigrationTaskStatus(taskKey, JobworkerTaskStatus.MIGRATION_PAUSED);
         }
         return true; // Remove from running migrations
       }
@@ -265,7 +265,7 @@ public class StoragePolicySatisfierService extends BackgroundService {
     totalActivatedTaskCount++;
 
     JobworkerTaskStatus currentStatus = task.getMigrationStatus();
-    if (currentStatus == JobworkerTaskStatus.PENDING || currentStatus == JobworkerTaskStatus.PAUSED) {
+    if (currentStatus == JobworkerTaskStatus.PENDING || currentStatus == JobworkerTaskStatus.MIGRATION_PAUSED) {
       updateMigrationTaskStatus(taskKey, JobworkerTaskStatus.EXECUTING);
     }
 
@@ -316,7 +316,7 @@ public class StoragePolicySatisfierService extends BackgroundService {
         if (task.getCompleteScanning() && !hasMoreTasks) {
           finalStatus = JobworkerTaskStatus.COMPLETED;
         } else if (noAvailableJobworker) {
-          finalStatus = JobworkerTaskStatus.PAUSED;
+          finalStatus = JobworkerTaskStatus.MIGRATION_PAUSED;
         } else {
           finalStatus = JobworkerTaskStatus.EXECUTING;
         }
@@ -476,4 +476,3 @@ public class StoragePolicySatisfierService extends BackgroundService {
     return totalActivatedTaskCount;
   }
 }
-

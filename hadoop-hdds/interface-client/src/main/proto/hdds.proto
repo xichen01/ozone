@@ -649,7 +649,7 @@ enum JobworkerTaskStatus {
     UNKNOWN_STATUS = 0;
     PENDING = 1;
     EXECUTING = 2;
-    PAUSED = 3;
+    MIGRATION_PAUSED = 3;
     COMPLETED = 4;
     FAILED = 5;
     CANCELED = 6;

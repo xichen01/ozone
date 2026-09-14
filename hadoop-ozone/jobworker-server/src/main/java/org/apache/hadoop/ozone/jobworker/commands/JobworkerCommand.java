@@ -21,8 +21,8 @@ package org.apache.hadoop.ozone.jobworker.commands;
 
 import com.google.common.base.Preconditions;
 import com.google.protobuf.Message;
+import jakarta.annotation.Nonnull;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto;
-import org.jetbrains.annotations.NotNull;
 
 /**
  * Base class for all jobworker commands.
@@ -96,7 +96,7 @@ public abstract class JobworkerCommand<T extends Message> {
    *
    * @return OM service ID
    */
-  @NotNull
+  @Nonnull
   public String getOmServiceId() {
     return omServiceId;
   }

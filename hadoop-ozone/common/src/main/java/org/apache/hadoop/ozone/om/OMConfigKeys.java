@@ -816,9 +816,3 @@ public final class OMConfigKeys {
   private OMConfigKeys() {
   }
 }
-  /**
-   * Never constructed.
-   */
-  private OMConfigKeys() {
-  }
-}

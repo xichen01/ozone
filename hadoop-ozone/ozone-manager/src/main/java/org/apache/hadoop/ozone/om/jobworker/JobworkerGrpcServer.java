@@ -20,7 +20,6 @@
 package org.apache.hadoop.ozone.om.jobworker;
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import com.google.protobuf.ProtocolMessageEnum;
 import io.grpc.Server;
 import io.grpc.ServerInterceptors;
 import io.grpc.netty.NettyServerBuilder;
@@ -69,7 +68,7 @@ public class JobworkerGrpcServer {
   private EventLoopGroup bossEventLoopGroup;
   private EventLoopGroup workerEventLoopGroup;
   private final int maxInboundLength;
-  private final ProtocolMessageMetrics<ProtocolMessageEnum> protocolMessageMetrics;
+  private final ProtocolMessageMetrics<JobworkerCommandType> protocolMessageMetrics;
   private final String serviceName = "Jobworker";
   private final OMNodeDetails omNodeDetails;
 
@@ -189,10 +188,10 @@ public class JobworkerGrpcServer {
    * Get the ProtocolMessageMetrics for this server.
    * @return ProtocolMessageMetrics
    */
-  private ProtocolMessageMetrics<ProtocolMessageEnum> getProtocolMessageMetrics(OzoneConfiguration conf) {
+  private ProtocolMessageMetrics<JobworkerCommandType> getProtocolMessageMetrics(OzoneConfiguration conf) {
     return ProtocolMessageMetrics
         .create("OMJobworkerGrpc", "OM Jobworker Grpc protocol",
-            JobworkerCommandType.values(), conf);
+            JobworkerCommandType.class);
   }
 
   private int getGrpcPort(OzoneConfiguration conf,

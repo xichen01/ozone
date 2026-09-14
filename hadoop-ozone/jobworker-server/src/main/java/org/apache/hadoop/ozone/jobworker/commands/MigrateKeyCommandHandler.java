@@ -31,6 +31,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import jakarta.annotation.Nullable;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.hdds.client.ECReplicationConfig;
@@ -55,7 +56,6 @@ import org.apache.hadoop.ozone.jobworker.JobworkerStateContext;
 import org.apache.hadoop.ozone.om.exceptions.OMException;
 import org.apache.hadoop.ozone.om.exceptions.OMException.ResultCodes;
 import org.apache.hadoop.util.Time;
-import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -319,8 +319,8 @@ public class MigrateKeyCommandHandler extends AbstractJobworkerCommandHandler {
       for (ObjectAttributes.AttributeType preserveAttribute : attributes) {
         switch (preserveAttribute) {
         case USER: // Preserve username
-          if (StringUtils.isNotBlank(ozoneKeyDetails.getOwnerName())) {
-            objectAttributes.setUsername(ozoneKeyDetails.getOwnerName());
+          if (StringUtils.isNotBlank(ozoneKeyDetails.getOwner())) {
+            objectAttributes.setUsername(ozoneKeyDetails.getOwner());
           }
           break;
         case MTIME: // Preserve modification time

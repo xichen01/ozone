@@ -108,8 +108,7 @@ public class BlockOutputStreamEntryPool implements KeyMetadataAware {
         // The object attribute modification time should specify the time when the key was committed,
         // not the time when the key was opened, some cleanup services rely on the
         // modification time of the open key.
-        .setObjectAttributes(b.getOpenHandler().getObjectAttributes())
-        .build();
+        .setObjectAttributes(b.getOpenHandler().getObjectAttributes());
     this.openID = b.getOpenHandler().getId();
     this.excludeList = createExcludeList();
 

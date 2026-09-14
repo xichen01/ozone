@@ -18,13 +18,13 @@
 package org.apache.hadoop.ozone.om.jobworker.command;
 
 import com.google.common.base.Preconditions;
+import jakarta.annotation.Nonnull;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandResultCode;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatus;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto;
 
 import java.util.UUID;
 import org.apache.hadoop.ozone.jobworker.commands.OMJobworkerCommand;
-import org.jetbrains.annotations.NotNull;
 
 /**
  * Contains status information for a JobWorker command.
@@ -75,7 +75,7 @@ public class JobworkerCommandInfo {
    *
    * @return the command type
    */
-  @NotNull
+  @Nonnull
   public OMJobworkerCommandProto.Type getCommandType() {
     return command.getType();
   }
@@ -85,7 +85,7 @@ public class JobworkerCommandInfo {
    *
    * @return the JobWorker UUID
    */
-  @NotNull
+  @Nonnull
   public UUID getJobworkerUuid() {
     return jobworkerUuid;
   }
@@ -95,7 +95,7 @@ public class JobworkerCommandInfo {
    *
    * @return the current status
    */
-  @NotNull
+  @Nonnull
   public CommandStatus.Status getStatus() {
     return status;
   }
@@ -195,7 +195,7 @@ public class JobworkerCommandInfo {
     return status == CommandStatus.Status.FAILED;
   }
 
-  @NotNull
+  @Nonnull
   public OMJobworkerCommand getCommand() {
     return command;
   }

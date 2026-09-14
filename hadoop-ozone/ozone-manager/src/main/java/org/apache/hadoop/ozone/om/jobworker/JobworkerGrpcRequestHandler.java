@@ -19,7 +19,6 @@
 
 package org.apache.hadoop.ozone.om.jobworker;
 
-import com.google.protobuf.ProtocolMessageEnum;
 import com.google.protobuf.ServiceException;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
@@ -31,6 +30,7 @@ import java.util.UUID;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceGrpc;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.JobworkerRequest;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.JobworkerResponse;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.JobworkerCommandType;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos;
 import org.apache.hadoop.hdds.server.OzoneProtocolMessageDispatcher;
@@ -38,7 +38,7 @@ import org.apache.hadoop.hdds.utils.ProtocolMessageMetrics;
 import org.apache.hadoop.ozone.jobworker.protocol.JobworkerProtocol;
 import org.apache.hadoop.ozone.om.jobworker.command.JobworkerCommandListener;
 import org.apache.hadoop.ozone.om.jobworker.command.OMJobworkerCommandManager;
-import org.apache.hadoop.util.ProtobufUtils;
+ import org.apache.hadoop.ozone.util.ProtobufUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -53,12 +53,12 @@ public class JobworkerGrpcRequestHandler extends
 
   private final JobworkerProtocol jobworkerProtocol;
   private final OzoneProtocolMessageDispatcher<JobworkerRequest,
-      JobworkerResponse, ProtocolMessageEnum> dispatcher;
+      JobworkerResponse, JobworkerCommandType> dispatcher;
   private final OMJobworkerCommandManager omJobworkerCommandManager;
 
   public JobworkerGrpcRequestHandler(
       JobworkerProtocol jobworkerProtocol,
-      ProtocolMessageMetrics<ProtocolMessageEnum> protocolMessageMetrics,
+      ProtocolMessageMetrics<JobworkerCommandType> protocolMessageMetrics,
       OMJobworkerCommandManager omJobworkerCommandManager) {
     this.jobworkerProtocol = jobworkerProtocol;
     dispatcher = new OzoneProtocolMessageDispatcher<>("OMJobworkerProtocol",
@@ -136,4 +136,3 @@ public class JobworkerGrpcRequestHandler extends
     }
   }
 }
-

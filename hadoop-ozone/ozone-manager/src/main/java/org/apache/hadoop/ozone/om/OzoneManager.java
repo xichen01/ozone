@@ -176,7 +176,6 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.FileUtil;
 import org.apache.hadoop.fs.SafeModeAction;
 import org.apache.hadoop.hdds.ExitManager;
-import org.apache.hadoop.hdds.DFSConfigKeysLegacy;
 import org.apache.hadoop.hdds.HddsConfigKeys;
 import org.apache.hadoop.hdds.HddsUtils;
 import org.apache.hadoop.hdds.annotation.InterfaceAudience;
@@ -853,6 +852,7 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
               .setNameFormat("Warm Up EDEK Cache Thread #%d")
               .build());
       warmUpEdekCache(edekCacheLoader, edekCacheLoaderDelay, edekCacheLoaderInterval, edekCacheLoaderMaxRetries);
+    }
   }
 
   static class EDEKCacheLoader implements Runnable {
@@ -1937,6 +1937,15 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
     return omRatisServer;
   }
 
+  public boolean isRatisEnabled() {
+    return true;
+  }
+
+  @VisibleForTesting
+  public OMJobworkerCommandManager getOMJobworkerCommandManager() {
+    return omJobworkerCommandManager;
+  }
+
   @VisibleForTesting
   public OmRatisSnapshotProvider getOmSnapshotProvider() {
     return omRatisSnapshotProvider;
@@ -2232,7 +2241,6 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
     jobworkerGrpcServer = getJobworkerGrpcServer(
         configuration, jobworkerServerProtocol, omJobworkerCommandManager);
     jobworkerGrpcServer.start();
-    startJVMPauseMonitor();
     setStartTime();
     omState = State.RUNNING;
     auditMap.put("NewOmState", omState.name());
@@ -5643,7 +5651,6 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
       return rcReader.get().getObjectTagging(args);
     }
   }
-  }
 
   @Override
   public Map<String, String> getBucketTagging(final OmBucketArgs args)
@@ -6154,7 +6161,7 @@ public final class OzoneManager extends ServiceRuntimeInfoImpl
   private DNSToSwitchMapping getDNSToSwitchMapping(OzoneConfiguration conf) {
     Class<? extends DNSToSwitchMapping> dnsToSwitchMappingClass =
         conf.getClass(
-            DFSConfigKeysLegacy.NET_TOPOLOGY_NODE_SWITCH_MAPPING_IMPL_KEY,
+            CommonConfigurationKeysPublic.NET_TOPOLOGY_NODE_SWITCH_MAPPING_IMPL_KEY,
             TableMapping.class, DNSToSwitchMapping.class);
     DNSToSwitchMapping newInstance = ReflectionUtils.newInstance(
         dnsToSwitchMappingClass, conf);

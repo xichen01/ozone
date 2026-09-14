@@ -20,19 +20,35 @@ package org.apache.hadoop.hdds.client;
 
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.ObjectAttributeProto;
 
-import javax.annotation.Nullable;
+import jakarta.annotation.Nullable;
 import java.util.EnumMap;
 import java.util.Map;
+import java.util.NoSuchElementException;
 
 /**
  * Enum for file attributes
  */
 public class ObjectAttributes {
 
-  private enum AttributeType {
-    USER,
-    MTIME,
-    CTIME
+  public enum AttributeType {
+    USER('u'),
+    MTIME('m'),
+    CTIME('c');
+
+    private final char symbol;
+
+    AttributeType(char symbol) {
+      this.symbol = symbol;
+    }
+
+    public static AttributeType fromSymbol(char symbol) {
+      for (AttributeType attribute : values()) {
+        if (attribute.symbol == Character.toLowerCase(symbol)) {
+          return attribute;
+        }
+      }
+      throw new NoSuchElementException("No attribute found for symbol: " + symbol);
+    }
   }
 
   private final EnumMap<AttributeType, Object> attributes = new EnumMap<>(AttributeType.class);

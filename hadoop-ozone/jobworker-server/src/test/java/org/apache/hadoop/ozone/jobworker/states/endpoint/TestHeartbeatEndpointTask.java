@@ -49,7 +49,7 @@ import org.apache.hadoop.ozone.jobworker.JobworkerStates;
 import org.apache.hadoop.ozone.jobworker.commands.JobworkerCommandManager;
 import org.apache.hadoop.ozone.jobworker.protocol.JobworkerProtocol;
 import org.apache.hadoop.ozone.jobworker.report.JobworkerReportManager;
-import org.apache.hadoop.util.ProtobufUtils;
+ import org.apache.hadoop.ozone.util.ProtobufUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
