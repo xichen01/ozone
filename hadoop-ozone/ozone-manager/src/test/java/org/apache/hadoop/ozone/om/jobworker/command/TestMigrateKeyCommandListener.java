@@ -16,7 +16,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.RandomUtils;
-import org.apache.hadoop.hdds.client.OzoneStoragePolicy;
+import org.apache.hadoop.hdds.client.ECReplicationConfig;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
 import org.apache.hadoop.hdds.protocol.MockJobworkerDetails;
@@ -55,6 +55,8 @@ import org.junit.jupiter.api.io.TempDir;
 public class TestMigrateKeyCommandListener {
   private static final String OM_SERVICE_ID = "om-service-1";
   private static final int DEFAULT_KEY_COUNT = 4;
+  private static final ECReplicationConfig TARGET_REPLICATION_CONFIG =
+      new ECReplicationConfig("rs-6-3-1024k");
 
   @TempDir
   private static File tempDir;
@@ -150,7 +152,7 @@ public class TestMigrateKeyCommandListener {
     assertEquals(originalCommand.getTxId(), retryCommand.getTxId());
     assertEquals(originalCommand.getVolume(), retryCommand.getVolume());
     assertEquals(originalCommand.getBucket(), retryCommand.getBucket());
-    assertEquals(originalCommand.getStoragePolicy(), retryCommand.getStoragePolicy());
+    assertEquals(originalCommand.getReplicationConfig(), retryCommand.getReplicationConfig());
     assertEquals(expectedKeys, retryCommand.getMigrationKeys());
     assertEquals(originalCommand.getTaskKey(), retryCommand.getTaskKey());
     assertEquals(originalCommand.getRetryCount() + 1, retryCommand.getRetryCount());
@@ -163,7 +165,7 @@ public class TestMigrateKeyCommandListener {
     String migrationTxKey = prepareTestData(migrationKeys, taskKey, txId);
 
     OMJobworkerMigrateKeyCommand command = new OMJobworkerMigrateKeyCommand(txId,
-        volumeName, bucketName, OzoneStoragePolicy.COLD, migrationKeys, null, taskKey, 0);
+        volumeName, bucketName, TARGET_REPLICATION_CONFIG, migrationKeys, null, taskKey, 0);
     long cmdId = commandManager.sendCommand(jobworker1Uuid, command);
     assertTrue(migrationTaskManager.isTaskExists(taskKey));
     assertTrue(migrationTaskManager.isTransactionExists(migrationTxKey));
@@ -187,7 +189,7 @@ public class TestMigrateKeyCommandListener {
     String migrationTxKey = prepareTestData(migrationKeys, taskKey, txId);
 
     OMJobworkerMigrateKeyCommand command = new OMJobworkerMigrateKeyCommand(txId,
-        volumeName, bucketName, OzoneStoragePolicy.COLD, migrationKeys, null, taskKey, 0);
+        volumeName, bucketName, TARGET_REPLICATION_CONFIG, migrationKeys, null, taskKey, 0);
     long cmdId = commandManager.sendCommand(jobworker1Uuid, command);
 
     // Create failed command status with retryable error
@@ -217,7 +219,7 @@ public class TestMigrateKeyCommandListener {
     String migrationTxKey = prepareTestData(migrationKeys, taskKey, txId);
 
     OMJobworkerMigrateKeyCommand command = new OMJobworkerMigrateKeyCommand(txId,
-        volumeName, bucketName, OzoneStoragePolicy.COLD, migrationKeys, null, taskKey, 0);
+        volumeName, bucketName, TARGET_REPLICATION_CONFIG, migrationKeys, null, taskKey, 0);
     long cmdId = commandManager.sendCommand(jobworker1Uuid, command);
 
     // Create failed command status with non-retryable error
@@ -244,7 +246,7 @@ public class TestMigrateKeyCommandListener {
     String migrationTxKey = prepareTestData(migrationKeys, taskKey, txId);
 
     OMJobworkerMigrateKeyCommand command = new OMJobworkerMigrateKeyCommand(txId,
-        volumeName, bucketName, OzoneStoragePolicy.COLD, migrationKeys, null, taskKey, 0);
+        volumeName, bucketName, TARGET_REPLICATION_CONFIG, migrationKeys, null, taskKey, 0);
     long cmdId = commandManager.sendCommand(jobworker1Uuid, command);
 
     // Create partial success status1: 2 success, 1 retryable error, 1 non-retryable error
@@ -298,7 +300,7 @@ public class TestMigrateKeyCommandListener {
     long txId = RandomUtils.nextLong();
     String migrationTxKey = prepareTestData(migrationKeys, taskKey, txId);
     OMJobworkerMigrateKeyCommand command = new OMJobworkerMigrateKeyCommand(txId,
-        volumeName, bucketName, OzoneStoragePolicy.COLD, migrationKeys, null, taskKey, maxRetryCount);
+        volumeName, bucketName, TARGET_REPLICATION_CONFIG, migrationKeys, null, taskKey, maxRetryCount);
     long cmdId = commandManager.sendCommand(jobworker1Uuid, command);
 
     // Create partial success status: 2 success, 2 retryable errors
@@ -332,7 +334,7 @@ public class TestMigrateKeyCommandListener {
     String migrationTxKey = prepareTestData(migrationKeys, taskKey, txId);
 
     OMJobworkerMigrateKeyCommand command = new OMJobworkerMigrateKeyCommand(txId,
-        volumeName, bucketName, OzoneStoragePolicy.COLD, migrationKeys, null, taskKey, 0);
+        volumeName, bucketName, TARGET_REPLICATION_CONFIG, migrationKeys, null, taskKey, 0);
     commandManager.sendCommand(jobworker1Uuid, command);
 
     // Clear any existing commands in the queue
@@ -359,7 +361,7 @@ public class TestMigrateKeyCommandListener {
     String migrationTxKey = prepareTestData(migrationKeys, taskKey, txId);
 
     OMJobworkerMigrateKeyCommand command = new OMJobworkerMigrateKeyCommand(txId,
-        volumeName, bucketName, OzoneStoragePolicy.COLD, migrationKeys, null, taskKey, maxRetryCount);
+        volumeName, bucketName, TARGET_REPLICATION_CONFIG, migrationKeys, null, taskKey, maxRetryCount);
     long cmdId = commandManager.sendCommand(jobworker1Uuid, command);
 
     // Create failed command status with retryable error but max retry reached
@@ -382,7 +384,7 @@ public class TestMigrateKeyCommandListener {
     String migrationTxKey = prepareTestData(migrationKeys, taskKey, txId);
 
     OMJobworkerMigrateKeyCommand command = new OMJobworkerMigrateKeyCommand(txId,
-        volumeName, bucketName, OzoneStoragePolicy.COLD, migrationKeys, null, taskKey, 0);
+        volumeName, bucketName, TARGET_REPLICATION_CONFIG, migrationKeys, null, taskKey, 0);
     long cmdId = commandManager.sendCommand(jobworker1Uuid, command);
 
     // Create command status with mismatched result count
@@ -407,7 +409,7 @@ public class TestMigrateKeyCommandListener {
     // Prepare command without inserting task
     long txId = RandomUtils.nextLong();
     OMJobworkerMigrateKeyCommand command = new OMJobworkerMigrateKeyCommand(txId,
-        volumeName, bucketName, OzoneStoragePolicy.COLD, migrationKeys, null, taskKey, 0);
+        volumeName, bucketName, TARGET_REPLICATION_CONFIG, migrationKeys, null, taskKey, 0);
     long cmdId = commandManager.sendCommand(jobworker1Uuid, command);
 
     // Create successful command status
@@ -487,7 +489,7 @@ public class TestMigrateKeyCommandListener {
         .setTxId(123L)
         .setVolume(volume)
         .setBucket(bucket)
-        .setStoragePolicy(OzoneStoragePolicy.toProto(OzoneStoragePolicy.COLD))
+        .setEcReplicationConfig(TARGET_REPLICATION_CONFIG.toProto())
         .addAllMigrationKeys(keys)
         .setTaskKey(task)
         .build();
