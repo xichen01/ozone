@@ -211,6 +211,7 @@ import org.apache.ozone.test.OzoneTestBase;
 import org.apache.ozone.test.tag.Flaky;
 import org.apache.ozone.test.tag.Unhealthy;
 import org.apache.ratis.util.function.CheckedSupplier;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Test;
@@ -758,7 +759,7 @@ abstract class OzoneRpcClientTests extends OzoneTestBase {
     writeKey(ozoneBucket, keyName0, ONE, value, value.length(), objectAttributes0);
     OzoneKeyDetails keyDetails = ozoneBucket.getKey(keyName0);
     assertEquals(ctime0, keyDetails.getCreationTime().toEpochMilli());
-    assertEquals(UserGroupInformation.getCurrentUser().getShortUserName(), keyDetails.getOwnerName());
+    assertEquals(UserGroupInformation.getCurrentUser().getShortUserName(), keyDetails.getOwner());
 
     // Only specifying modification Time
     ObjectAttributes objectAttributes1 = new ObjectAttributes();
@@ -768,7 +769,7 @@ abstract class OzoneRpcClientTests extends OzoneTestBase {
     writeKey(ozoneBucket, keyName1, ONE, value, value.length(), objectAttributes1);
     OzoneKeyDetails keyDetails1 = ozoneBucket.getKey(keyName1);
     assertEquals(mTime1, keyDetails1.getModificationTime().toEpochMilli());
-    assertEquals(UserGroupInformation.getCurrentUser().getShortUserName(), keyDetails1.getOwnerName());
+    assertEquals(UserGroupInformation.getCurrentUser().getShortUserName(), keyDetails1.getOwner());
 
     // Only specifying username
     ObjectAttributes objectAttributes2 = new ObjectAttributes();
@@ -777,7 +778,7 @@ abstract class OzoneRpcClientTests extends OzoneTestBase {
     String keyName2 = UUID.randomUUID().toString();
     writeKey(ozoneBucket, keyName2, ONE, value, value.length(), objectAttributes2);
     OzoneKeyDetails keyDetails2 = ozoneBucket.getKey(keyName2);
-    assertEquals(userName2, keyDetails2.getOwnerName());
+    assertEquals(userName2, keyDetails2.getOwner());
 
     // Specifying multiple attribute
     String userName3 = UUID.randomUUID().toString();
@@ -789,7 +790,7 @@ abstract class OzoneRpcClientTests extends OzoneTestBase {
     writeKey(ozoneBucket, keyName3, ONE, value, value.length(), objectAttributes3);
     OzoneKeyDetails keyDetails3 = ozoneBucket.getKey(keyName3);
     assertEquals(mTime3, keyDetails3.getModificationTime().toEpochMilli());
-    assertEquals(userName3, keyDetails3.getOwnerName());
+    assertEquals(userName3, keyDetails3.getOwner());
 
     // Test overwrite
     String userName4 = UUID.randomUUID().toString();
@@ -800,7 +801,7 @@ abstract class OzoneRpcClientTests extends OzoneTestBase {
     writeKey(ozoneBucket, keyName3, ONE, value, value.length(), objectAttributes4);
     OzoneKeyDetails keyDetails4 = ozoneBucket.getKey(keyName3);
     assertEquals(mTime4, keyDetails4.getModificationTime().toEpochMilli());
-    assertEquals(userName4, keyDetails4.getOwnerName());
+    assertEquals(userName4, keyDetails4.getOwner());
   }
 
   @ParameterizedTest
@@ -838,7 +839,7 @@ abstract class OzoneRpcClientTests extends OzoneTestBase {
     }
     OzoneKeyDetails keyDetails0 = ozoneBucket.getKey(keyName);
     assertEquals(ctime0, keyDetails0.getCreationTime().toEpochMilli());
-    assertEquals(UserGroupInformation.getCurrentUser().getShortUserName(), keyDetails0.getOwnerName());
+    assertEquals(UserGroupInformation.getCurrentUser().getShortUserName(), keyDetails0.getOwner());
 
     // Test rewriting with modification time attribute
     ObjectAttributes objectAttributes1 = new ObjectAttributes();
@@ -852,7 +853,7 @@ abstract class OzoneRpcClientTests extends OzoneTestBase {
     }
     OzoneKeyDetails keyDetails1 = ozoneBucket.getKey(keyName);
     assertEquals(mTime1, keyDetails1.getModificationTime().toEpochMilli());
-    assertEquals(UserGroupInformation.getCurrentUser().getShortUserName(), keyDetails1.getOwnerName());
+    assertEquals(UserGroupInformation.getCurrentUser().getShortUserName(), keyDetails1.getOwner());
 
     // Test rewriting with username attribute
     ObjectAttributes objectAttributes2 = new ObjectAttributes();
@@ -865,7 +866,7 @@ abstract class OzoneRpcClientTests extends OzoneTestBase {
       out.write(rewriteValue.getBytes(UTF_8));
     }
     OzoneKeyDetails keyDetails2 = ozoneBucket.getKey(keyName);
-    assertEquals(userName2, keyDetails2.getOwnerName());
+    assertEquals(userName2, keyDetails2.getOwner());
 
     // Test rewriting with multiple attributes
     String userName3 = UUID.randomUUID().toString();
@@ -882,7 +883,7 @@ abstract class OzoneRpcClientTests extends OzoneTestBase {
     }
     OzoneKeyDetails keyDetails3 = ozoneBucket.getKey(keyName);
     assertEquals(mTime3, keyDetails3.getModificationTime().toEpochMilli());
-    assertEquals(userName3, keyDetails3.getOwnerName());
+    assertEquals(userName3, keyDetails3.getOwner());
 
     // Test overwrite with different attributes
     String userName4 = UUID.randomUUID().toString();
@@ -899,7 +900,7 @@ abstract class OzoneRpcClientTests extends OzoneTestBase {
     }
     OzoneKeyDetails keyDetails4 = ozoneBucket.getKey(keyName);
     assertEquals(mTime4, keyDetails4.getModificationTime().toEpochMilli());
-    assertEquals(userName4, keyDetails4.getOwnerName());
+    assertEquals(userName4, keyDetails4.getOwner());
   }
 
   @ParameterizedTest
@@ -934,7 +935,7 @@ abstract class OzoneRpcClientTests extends OzoneTestBase {
     // Rewrite key with tags
     OzoneOutputStream rewriteOut = ozoneBucket.rewriteKey(keyName, rewrittenValue.length(),
         generation, ReplicationConfig.fromTypeAndFactor(RATIS, ONE), rewriteMetadata,
-        tags, null, null);
+        tags, null);
     rewriteOut.write(rewrittenValue.getBytes(UTF_8));
     rewriteOut.close();
 
@@ -3468,46 +3469,6 @@ abstract class OzoneRpcClientTests extends OzoneTestBase {
     while (keys.hasNext()) {
       fail();
     }
-  }
-
-  @ParameterizedTest
-  @MethodSource("bucketLayouts")
-  public void testCreateKeyWithMetadataAndTags(BucketLayout bucketLayout) throws Exception {
-    String volumeName = UUID.randomUUID().toString();
-    String bucketName = UUID.randomUUID().toString();
-    String keyName = UUID.randomUUID().toString();
-    String value = "sample value";
-    OzoneVolume volume = null;
-    store.createVolume(volumeName);
-
-    volume = store.getVolume(volumeName);
-    BucketArgs bucketArgs =
-            BucketArgs.newBuilder().setBucketLayout(bucketLayout).build();
-    volume.createBucket(bucketName, bucketArgs);
-
-    OzoneBucket ozoneBucket = volume.getBucket(bucketName);
-
-    Map<String, String> customMetadata = new HashMap<>();
-    customMetadata.put("custom-key1", "custom-value1");
-    customMetadata.put("custom-key2", "custom-value2");
-
-    Map<String, String> tags = new HashMap<>();
-    tags.put("tag-key1", "tag-value1");
-    tags.put("tag-key2", "tag-value2");
-
-    writeKey(ozoneBucket, keyName, ONE, value, value.length(), customMetadata, tags);
-
-    OzoneKeyDetails keyDetails = ozoneBucket.getKey(keyName);
-
-    Map<String, String> keyMetadata = keyDetails.getMetadata();
-
-    Map<String, String> keyTags = keyDetails.getTags();
-
-    assertThat(keyMetadata).containsAllEntriesOf(customMetadata);
-    assertThat(keyMetadata).doesNotContainKeys("tag-key1", "tag-key2");
-
-    assertThat(keyTags).containsAllEntriesOf(keyTags);
-    assertThat(keyTags).doesNotContainKeys("custom-key1", "custom-key2");
   }
 
   static Stream<ReplicationConfig> replicationConfigs() {

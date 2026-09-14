@@ -44,7 +44,7 @@ import org.slf4j.LoggerFactory;
  * Tests OMSequenceIdGenerator in HA mode during transferLeadership.
  */
 @Timeout(900)
-public class TestOMSequenceIdGeneratorHA extends TestOzoneManagerHA {
+public class TestOMSequenceIdGeneratorHA extends OzoneManagerHATests {
 
   private static final Logger LOG =
       LoggerFactory.getLogger(TestOMSequenceIdGeneratorHA.class);
@@ -53,8 +53,6 @@ public class TestOMSequenceIdGeneratorHA extends TestOzoneManagerHA {
   private static final String SEQUENCE_NAME2 = "testSequence2";
   private static final int BATCH_SIZE = 5;
   private static final int TRANSFER_COUNT = 5;
-  private static final int OM_HA_SERVICE_INDEX = 0; // Only need to test one of OM ha SERVICE
-
   @Test
   public void testSequenceIdGeneratorDuringTransferLeadership() throws Exception {
     getConf().setInt(OMConfigKeys.OZONE_OM_SEQUENCE_ID_BATCH_SIZE, BATCH_SIZE);
@@ -66,7 +64,7 @@ public class TestOMSequenceIdGeneratorHA extends TestOzoneManagerHA {
       List<CompletableFuture<Void>> idGenerationFutures = new ArrayList<>();
 
       // Start ID generation thread
-      for (OzoneManager ozoneManager : getCluster().getOzoneManagersList(OM_HA_SERVICE_INDEX)) {
+      for (OzoneManager ozoneManager : getCluster().getOzoneManagersList()) {
         idGenerationFutures.add(CompletableFuture.runAsync(() -> {
           OMSequenceIdGenerator sequenceIdGenerator = new OMSequenceIdGenerator(getConf(), ozoneManager);
           long prevId = -1;
@@ -100,10 +98,10 @@ public class TestOMSequenceIdGeneratorHA extends TestOzoneManagerHA {
       CompletableFuture<Void> transferFuture = CompletableFuture.runAsync(() -> {
         try {
           for (int i = 0; i < TRANSFER_COUNT; i++) {
-            OzoneManager currentLeader = getCluster().getOMLeader(OM_HA_SERVICE_INDEX);
+            OzoneManager currentLeader = getCluster().getOMLeader();
             OzoneManager targetFollower = null;
             
-            for (OzoneManager om : getCluster().getOzoneManagersList(OM_HA_SERVICE_INDEX)) {
+            for (OzoneManager om : getCluster().getOzoneManagersList()) {
               if (om != currentLeader) {
                 targetFollower = om;
                 break;
@@ -113,7 +111,7 @@ public class TestOMSequenceIdGeneratorHA extends TestOzoneManagerHA {
             currentLeader.transferLeadership(targetFollower.getOMNodeId());
 
             Thread.sleep(ThreadLocalRandom.current().nextInt(2000) + 1);
-            OzoneManager newLeader = getCluster().getOMLeader(OM_HA_SERVICE_INDEX, true);
+            OzoneManager newLeader = getCluster().getOMLeader();
             Assertions.assertNotNull(newLeader, "New leader should be ready");
             assertTrue(newLeader.isLeaderReady(), "New leader should be ready");
             LOG.info("Leadership transferred from {} to {} (transfer {}/" + TRANSFER_COUNT + ")",
@@ -150,7 +148,7 @@ public class TestOMSequenceIdGeneratorHA extends TestOzoneManagerHA {
       List<CompletableFuture<Void>> idGenerationFutures = new ArrayList<>();
 
       // Start ID generation thread
-      for (OzoneManager ozoneManager : getCluster().getOzoneManagersList(OM_HA_SERVICE_INDEX)) {
+      for (OzoneManager ozoneManager : getCluster().getOzoneManagersList()) {
         OMSequenceIdGenerator sequenceIdGenerator = new OMSequenceIdGenerator(getConf(), ozoneManager);
         idGenerationFutures.add(CompletableFuture.runAsync(() -> {
           long prevId = -1;
@@ -184,9 +182,9 @@ public class TestOMSequenceIdGeneratorHA extends TestOzoneManagerHA {
       CompletableFuture<Void> transferFuture = CompletableFuture.runAsync(() -> {
         try {
           for (int i = 0; i < TRANSFER_COUNT; i++) {
-            OzoneManager currentLeader = getCluster().getOMLeader(OM_HA_SERVICE_INDEX);
+            OzoneManager currentLeader = getCluster().getOMLeader();
             getCluster().shutdownOzoneManager(currentLeader);
-            OzoneManager newLeader = getCluster().getOMLeader(OM_HA_SERVICE_INDEX, true);
+            OzoneManager newLeader = getCluster().getOMLeader();
             Assertions.assertNotNull(newLeader, "New leader should be ready");
             assertTrue(newLeader.isLeaderReady(), "New leader should be ready");
             LOG.info("Leadership transferred from {} to {} (transfer {}/" + TRANSFER_COUNT + ")",
