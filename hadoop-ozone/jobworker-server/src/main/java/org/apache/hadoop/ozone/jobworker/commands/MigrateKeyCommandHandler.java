@@ -36,6 +36,7 @@ import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.hdds.client.ECReplicationConfig;
 import org.apache.hadoop.hdds.client.ObjectAttributes;
+import org.apache.hadoop.hdds.protocol.datanode.proto.ContainerProtos;
 import org.apache.hadoop.hdds.conf.ConfigurationSource;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandExecutionResultsProto;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandResultCode;
@@ -48,13 +49,21 @@ import org.apache.hadoop.ozone.client.OzoneBucket;
 import org.apache.hadoop.ozone.client.OzoneClient;
 import org.apache.hadoop.ozone.client.OzoneClientFactory;
 import org.apache.hadoop.ozone.client.OzoneKeyDetails;
+import org.apache.hadoop.ozone.client.checksum.BaseFileChecksumHelper;
+import org.apache.hadoop.ozone.client.checksum.BlockLocationChecksumHelper;
+import org.apache.hadoop.ozone.client.checksum.BlockLocationChecksumHelper.KeyChecksumInfo;
 import org.apache.hadoop.ozone.client.io.OzoneInputStream;
 import org.apache.hadoop.ozone.client.io.OzoneOutputStream;
+import org.apache.hadoop.ozone.client.rpc.RpcClient;
 import org.apache.hadoop.ozone.conf.JobWorkerMigrationKeyConfiguration;
 import org.apache.hadoop.ozone.jobworker.JobworkerConnectionManager;
 import org.apache.hadoop.ozone.jobworker.JobworkerStateContext;
 import org.apache.hadoop.ozone.om.exceptions.OMException;
 import org.apache.hadoop.ozone.om.exceptions.OMException.ResultCodes;
+import org.apache.hadoop.hdds.scm.XceiverClientFactory;
+import org.apache.hadoop.ozone.common.OzoneChecksumException;
+import org.apache.hadoop.ozone.common.OzoneChecksumException.FailureType;
+import org.apache.hadoop.ozone.OzoneConsts;
 import org.apache.hadoop.util.Time;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -155,7 +164,7 @@ public class MigrateKeyCommandHandler extends AbstractJobworkerCommandHandler {
         return false;
       }
 
-      int successfulKeys = migrateKeys(bucket, command, context, replicationConfig);
+      int successfulKeys = migrateKeys(bucket, command, context, replicationConfig, ozoneClient);
       LOG.info("Key migration completed: " +
               "OmServiceId={}, volume={}, bucket={}, replicationConfig={}, keyCount={}, preserveAttributes={}" +
               ", commandId={}, duration={}ms",
@@ -210,7 +219,8 @@ public class MigrateKeyCommandHandler extends AbstractJobworkerCommandHandler {
   }
 
   private int migrateKeys(OzoneBucket bucket, MigrateKeyJobworkerCommand command,
-                          JobworkerStateContext context, ECReplicationConfig replicationConfig) {
+                          JobworkerStateContext context, ECReplicationConfig replicationConfig,
+                          OzoneClient ozoneClient) {
     int successfulKeys = 0;
     MigrationResultsProto.Builder migrationResults = MigrationResultsProto.newBuilder();
 
@@ -219,7 +229,8 @@ public class MigrateKeyCommandHandler extends AbstractJobworkerCommandHandler {
         MigrationKeyResult.Builder keyResult = MigrationKeyResult.newBuilder().setKeyName(migrationKeyProto.getKey());
 
         try {
-          migrateKey(bucket, migrationKeyProto, command.getPreserveAttributes(), replicationConfig);
+          migrateKey(bucket, migrationKeyProto, command.getPreserveAttributes(), replicationConfig,
+              command.isVerifyChecksum(), ozoneClient);
           keyResult.setResultCode(CommandResultCode.SUCCESS);
           migrationResults.addResults(keyResult.build());
           successfulKeys++;
@@ -252,7 +263,8 @@ public class MigrateKeyCommandHandler extends AbstractJobworkerCommandHandler {
       ResultCodes result = omException.getResult();
       switch (result) {
       case KEY_NOT_FOUND:
-        if (omException.getMessage().contains("Generation mismatch")) {
+        if (omException.getMessage() != null
+            && omException.getMessage().contains("Generation mismatch")) {
           return CommandResultCode.KEY_GENERATION_MISMATCH;
         }
         return CommandResultCode.KEY_NOT_FOUND;
@@ -262,6 +274,8 @@ public class MigrateKeyCommandHandler extends AbstractJobworkerCommandHandler {
         return CommandResultCode.VOLUME_NOT_FOUND;
       case PERMISSION_DENIED:
         return CommandResultCode.PERMISSION_DENIED;
+      case KEY_CHECKSUM_MISMATCH:
+        return CommandResultCode.CHECKSUM_MISMATCH;
       default:
         return null;
       }
@@ -269,7 +283,17 @@ public class MigrateKeyCommandHandler extends AbstractJobworkerCommandHandler {
     if (e.getCause() instanceof TimeoutException) {
       return CommandResultCode.IO_TIMEOUT;
     }
-    if (e.getMessage().contains("Error parsing preserve attributes")) {
+    if (e instanceof OzoneChecksumException) {
+      FailureType failureType = ((OzoneChecksumException) e).getFailureType();
+      if (failureType == FailureType.SOURCE_CHECKSUM_TYPE_UNSUPPORTED) {
+        return CommandResultCode.SOURCE_CHECKSUM_TYPE_UNSUPPORTED;
+      }
+      if (failureType == FailureType.WRITE_CHECKSUM_TYPE_UNSUPPORTED) {
+        return CommandResultCode.WRITE_CHECKSUM_TYPE_UNSUPPORTED;
+      }
+    }
+    if (e.getMessage() != null
+        && e.getMessage().contains("Error parsing preserve attributes")) {
       return CommandResultCode.INVALID_COMMAND;
     }
 
@@ -277,7 +301,8 @@ public class MigrateKeyCommandHandler extends AbstractJobworkerCommandHandler {
   }
 
   private void migrateKey(OzoneBucket bucket, MigrationKeyProto migrationKeyProto, String preserveAttributesStr,
-      ECReplicationConfig targetReplicationConfig) throws IOException {
+      ECReplicationConfig targetReplicationConfig, boolean verifyChecksum,
+      OzoneClient ozoneClient) throws IOException {
     OzoneKeyDetails sourceKeyDetails = bucket.getKey(migrationKeyProto.getKey());
     // Skip if already has the target replication configuration.
     if (sourceKeyDetails.getReplicationConfig().equals(targetReplicationConfig)) {
@@ -286,11 +311,31 @@ public class MigrateKeyCommandHandler extends AbstractJobworkerCommandHandler {
     }
     ObjectAttributes objectAttributes = parsePreserveAttributes(sourceKeyDetails, preserveAttributesStr);
     long sourceKeyLen = sourceKeyDetails.getDataSize();
+    KeyChecksumInfo expectedChecksum = null;
+    ContainerProtos.ChecksumType sourceChecksumType = null;
+    if (verifyChecksum && sourceKeyLen > 0) {
+      RpcClient rpcClient = (RpcClient) ozoneClient.getProxy();
+      XceiverClientFactory xceiverFactory = rpcClient.getXceiverClientManager();
+      expectedChecksum = BlockLocationChecksumHelper.computeFileChecksum(
+          xceiverFactory, sourceKeyDetails.getOzoneKeyLocations(),
+          sourceKeyDetails.getReplicationConfig());
+      sourceChecksumType = expectedChecksum.getChecksumType();
+      if (!BaseFileChecksumHelper.isCompositeCrcType(sourceChecksumType)) {
+        throw new OzoneChecksumException(FailureType.SOURCE_CHECKSUM_TYPE_UNSUPPORTED,
+            "Unsupported source checksum type " + sourceChecksumType);
+      }
+    }
+    java.util.Map<String, String> rewriteMetadata =
+        new java.util.HashMap<>(sourceKeyDetails.getMetadata());
+    rewriteMetadata.put(OzoneConsts.REWRITE_SOURCE_VERSION,
+        String.valueOf(migrationKeyProto.getUpdateID()));
     try (OzoneInputStream inputStream = sourceKeyDetails.getContent();
          OzoneOutputStream outputStream = bucket.rewriteKey(
              migrationKeyProto.getKey(), sourceKeyLen, migrationKeyProto.getUpdateID(),
-             targetReplicationConfig, sourceKeyDetails.getMetadata(),
-             sourceKeyDetails.getTags(), objectAttributes)) {
+             targetReplicationConfig, rewriteMetadata,
+             sourceKeyDetails.getTags(), objectAttributes,
+             expectedChecksum == null ? null : expectedChecksum.getFileChecksum(),
+             sourceChecksumType)) {
 
       IOUtils.copyLarge(inputStream, outputStream, 0, sourceKeyLen,
           new byte[getIOBufferSize(sourceKeyLen)]);

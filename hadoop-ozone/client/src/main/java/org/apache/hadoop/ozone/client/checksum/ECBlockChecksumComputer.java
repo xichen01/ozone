@@ -44,12 +44,23 @@ public class ECBlockChecksumComputer extends AbstractBlockChecksumComputer {
 
   private final List<ContainerProtos.ChunkInfo> chunkInfoList;
   private final OmKeyInfo keyInfo;
+  private final ECReplicationConfig replicationConfig;
   private final long blockLength;
 
   public ECBlockChecksumComputer(
       List<ContainerProtos.ChunkInfo> chunkInfoList, OmKeyInfo keyInfo, long blockLength) {
     this.chunkInfoList = chunkInfoList;
     this.keyInfo = keyInfo;
+    this.replicationConfig = (ECReplicationConfig) keyInfo.getReplicationConfig();
+    this.blockLength = blockLength;
+  }
+
+  public ECBlockChecksumComputer(
+      List<ContainerProtos.ChunkInfo> chunkInfoList,
+      ECReplicationConfig replicationConfig, long blockLength) {
+    this.chunkInfoList = chunkInfoList;
+    this.keyInfo = null;
+    this.replicationConfig = replicationConfig;
     this.blockLength = blockLength;
   }
 
@@ -172,8 +183,6 @@ public class ECBlockChecksumComputer extends AbstractBlockChecksumComputer {
    * (2MB / 1MB) * 4L * 2 = 16 Bytes
    */
   private int getParityBytes(long chunkSize, long bytesPerCrc) {
-    ECReplicationConfig replicationConfig =
-        (ECReplicationConfig) keyInfo.getReplicationConfig();
     int numParity = replicationConfig.getParity();
     int parityBytes = (int)
         (Math.ceil((double)chunkSize / bytesPerCrc) * 4L * numParity);

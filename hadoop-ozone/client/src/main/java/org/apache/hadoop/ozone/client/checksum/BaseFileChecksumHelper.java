@@ -362,15 +362,49 @@ public abstract class BaseFileChecksumHelper {
 
   }
 
-  DataChecksum.Type toHadoopChecksumType() {
-    switch (checksumType) {
+  public static boolean isCompositeCrcType(ContainerProtos.ChecksumType type) {
+    return type == ContainerProtos.ChecksumType.CRC32
+        || type == ContainerProtos.ChecksumType.CRC32C;
+  }
+
+  public static DataChecksum.Type toHadoopChecksumType(
+      ContainerProtos.ChecksumType type) {
+    switch (type) {
     case CRC32:
       return DataChecksum.Type.CRC32;
     case CRC32C:
       return DataChecksum.Type.CRC32C;
     default:
-      throw new IllegalArgumentException("unsupported checksum type");
+      throw new IllegalArgumentException("Unsupported checksum type: " + type);
     }
+  }
+
+  public static ContainerProtos.ChecksumType toContainerChecksumType(
+      DataChecksum.Type type) throws IOException {
+    switch (type) {
+    case CRC32:
+      return ContainerProtos.ChecksumType.CRC32;
+    case CRC32C:
+      return ContainerProtos.ChecksumType.CRC32C;
+    default:
+      throw new IOException("Unsupported checksum type: " + type);
+    }
+  }
+
+  static FileChecksum composeBlockCRCsToFileChecksum(
+      ContainerProtos.ChecksumType type, int bytesPerCrc,
+      byte[] blockChecksumBytes, int blockCount, long[] blockLengths,
+      long blockSizeHint) throws IOException {
+    DataChecksum.Type dataChecksumType = toHadoopChecksumType(type);
+    CrcComposer crcComposer =
+        CrcComposer.newCrcComposer(dataChecksumType, blockSizeHint);
+    for (int i = 0; i < blockCount; i++) {
+      int blockCrc = CrcUtil.readInt(blockChecksumBytes, i * 4);
+      crcComposer.update(blockCrc, blockLengths[i]);
+    }
+    int compositeCrc = CrcUtil.readInt(crcComposer.digest(), 0);
+    return new CompositeCrcFileChecksum(
+        compositeCrc, dataChecksumType, bytesPerCrc);
   }
 
   FileChecksum makeCompositeCrcResult() throws IOException {
@@ -378,26 +412,13 @@ public abstract class BaseFileChecksumHelper {
     if (!keyLocationInfos.isEmpty()) {
       blockSizeHint = keyLocationInfos.get(0).getLength();
     }
-    CrcComposer crcComposer =
-        CrcComposer.newCrcComposer(toHadoopChecksumType(), blockSizeHint);
-    byte[] blockChecksumBytes = blockChecksumBuf.getData();
-
-    for (int i = 0; i < keyLocationInfos.size(); ++i) {
-      OmKeyLocationInfo block = keyLocationInfos.get(i);
-      // For every LocatedBlock, we expect getBlockSize()
-      // to accurately reflect the number of file bytes digested in the block
-      // checksum.
-      int blockCrc = CrcUtil.readInt(blockChecksumBytes, i * 4);
-
-      crcComposer.update(blockCrc, block.getLength());
-      LOG.debug(
-          "Added blockCrc 0x{} for block index {} of size {}",
-          Integer.toString(blockCrc, 16), i, block.getLength());
+    long[] blockLengths = new long[keyLocationInfos.size()];
+    for (int i = 0; i < keyLocationInfos.size(); i++) {
+      blockLengths[i] = keyLocationInfos.get(i).getLength();
     }
-
-    int compositeCrc = CrcUtil.readInt(crcComposer.digest(), 0);
-    return new CompositeCrcFileChecksum(
-        compositeCrc, toHadoopChecksumType(), bytesPerCRC);
+    return composeBlockCRCsToFileChecksum(checksumType, bytesPerCRC,
+        blockChecksumBuf.getData(), keyLocationInfos.size(), blockLengths,
+        blockSizeHint);
   }
 
   public FileChecksum getFileChecksum() {

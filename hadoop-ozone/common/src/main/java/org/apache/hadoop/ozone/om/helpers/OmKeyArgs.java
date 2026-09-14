@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import org.apache.hadoop.hdds.client.ObjectAttributes;
 import org.apache.hadoop.hdds.client.ReplicationConfig;
+import org.apache.hadoop.hdds.protocol.datanode.proto.ContainerProtos;
 import org.apache.hadoop.ozone.OzoneAcl;
 import org.apache.hadoop.ozone.OzoneConsts;
 import org.apache.hadoop.ozone.audit.Auditable;
@@ -68,6 +69,10 @@ public final class OmKeyArgs extends WithMetadata implements Auditable {
   private final String expectedETag;
   private final boolean derivedKeyPiggyBacking;
   private final ObjectAttributes objectAttributes;
+  private byte[] expectedKeyChecksum;
+  private ContainerProtos.ChecksumType expectedKeyChecksumType;
+  private byte[] actualKeyChecksum;
+  private ContainerProtos.ChecksumType actualKeyChecksumType;
 
   private OmKeyArgs(Builder b) {
     super(b);
@@ -93,6 +98,10 @@ public final class OmKeyArgs extends WithMetadata implements Auditable {
     this.expectedETag = b.expectedETag;
     this.derivedKeyPiggyBacking = b.derivedKeyPiggyBacking;
     this.objectAttributes = b.objectAttributes;
+    this.expectedKeyChecksum = b.expectedKeyChecksum;
+    this.expectedKeyChecksumType = b.expectedKeyChecksumType;
+    this.actualKeyChecksum = b.actualKeyChecksum;
+    this.actualKeyChecksumType = b.actualKeyChecksumType;
   }
 
   public ObjectAttributes getObjectAttributes() {
@@ -195,6 +204,34 @@ public final class OmKeyArgs extends WithMetadata implements Auditable {
     return derivedKeyPiggyBacking;
   }
 
+  public byte[] getExpectedKeyChecksum() {
+    return expectedKeyChecksum;
+  }
+
+  public ContainerProtos.ChecksumType getExpectedKeyChecksumType() {
+    return expectedKeyChecksumType;
+  }
+
+  public void setExpectedKeyChecksum(byte[] checksum,
+      ContainerProtos.ChecksumType checksumType) {
+    expectedKeyChecksum = checksum;
+    expectedKeyChecksumType = checksumType;
+  }
+
+  public byte[] getActualKeyChecksum() {
+    return actualKeyChecksum;
+  }
+
+  public ContainerProtos.ChecksumType getActualKeyChecksumType() {
+    return actualKeyChecksumType;
+  }
+
+  public void setActualKeyChecksum(byte[] checksum,
+      ContainerProtos.ChecksumType checksumType) {
+    actualKeyChecksum = checksum;
+    actualKeyChecksumType = checksumType;
+  }
+
   @Override
   public Map<String, String> toAuditMap() {
     Map<String, String> auditMap = new LinkedHashMap<>();
@@ -272,6 +309,10 @@ public final class OmKeyArgs extends WithMetadata implements Auditable {
     private String listPrefix = null;
     private String expectedETag;
     private boolean derivedKeyPiggyBacking;
+    private byte[] expectedKeyChecksum;
+    private ContainerProtos.ChecksumType expectedKeyChecksumType;
+    private byte[] actualKeyChecksum;
+    private ContainerProtos.ChecksumType actualKeyChecksumType;
 
     public Builder() {
       this(AclListBuilder.empty());
@@ -323,6 +364,10 @@ public final class OmKeyArgs extends WithMetadata implements Auditable {
       this.acls = AclListBuilder.of(obj.acls);
       this.listPrefix = obj.listPrefix;
       this.objectAttributes = obj.objectAttributes;
+      this.expectedKeyChecksum = obj.expectedKeyChecksum;
+      this.expectedKeyChecksumType = obj.expectedKeyChecksumType;
+      this.actualKeyChecksum = obj.actualKeyChecksum;
+      this.actualKeyChecksumType = obj.actualKeyChecksumType;
     }
     private ObjectAttributes objectAttributes;
 
@@ -474,6 +519,20 @@ public final class OmKeyArgs extends WithMetadata implements Auditable {
 
     public Builder setDerivedKeyPiggyBacking(boolean derivedKeyPiggyBacking) {
       this.derivedKeyPiggyBacking = derivedKeyPiggyBacking;
+      return this;
+    }
+
+    public Builder setExpectedKeyChecksum(byte[] checksum,
+        ContainerProtos.ChecksumType checksumType) {
+      expectedKeyChecksum = checksum;
+      expectedKeyChecksumType = checksumType;
+      return this;
+    }
+
+    public Builder setActualKeyChecksum(byte[] checksum,
+        ContainerProtos.ChecksumType checksumType) {
+      actualKeyChecksum = checksum;
+      actualKeyChecksumType = checksumType;
       return this;
     }
 

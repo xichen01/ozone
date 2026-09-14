@@ -254,7 +254,8 @@ public class MigrateKeyCommandListener implements JobworkerCommandListener {
           retryKeys,
           command.getPreserveAttributes(),
           command.getTaskKey(),
-          command.getRetryCount() + 1);
+          command.getRetryCount() + 1,
+          command.isVerifyChecksum());
       if (!exceedRetryCount(retryCommand)) {
         return retryCommand;
       }
@@ -273,7 +274,8 @@ public class MigrateKeyCommandListener implements JobworkerCommandListener {
 
     if (shouldRetry(resultCode, command, null, jobworkerDetails)) {
       OMJobworkerMigrateKeyCommand retryCommand = new OMJobworkerMigrateKeyCommand(
-          command.getMigrationKeysTxProto(), command.getRetryCount() + 1);
+          command.getMigrationKeysTxProto(), command.getRetryCount() + 1,
+          command.isVerifyChecksum());
       if (!exceedRetryCount(retryCommand)) {
         LOG.debug("Migration txProto {} will be retried", command.getTaskKey());
         return retryCommand;
@@ -333,6 +335,11 @@ public class MigrateKeyCommandListener implements JobworkerCommandListener {
     case KEY_NOT_FOUND:
     case KEY_GENERATION_MISMATCH:
       return false; // Key has been deleted or rewritten, cannot retry.
+    case SOURCE_CHECKSUM_TYPE_UNSUPPORTED:
+    case WRITE_CHECKSUM_TYPE_UNSUPPORTED:
+      return false;
+    case CHECKSUM_MISMATCH:
+      return true;
     default:
       LOG.error("Unknown command result: {} for volume {}, bucket {}, key {} on the jobworker {}",
           resultCode, command.getVolume(), command.getBucket(), keyName, jobworkerDetails.getUuidString());

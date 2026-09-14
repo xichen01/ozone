@@ -21,6 +21,9 @@ package org.apache.hadoop.ozone.conf;
 
 import static org.apache.hadoop.ozone.conf.JobWorkerMigrationKeyConfiguration.CONFIG_PREFIX;
 
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 import org.apache.hadoop.hdds.conf.Config;
 import org.apache.hadoop.hdds.conf.ConfigGroup;
 import org.apache.hadoop.hdds.conf.ConfigTag;
@@ -229,6 +232,47 @@ public class JobWorkerMigrationKeyConfiguration {
   public JobWorkerMigrationKeyConfiguration setStoragePolicySatisfierLeaderReadyWaitTimeMs(
       long leaderReadyWaitTimeMs) {
     this.storagePolicySatisfierLeaderReadyWaitTimeMs = leaderReadyWaitTimeMs;
+    return this;
+  }
+
+  @Config(key = "ozone.jobworker.migration.key.verify.checksum",
+      defaultValue = "true",
+      type = ConfigType.BOOLEAN,
+      tags = {ConfigTag.JOBWORKER},
+      description = "Whether to verify checksums during key migration.")
+  private boolean verifyChecksum = true;
+
+  public boolean isVerifyChecksum() {
+    return verifyChecksum;
+  }
+
+  public JobWorkerMigrationKeyConfiguration setVerifyChecksum(boolean value) {
+    verifyChecksum = value;
+    return this;
+  }
+
+  @Config(key = "ozone.jobworker.migration.key.verify.checksum.skip.buckets",
+      defaultValue = "",
+      type = ConfigType.STRING,
+      tags = {ConfigTag.JOBWORKER},
+      description = "Comma-separated buckets which skip migration checksum verification.")
+  private String verifyChecksumSkipBuckets = "";
+
+  public Set<String> getVerifyChecksumSkipBuckets() {
+    if (verifyChecksumSkipBuckets == null || verifyChecksumSkipBuckets.trim().isEmpty()) {
+      return Collections.emptySet();
+    }
+    Set<String> buckets = new HashSet<>();
+    for (String bucket : verifyChecksumSkipBuckets.split(",")) {
+      if (!bucket.trim().isEmpty()) {
+        buckets.add(bucket.trim());
+      }
+    }
+    return buckets;
+  }
+
+  public JobWorkerMigrationKeyConfiguration setVerifyChecksumSkipBuckets(String value) {
+    verifyChecksumSkipBuckets = value;
     return this;
   }
 }

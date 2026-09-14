@@ -26,6 +26,7 @@ import static org.apache.hadoop.ozone.OzoneConsts.OZONE_URI_DELIMITER;
 import static org.apache.hadoop.ozone.om.exceptions.OMException.ResultCodes.BUCKET_NOT_FOUND;
 import static org.apache.hadoop.ozone.om.exceptions.OMException.ResultCodes.INVALID_KEY_NAME;
 import static org.apache.hadoop.ozone.om.exceptions.OMException.ResultCodes.INVALID_REQUEST;
+import static org.apache.hadoop.ozone.om.exceptions.OMException.ResultCodes.KEY_CHECKSUM_MISMATCH;
 import static org.apache.hadoop.ozone.om.exceptions.OMException.ResultCodes.VOLUME_NOT_FOUND;
 import static org.apache.hadoop.ozone.om.helpers.OzoneAclUtil.getDefaultAclList;
 import static org.apache.hadoop.ozone.om.lock.OzoneManagerLock.LeveledResource.BUCKET_LOCK;
@@ -99,6 +100,7 @@ import org.apache.hadoop.ozone.om.request.OMClientRequestUtils;
 import org.apache.hadoop.ozone.om.request.file.OMFileRequest;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.KeyArgs;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.OMRequest;
+import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.KeyChecksum;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.UserInfo;
 import org.apache.hadoop.ozone.protocolPB.OMPBHelper;
 import org.apache.hadoop.ozone.security.acl.IAccessAuthorizer;
@@ -1452,5 +1454,30 @@ public abstract class OMKeyRequest extends OMClientRequest {
         .setExpectedDataGeneration(dbKeyInfo.getUpdateID())
         .clearExpectedETag()
         .build();
+  }
+
+  protected static void validateKeyChecksum(KeyChecksum expected,
+      KeyChecksum actual, Map<String, String> auditMap) throws OMException {
+    if (expected == null) {
+      return;
+    }
+    auditMap.put(OzoneConsts.EXPECTED_KEY_CHECKSUM,
+        expected.getChecksumType() + ": " + toHex(expected.getChecksum().toByteArray()));
+    auditMap.put(OzoneConsts.ACTUAL_KEY_CHECKSUM, actual == null ? "NULL"
+        : actual.getChecksumType() + ": " + toHex(actual.getChecksum().toByteArray()));
+    if (actual == null || expected.getChecksum().isEmpty()
+        || actual.getChecksum().isEmpty()
+        || expected.getChecksumType() != actual.getChecksumType()
+        || !expected.getChecksum().equals(actual.getChecksum())) {
+      throw new OMException("Key checksum mismatch", KEY_CHECKSUM_MISMATCH);
+    }
+  }
+
+  private static String toHex(byte[] bytes) {
+    StringBuilder result = new StringBuilder("0x");
+    for (byte value : bytes) {
+      result.append(String.format("%02x", value));
+    }
+    return result.toString();
   }
 }

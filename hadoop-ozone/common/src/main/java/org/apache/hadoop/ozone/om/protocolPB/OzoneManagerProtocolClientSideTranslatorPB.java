@@ -57,6 +57,7 @@ import org.apache.hadoop.ipc_.CallerContext;
 import org.apache.hadoop.ipc_.RemoteException;
 import org.apache.hadoop.ozone.ClientVersion;
 import org.apache.hadoop.ozone.OzoneAcl;
+import org.apache.hadoop.ozone.OmUtils;
 import org.apache.hadoop.ozone.om.exceptions.OMException;
 import org.apache.hadoop.ozone.om.helpers.AssumeRoleResponseInfo;
 import org.apache.hadoop.ozone.om.helpers.BasicOmKeyInfo;
@@ -920,6 +921,18 @@ public final class OzoneManagerProtocolClientSideTranslatorPB
     req.setClientID(clientId);
     req.setHsync(hsync);
     req.setRecovery(recovery);
+    if (args.getExpectedKeyChecksum() != null) {
+      req.setExpectedKeyChecksum(OzoneManagerProtocolProtos.KeyChecksum.newBuilder()
+          .setChecksum(ByteString.copyFrom(args.getExpectedKeyChecksum()))
+          .setChecksumType(OmUtils.toKeyChecksumType(args.getExpectedKeyChecksumType()))
+          .build());
+    }
+    if (args.getActualKeyChecksum() != null) {
+      req.setActualKeyChecksum(OzoneManagerProtocolProtos.KeyChecksum.newBuilder()
+          .setChecksum(ByteString.copyFrom(args.getActualKeyChecksum()))
+          .setChecksumType(OmUtils.toKeyChecksumType(args.getActualKeyChecksumType()))
+          .build());
+    }
 
     OMRequest omRequest = createOMRequest(Type.CommitKey)
         .setCommitKeyRequest(req)

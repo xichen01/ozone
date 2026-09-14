@@ -68,6 +68,7 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hdds.conf.ConfigurationException;
 import org.apache.hadoop.hdds.conf.ConfigurationSource;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
+import org.apache.hadoop.hdds.protocol.datanode.proto.ContainerProtos;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos;
 import org.apache.hadoop.hdds.scm.client.HddsClientUtils;
 import org.apache.hadoop.net.NetUtils;
@@ -80,6 +81,7 @@ import org.apache.hadoop.ozone.om.helpers.OmKeyInfo;
 import org.apache.hadoop.ozone.om.helpers.RepeatedOmKeyInfo;
 import org.apache.hadoop.ozone.om.helpers.ServiceInfo;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos;
+import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.KeyChecksumType;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.OMRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -105,6 +107,21 @@ public final class OmUtils {
   public static final int EPOCH_WHEN_RATIS_ENABLED = 2;
 
   private OmUtils() {
+  }
+
+  public static KeyChecksumType toKeyChecksumType(ContainerProtos.ChecksumType checksumType) {
+    switch (checksumType) {
+    case CRC32:
+      return KeyChecksumType.KEY_CHECKSUM_TYPE_CRC32;
+    case CRC32C:
+      return KeyChecksumType.KEY_CHECKSUM_TYPE_CRC32C;
+    case SHA256:
+      return KeyChecksumType.KEY_CHECKSUM_TYPE_SHA256;
+    case MD5:
+      return KeyChecksumType.KEY_CHECKSUM_TYPE_MD5;
+    default:
+      return KeyChecksumType.KEY_CHECKSUM_TYPE_NONE;
+    }
   }
 
   /**

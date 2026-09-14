@@ -191,6 +191,15 @@ public class OzoneClientConfig {
       tags = ConfigTag.CLIENT)
   private int readRetryInterval = 1;
 
+  @Config(key = "ozone.client.read.migration.retry.enabled",
+      defaultValue = "false",
+      description = "If true, the client retries a key read at key "
+          + "granularity when the key is rewritten with "
+          + "REWRITE_SOURCE_VERSION, such as replicated to EC, while the "
+          + "read is in progress.",
+      tags = ConfigTag.CLIENT)
+  private boolean readMigrationRetryEnabled = false;
+
   @Config(key = "ozone.client.checksum.type",
       defaultValue = "CRC32",
       description = "The checksum type [NONE/ CRC32/ CRC32C/ SHA256/ MD5] "
@@ -540,6 +549,14 @@ public class OzoneClientConfig {
 
   public void setReadRetryInterval(int readRetryInterval) {
     this.readRetryInterval = readRetryInterval;
+  }
+
+  public boolean isReadMigrationRetryEnabled() {
+    return readMigrationRetryEnabled;
+  }
+
+  public void setReadMigrationRetryEnabled(boolean readMigrationRetryEnabled) {
+    this.readMigrationRetryEnabled = readMigrationRetryEnabled;
   }
 
   public ChecksumType getChecksumType() {

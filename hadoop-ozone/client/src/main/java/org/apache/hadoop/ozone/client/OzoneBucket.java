@@ -34,6 +34,7 @@ import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Stack;
 import java.util.stream.Collectors;
+import org.apache.hadoop.fs.FileChecksum;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
@@ -45,6 +46,7 @@ import org.apache.hadoop.hdds.client.ReplicationFactor;
 import org.apache.hadoop.hdds.client.ReplicationType;
 import org.apache.hadoop.hdds.conf.ConfigurationSource;
 import org.apache.hadoop.hdds.protocol.StorageType;
+import org.apache.hadoop.hdds.protocol.datanode.proto.ContainerProtos;
 import org.apache.hadoop.hdds.scm.client.HddsClientUtils;
 import org.apache.hadoop.ozone.OmUtils;
 import org.apache.hadoop.ozone.OzoneAcl;
@@ -697,6 +699,16 @@ public class OzoneBucket extends WithMetadata {
       ObjectAttributes objectAttributes) throws IOException {
     return proxy.rewriteKey(volumeName, name, keyName, size, existingKeyGeneration,
         replicationConfig, metadata, tags, objectAttributes);
+  }
+
+  @SuppressWarnings("checkstyle:ParameterNumber")
+  public OzoneOutputStream rewriteKey(String keyName, long size, long existingKeyGeneration,
+      ReplicationConfig replicationConfig, Map<String, String> metadata, Map<String, String> tags,
+      ObjectAttributes objectAttributes, FileChecksum expectedKeyChecksum,
+      ContainerProtos.ChecksumType sourceChecksumType) throws IOException {
+    return proxy.rewriteKey(volumeName, name, keyName, size, existingKeyGeneration,
+        replicationConfig, metadata, tags, objectAttributes, expectedKeyChecksum,
+        sourceChecksumType);
   }
   /**
    * Creates a new key in the bucket.

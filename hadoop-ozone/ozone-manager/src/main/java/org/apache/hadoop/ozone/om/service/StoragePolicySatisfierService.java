@@ -75,6 +75,7 @@ public class StoragePolicySatisfierService extends BackgroundService implements 
   private volatile ServiceStatus serviceStatus = ServiceStatus.PAUSING;
   private long leaderReadyTimeMillis;
   private long leaderReadyWaitTimeMillis;
+  private boolean verifyChecksum;
   private int totalActivatedTaskCount = 0;
 
   private long incompleteTaskTimeoutMs;
@@ -114,6 +115,7 @@ public class StoragePolicySatisfierService extends BackgroundService implements 
     this.maxInflightCommandCount = config.getMaxInflightCommandCount();
     this.maxTaskWaitingTimeMs = config.getMaxTaskWaitingTimeMs();
     this.leaderReadyWaitTimeMillis = config.getStoragePolicySatisfierLeaderReadyWaitTimeMs();
+    this.verifyChecksum = config.isVerifyChecksum();
     ozoneManager.getOMServiceManager().register(this);
   }
 
@@ -624,7 +626,8 @@ public class StoragePolicySatisfierService extends BackgroundService implements 
 
       JobworkerInfo selectedJobworker = selectRandomJobworker(healthyJobworkers);
       long commandId = commandManager.sendCommand(
-          selectedJobworker.getUuid(), new OMJobworkerMigrateKeyCommand(txProto, 0));
+          selectedJobworker.getUuid(), new OMJobworkerMigrateKeyCommand(txProto, 0,
+              verifyChecksum));
       sentCommands.add(commandId);
 
       LOG.debug("Dispatched migration command {} to JobWorker {} for transaction: {}",
@@ -714,5 +717,6 @@ public class StoragePolicySatisfierService extends BackgroundService implements 
     this.maxInflightCommandCount = jwConf.getMaxInflightCommandCount();
     this.maxTaskWaitingTimeMs = jwConf.getMaxTaskWaitingTimeMs();
     this.leaderReadyWaitTimeMillis = jwConf.getStoragePolicySatisfierLeaderReadyWaitTimeMs();
+    this.verifyChecksum = jwConf.isVerifyChecksum();
   }
 }

@@ -49,7 +49,7 @@ public class ReplicatedFileChecksumHelper extends BaseFileChecksumHelper {
   @Override
   protected AbstractBlockChecksumComputer getBlockChecksumComputer(List<ContainerProtos.ChunkInfo> chunkInfos,
       long blockLength) {
-    return new ReplicatedBlockChecksumComputer(chunkInfos);
+    return new ReplicatedBlockChecksumComputer(chunkInfos, blockLength);
   }
 
   // copied from BlockInputStream

@@ -49,12 +49,22 @@ public class OMJobworkerMigrateKeyCommand extends OMJobworkerCommand<JobworkerMi
 
   private final JobworkerMigrationKeysTxProto migrationKeysTxProto;
   private final int retryCount;
+  private final boolean verifyChecksum;
 
   @SuppressWarnings("checkstyle:ParameterNumber")
   public OMJobworkerMigrateKeyCommand(long txId, String volume, String bucket,
       ECReplicationConfig replicationConfig,
       List<MigrationKeyProto> migrationKeys, String preserveAttributes, String taskKey,
       int retryCount) {
+    this(txId, volume, bucket, replicationConfig, migrationKeys, preserveAttributes,
+        taskKey, retryCount, false);
+  }
+
+  @SuppressWarnings("checkstyle:ParameterNumber")
+  public OMJobworkerMigrateKeyCommand(long txId, String volume, String bucket,
+      ECReplicationConfig replicationConfig,
+      List<MigrationKeyProto> migrationKeys, String preserveAttributes, String taskKey,
+      int retryCount, boolean verifyChecksum) {
     Preconditions.checkNotNull(volume, "Volume cannot be null");
     Preconditions.checkNotNull(bucket, "Bucket cannot be null");
     Preconditions.checkNotNull(replicationConfig, "Replication config cannot be null");
@@ -73,6 +83,7 @@ public class OMJobworkerMigrateKeyCommand extends OMJobworkerCommand<JobworkerMi
     }
     migrationKeysTxProto = builder.build();
     this.retryCount = retryCount;
+    this.verifyChecksum = verifyChecksum;
   }
 
   /**
@@ -85,6 +96,15 @@ public class OMJobworkerMigrateKeyCommand extends OMJobworkerCommand<JobworkerMi
     Preconditions.checkNotNull(migrationKeysTxProto);
     this.migrationKeysTxProto = migrationKeysTxProto;
     this.retryCount = retryCount;
+    this.verifyChecksum = false;
+  }
+
+  public OMJobworkerMigrateKeyCommand(JobworkerMigrationKeysTxProto migrationKeysTxProto,
+      int retryCount, boolean verifyChecksum) {
+    Preconditions.checkNotNull(migrationKeysTxProto);
+    this.migrationKeysTxProto = migrationKeysTxProto;
+    this.retryCount = retryCount;
+    this.verifyChecksum = verifyChecksum;
   }
 
   /**
@@ -93,11 +113,12 @@ public class OMJobworkerMigrateKeyCommand extends OMJobworkerCommand<JobworkerMi
    * @param retryCount The retry count for this command
    */
   private OMJobworkerMigrateKeyCommand(JobworkerMigrationKeysTxProto migrationKeysTxProto, long cmdId,
-      int retryCount) {
+      int retryCount, boolean verifyChecksum) {
     super(cmdId);
     Preconditions.checkNotNull(migrationKeysTxProto);
     this.migrationKeysTxProto = migrationKeysTxProto;
     this.retryCount = retryCount;
+    this.verifyChecksum = verifyChecksum;
   }
 
   @Override
@@ -110,13 +131,15 @@ public class OMJobworkerMigrateKeyCommand extends OMJobworkerCommand<JobworkerMi
     JobworkerMigrationKeysCommandProto.Builder builder = JobworkerMigrationKeysCommandProto.newBuilder()
         .setCmdId(getId())
         .setMigrationKeysTx(migrationKeysTxProto)
-        .setRetryCount(retryCount);
+        .setRetryCount(retryCount)
+        .setVerifyChecksum(verifyChecksum);
     return builder.build();
   }
 
   public static OMJobworkerMigrateKeyCommand getFromProto(JobworkerMigrationKeysCommandProto proto) {
     return new OMJobworkerMigrateKeyCommand(
-        proto.getMigrationKeysTx(), proto.getCmdId(), proto.getRetryCount());
+        proto.getMigrationKeysTx(), proto.getCmdId(), proto.getRetryCount(),
+        proto.getVerifyChecksum());
   }
 
   public String getVolume() {
@@ -156,6 +179,10 @@ public class OMJobworkerMigrateKeyCommand extends OMJobworkerCommand<JobworkerMi
     return retryCount;
   }
 
+  public boolean isVerifyChecksum() {
+    return verifyChecksum;
+  }
+
   public String getTaskKey() {
     return migrationKeysTxProto.getTaskKey();
   }
@@ -179,8 +206,8 @@ public class OMJobworkerMigrateKeyCommand extends OMJobworkerCommand<JobworkerMi
 
   @Override
   public OMJobworkerMigrateKeyCommand copyObject() {
-    return new OMJobworkerMigrateKeyCommand(getTxId(), getVolume(), getBucket(), getReplicationConfig(),
-        getMigrationKeys(), getPreserveAttributes(), getTaskKey(), getRetryCount());
+    return new OMJobworkerMigrateKeyCommand(getMigrationKeysTxProto(),
+        getRetryCount(), isVerifyChecksum());
   }
 
 }

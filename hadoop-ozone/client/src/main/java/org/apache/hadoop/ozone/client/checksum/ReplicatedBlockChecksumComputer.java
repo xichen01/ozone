@@ -40,6 +40,7 @@ public class ReplicatedBlockChecksumComputer extends
       LoggerFactory.getLogger(ReplicatedBlockChecksumComputer.class);
 
   private final List<ContainerProtos.ChunkInfo> chunkInfoList;
+  private final long blockLength;
 
   static MD5Hash digest(ByteBuffer data) {
     final MessageDigest digester = MD5Hash.getDigester();
@@ -48,8 +49,10 @@ public class ReplicatedBlockChecksumComputer extends
   }
 
   public ReplicatedBlockChecksumComputer(
-      List<ContainerProtos.ChunkInfo> chunkInfoList) {
+      List<ContainerProtos.ChunkInfo> chunkInfoList, long blockLength) {
+    Preconditions.checkArgument(blockLength > 0);
     this.chunkInfoList = chunkInfoList;
+    this.blockLength = blockLength;
   }
 
   @Override
@@ -70,13 +73,22 @@ public class ReplicatedBlockChecksumComputer extends
   // compute the block checksum, which is the md5 of chunk checksums
   private void computeMd5Crc() {
     ByteString bytes = ByteString.EMPTY;
+    long remainingBlockLength = blockLength;
     for (ContainerProtos.ChunkInfo chunkInfo : chunkInfoList) {
       ContainerProtos.ChecksumData checksumData =
           chunkInfo.getChecksumData();
       List<ByteString> checksums = checksumData.getChecksumsList();
+      long bytesPerCrc = checksumData.getBytesPerChecksum();
+      long chunkLength = getLogicalChunkLength(chunkInfo, remainingBlockLength);
+      long checksumCount = (chunkLength + bytesPerCrc - 1) / bytesPerCrc;
+      Preconditions.checkArgument(checksumCount == checksums.size());
 
       for (ByteString checksum : checksums) {
         bytes = bytes.concat(checksum);
+      }
+      remainingBlockLength -= chunkLength;
+      if (remainingBlockLength <= 0) {
+        break;
       }
     }
 
@@ -114,6 +126,7 @@ public class ReplicatedBlockChecksumComputer extends
 
     CrcComposer blockCrcComposer =
         CrcComposer.newCrcComposer(dataChecksumType, chunkSize);
+    long remainingBlockLength = blockLength;
 
     for (ContainerProtos.ChunkInfo chunkInfo : chunkInfoList) {
       ContainerProtos.ChecksumData checksumData =
@@ -123,20 +136,29 @@ public class ReplicatedBlockChecksumComputer extends
           CrcComposer.newCrcComposer(dataChecksumType, bytesPerCrc);
       //compute the composite-crc checksum of the whole chunk by iterating
       //all the checksum data one by one
-      long remainingChunkSize = chunkInfo.getLen();
+      long chunkLength =
+          getLogicalChunkLength(chunkInfo, remainingBlockLength);
+      long remainingChunkSize = chunkLength;
       Preconditions.checkArgument(remainingChunkSize <=
-          checksums.size() * chunkSize);
+          checksums.size() * bytesPerCrc);
       for (ByteString checksum : checksums) {
+        if (remainingChunkSize <= 0) {
+          break;
+        }
         final int checksumDataCrc = checksum.asReadOnlyByteBuffer().getInt();
-        chunkCrcComposer.update(checksumDataCrc,
-            Math.min(bytesPerCrc, remainingChunkSize));
-        remainingChunkSize -= bytesPerCrc;
+        long bytesToChecksum = Math.min(bytesPerCrc, remainingChunkSize);
+        chunkCrcComposer.update(checksumDataCrc, bytesToChecksum);
+        remainingChunkSize -= bytesToChecksum;
       }
       //get the composite-crc checksum of the whole chunk
       int chunkChecksumCrc = CrcUtil.readInt(chunkCrcComposer.digest(), 0);
 
       //update block checksum using chunk checksum
-      blockCrcComposer.update(chunkChecksumCrc, chunkInfo.getLen());
+      blockCrcComposer.update(chunkChecksumCrc, chunkLength);
+      remainingBlockLength -= chunkLength;
+      if (remainingBlockLength <= 0) {
+        break;
+      }
     }
 
     //compute the composite-crc checksum of the whole block
@@ -146,5 +168,15 @@ public class ReplicatedBlockChecksumComputer extends
     LOG.debug("number of chunks = {}, chunk checksum type is {}, " +
             "composite checksum = {}", chunkInfoList.size(), dataChecksumType,
         compositeCrcChunkChecksum);
+  }
+
+  private long getLogicalChunkLength(ContainerProtos.ChunkInfo chunkInfo,
+      long remainingBlockLength) {
+    Preconditions.checkArgument(remainingBlockLength >= chunkInfo.getLen(),
+        "Cannot compute a replicated block checksum when the logical block "
+            + "length cuts through a chunk. blockLength=%s, "
+            + "chunkName=%s, chunkLength=%s, remainingBlockLength=%s",
+        blockLength, chunkInfo.getChunkName(), chunkInfo.getLen(), remainingBlockLength);
+    return chunkInfo.getLen();
   }
 }

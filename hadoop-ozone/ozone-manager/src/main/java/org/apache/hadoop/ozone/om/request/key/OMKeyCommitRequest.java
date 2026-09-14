@@ -312,6 +312,13 @@ public class OMKeyCommitRequest extends OMKeyRequest {
       }
 
       validateAtomicRewrite(keyToDelete, omKeyInfo, auditMap);
+      if (commitKeyArgs.getDataSize() > 0 && commitKeyRequest.hasExpectedKeyChecksum()) {
+        validateKeyChecksum(
+            commitKeyRequest.getExpectedKeyChecksum(),
+            commitKeyRequest.hasActualKeyChecksum()
+                ? commitKeyRequest.getActualKeyChecksum() : null,
+            auditMap);
+      }
       // Set the UpdateID to current transactionLogIndex
       omKeyInfo = omKeyInfo.toBuilder()
           .setExpectedDataGeneration(null)

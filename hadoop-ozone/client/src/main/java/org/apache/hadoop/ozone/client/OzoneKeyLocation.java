@@ -17,6 +17,11 @@
 
 package org.apache.hadoop.ozone.client;
 
+import org.apache.hadoop.hdds.client.BlockID;
+import org.apache.hadoop.hdds.scm.pipeline.Pipeline;
+import org.apache.hadoop.hdds.security.token.OzoneBlockTokenIdentifier;
+import org.apache.hadoop.security.token.Token;
+
 /**
  * One key can be stored in one or more containers as one or more blocks.
  * This class represents one such block instance.
@@ -42,17 +47,30 @@ public class OzoneKeyLocation {
    * KeyOffset of this key.
    */
   private final long keyOffset;
+  private final BlockID blockID;
+  private final Pipeline pipeline;
+  private final Token<OzoneBlockTokenIdentifier> token;
 
   /**
    * Constructs OzoneKeyLocation.
    */
   public OzoneKeyLocation(long containerID, long localID,
                           long length, long offset, long keyOffset) {
+    this(containerID, localID, length, offset, keyOffset, null, null, null);
+  }
+
+  public OzoneKeyLocation(long containerID, long localID,
+                          long length, long offset, long keyOffset,
+                          BlockID blockID, Pipeline pipeline,
+                          Token<OzoneBlockTokenIdentifier> token) {
     this.containerID = containerID;
     this.localID = localID;
     this.length = length;
     this.offset = offset;
     this.keyOffset = keyOffset;
+    this.blockID = blockID;
+    this.pipeline = pipeline;
+    this.token = token;
   }
 
   /**
@@ -88,6 +106,18 @@ public class OzoneKeyLocation {
    */
   public long getKeyOffset() {
     return keyOffset;
+  }
+
+  public BlockID getBlockID() {
+    return blockID;
+  }
+
+  public Pipeline getPipeline() {
+    return pipeline;
+  }
+
+  public Token<OzoneBlockTokenIdentifier> getToken() {
+    return token;
   }
 
 }

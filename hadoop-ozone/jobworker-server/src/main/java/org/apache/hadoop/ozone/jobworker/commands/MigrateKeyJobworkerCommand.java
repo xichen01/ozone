@@ -35,12 +35,23 @@ public final class MigrateKeyJobworkerCommand extends JobworkerCommand<Jobworker
   private final JobworkerMigrationKeysTxProto txProto;
 
   private final AtomicInteger retryCount;
+  private final boolean verifyChecksum;
 
   private MigrateKeyJobworkerCommand(long id, String omServiceId, long term,
       long expirationTimestampMs, JobworkerMigrationKeysTxProto txProto, int retryCount) {
     super(id, omServiceId, term, expirationTimestampMs);
     this.txProto = txProto;
     this.retryCount = new AtomicInteger(retryCount);
+    this.verifyChecksum = false;
+  }
+
+  private MigrateKeyJobworkerCommand(long id, String omServiceId, long term,
+      long expirationTimestampMs, JobworkerMigrationKeysTxProto txProto,
+      int retryCount, boolean verifyChecksum) {
+    super(id, omServiceId, term, expirationTimestampMs);
+    this.txProto = txProto;
+    this.retryCount = new AtomicInteger(retryCount);
+    this.verifyChecksum = verifyChecksum;
   }
 
   /**
@@ -60,7 +71,8 @@ public final class MigrateKeyJobworkerCommand extends JobworkerCommand<Jobworker
         omCommandProto.getExpirationTimestampMs() : 0;
 
     return new MigrateKeyJobworkerCommand(migrationProto.getCmdId(), omServiceId, term, expiration,
-        migrationProto.getMigrationKeysTx(), migrationProto.getRetryCount());
+        migrationProto.getMigrationKeysTx(), migrationProto.getRetryCount(),
+        migrationProto.getVerifyChecksum());
   }
 
   @Override
@@ -74,6 +86,7 @@ public final class MigrateKeyJobworkerCommand extends JobworkerCommand<Jobworker
         .setCmdId(getId())
         .setRetryCount(retryCount.get())
         .setMigrationKeysTx(txProto)
+        .setVerifyChecksum(verifyChecksum)
         .build();
   }
 
@@ -95,6 +108,10 @@ public final class MigrateKeyJobworkerCommand extends JobworkerCommand<Jobworker
 
   public String getBucket() {
     return txProto.getBucket();
+  }
+
+  public boolean isVerifyChecksum() {
+    return verifyChecksum;
   }
 
   public ECReplicationConfig getReplicationConfig() {

@@ -39,6 +39,7 @@ import java.util.stream.Collectors;
 import org.apache.hadoop.fs.FSExceptionMessages;
 import org.apache.hadoop.fs.Syncable;
 import org.apache.hadoop.hdds.client.ReplicationConfig;
+import org.apache.hadoop.hdds.protocol.datanode.proto.ContainerProtos;
 import org.apache.hadoop.hdds.protocol.DatanodeDetails;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.ReplicationType;
 import org.apache.hadoop.hdds.scm.ContainerClientMetrics;
@@ -696,6 +697,9 @@ public class KeyOutputStream extends OutputStream
     private StreamBufferArgs streamBufferArgs;
     private Supplier<ExecutorService> executorServiceSupplier;
     private OzoneManagerVersion ozoneManagerVersion;
+    private byte[] expectedKeyChecksum;
+    private ContainerProtos.ChecksumType expectedKeyChecksumType;
+    private ContainerProtos.ChecksumType sourceChecksumType;
 
     public String getMultipartUploadID() {
       return multipartUploadID;
@@ -757,6 +761,30 @@ public class KeyOutputStream extends OutputStream
 
     public OzoneClientConfig getClientConfig() {
       return clientConfig;
+    }
+
+    public byte[] getExpectedKeyChecksum() {
+      return expectedKeyChecksum;
+    }
+
+    public ContainerProtos.ChecksumType getExpectedKeyChecksumType() {
+      return expectedKeyChecksumType;
+    }
+
+    public Builder setExpectedKeyChecksum(byte[] checksum,
+        ContainerProtos.ChecksumType checksumType) {
+      expectedKeyChecksum = checksum;
+      expectedKeyChecksumType = checksumType;
+      return this;
+    }
+
+    public ContainerProtos.ChecksumType getSourceChecksumType() {
+      return sourceChecksumType;
+    }
+
+    public Builder setSourceChecksumType(ContainerProtos.ChecksumType checksumType) {
+      sourceChecksumType = checksumType;
+      return this;
     }
 
     public Builder setConfig(OzoneClientConfig config) {

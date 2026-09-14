@@ -689,4 +689,5 @@ message JobworkerMigrationKeysCommandProto {
     required int64 cmdId = 1;
     required JobworkerMigrationKeysTxProto migrationKeysTx = 2;
     required int32 retryCount = 3;
+    optional bool verifyChecksum = 5;
 }

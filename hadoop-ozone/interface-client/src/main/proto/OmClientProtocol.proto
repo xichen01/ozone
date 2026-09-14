@@ -630,6 +630,7 @@ enum Status {
     UPDATE_ID_NOT_MATCH = 103;
     REVOKED_TOKEN = 104;
     MALFORMED_POLICY_DOCUMENT = 105;
+    KEY_CHECKSUM_MISMATCH = 1600;
 }
 
 /**
@@ -1644,6 +1645,21 @@ message CommitKeyRequest {
     required uint64 clientID = 2;
     optional bool hsync = 3;
     optional bool recovery = 4;
+    optional KeyChecksum expectedKeyChecksum = 5;
+    optional KeyChecksum actualKeyChecksum = 6;
+}
+
+enum KeyChecksumType {
+    KEY_CHECKSUM_TYPE_NONE = 1;
+    KEY_CHECKSUM_TYPE_CRC32 = 2;
+    KEY_CHECKSUM_TYPE_CRC32C = 3;
+    KEY_CHECKSUM_TYPE_SHA256 = 4;
+    KEY_CHECKSUM_TYPE_MD5 = 5;
+}
+
+message KeyChecksum {
+    required bytes checksum = 1;
+    required KeyChecksumType checksumType = 2;
 }
 
 message CommitKeyResponse {

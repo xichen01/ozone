@@ -17,6 +17,8 @@
 
 package org.apache.hadoop.ozone.client.io;
 
+import static org.apache.hadoop.ozone.client.checksum.BlockLocationChecksumHelper.computeFileChecksum;
+
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import java.io.IOException;
@@ -31,6 +33,7 @@ import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.function.Supplier;
 import org.apache.hadoop.hdds.client.ContainerBlockID;
+import org.apache.hadoop.hdds.client.ReplicationConfig;
 import org.apache.hadoop.hdds.scm.ByteStringConversion;
 import org.apache.hadoop.hdds.scm.ContainerClientMetrics;
 import org.apache.hadoop.hdds.scm.OzoneClientConfig;
@@ -39,6 +42,9 @@ import org.apache.hadoop.hdds.scm.XceiverClientFactory;
 import org.apache.hadoop.hdds.scm.container.common.helpers.ExcludeList;
 import org.apache.hadoop.hdds.scm.pipeline.PipelineID;
 import org.apache.hadoop.hdds.scm.storage.BufferPool;
+import org.apache.hadoop.hdds.protocol.datanode.proto.ContainerProtos;
+import org.apache.hadoop.ozone.client.OzoneKeyLocation;
+import org.apache.hadoop.ozone.client.checksum.BlockLocationChecksumHelper.KeyChecksumInfo;
 import org.apache.hadoop.ozone.om.helpers.OmKeyArgs;
 import org.apache.hadoop.ozone.om.helpers.OmKeyInfo;
 import org.apache.hadoop.ozone.om.helpers.OmKeyLocationInfo;
@@ -89,12 +95,16 @@ public class BlockOutputStreamEntryPool implements KeyMetadataAware {
   private final ContainerClientMetrics clientMetrics;
   private final StreamBufferArgs streamBufferArgs;
   private final Supplier<ExecutorService> executorServiceSupplier;
+  private final ReplicationConfig replicationConfig;
+  private final byte[] expectedKeyChecksum;
+  private final ContainerProtos.ChecksumType expectedKeyChecksumType;
   // update blocks on OM
   private ContainerBlockID lastUpdatedBlockId = new ContainerBlockID(-1, -1);
 
   public BlockOutputStreamEntryPool(KeyOutputStream.Builder b) {
     this.config = b.getClientConfig();
     this.xceiverClientFactory = b.getXceiverManager();
+    this.replicationConfig = b.getReplicationConfig();
     currentStreamIndex = 0;
     this.omClient = b.getOmClient();
     final OmKeyInfo info = b.getOpenHandler().getKeyInfo();
@@ -121,6 +131,8 @@ public class BlockOutputStreamEntryPool implements KeyMetadataAware {
                 .createByteBufferConversion(b.isUnsafeByteBufferConversionEnabled()));
     this.clientMetrics = b.getClientMetrics();
     this.executorServiceSupplier = b.getExecutorServiceSupplier();
+    this.expectedKeyChecksum = b.getExpectedKeyChecksum();
+    this.expectedKeyChecksumType = b.getExpectedKeyChecksumType();
   }
 
   ExcludeList createExcludeList() {
@@ -328,6 +340,15 @@ public class BlockOutputStreamEntryPool implements KeyMetadataAware {
           "Expected offset: " + offset + " expected len: " + length);
       keyArgs.setDataSize(length);
       keyArgs.setLocationInfoList(getLocationInfoList());
+      if (expectedKeyChecksum != null) {
+        KeyChecksumInfo actualChecksum = computeActualChecksums();
+        if (actualChecksum == null || actualChecksum.getFileChecksum() == null) {
+          throw new IOException("Unable to compute key checksum");
+        }
+        keyArgs.setExpectedKeyChecksum(expectedKeyChecksum, expectedKeyChecksumType);
+        keyArgs.setActualKeyChecksum(actualChecksum.getFileChecksum().getBytes(),
+            actualChecksum.getChecksumType());
+      }
       // When the key is multipart upload part file upload, we should not
       // commit the key, as this is not an actual key, this is a just a
       // partial key of a large file.
@@ -341,6 +362,19 @@ public class BlockOutputStreamEntryPool implements KeyMetadataAware {
     } else {
       LOG.warn("Closing KeyOutputStream, but key args is null");
     }
+  }
+
+  private KeyChecksumInfo computeActualChecksums() throws IOException {
+    List<OzoneKeyLocation> blockLocations = new ArrayList<>();
+    long keyOffset = 0;
+    for (OmKeyLocationInfo info : keyArgs.getLocationInfoList()) {
+      blockLocations.add(new OzoneKeyLocation(info.getContainerID(),
+          info.getLocalID(), info.getLength(), info.getOffset(), keyOffset,
+          info.getBlockID(), info.getPipeline(), info.getToken()));
+      keyOffset += info.getLength();
+    }
+    return computeFileChecksum(xceiverClientFactory, blockLocations,
+        replicationConfig);
   }
 
   void hsyncKey(long offset) throws IOException {

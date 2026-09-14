@@ -25,14 +25,36 @@ import org.apache.hadoop.hdds.annotation.InterfaceStability;
 @InterfaceAudience.Private
 @InterfaceStability.Evolving
 public class OzoneChecksumException extends IOException {
+  /** Describes the checksum failure. */
+  public enum FailureType {
+    CHECKSUM_MISMATCH,
+    SOURCE_CHECKSUM_TYPE_UNSUPPORTED,
+    WRITE_CHECKSUM_TYPE_UNSUPPORTED,
+    UNRECOGNIZED_TYPE,
+    OTHER
+  }
+
+  private final FailureType failureType;
+
   /**
    * OzoneChecksumException to throw with custom message.
    */
   public OzoneChecksumException(String message) {
     super(message);
+    this.failureType = FailureType.OTHER;
   }
 
   public OzoneChecksumException(String message, Throwable cause) {
     super(message, cause);
+    this.failureType = FailureType.OTHER;
+  }
+
+  public OzoneChecksumException(FailureType failureType, String message) {
+    super(message);
+    this.failureType = failureType;
+  }
+
+  public FailureType getFailureType() {
+    return failureType;
   }
 }

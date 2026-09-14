@@ -65,6 +65,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.crypto.CryptoInputStream;
 import org.apache.hadoop.crypto.CryptoOutputStream;
 import org.apache.hadoop.crypto.key.KeyProvider;
+import org.apache.hadoop.fs.FileChecksum;
 import org.apache.hadoop.fs.FileEncryptionInfo;
 import org.apache.hadoop.fs.Syncable;
 import org.apache.hadoop.hdds.client.DefaultReplicationConfig;
@@ -79,6 +80,7 @@ import org.apache.hadoop.hdds.conf.ConfigurationSource;
 import org.apache.hadoop.hdds.conf.StorageUnit;
 import org.apache.hadoop.hdds.protocol.DatanodeDetails;
 import org.apache.hadoop.hdds.protocol.StorageType;
+import org.apache.hadoop.hdds.protocol.datanode.proto.ContainerProtos;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos;
 import org.apache.hadoop.hdds.scm.ContainerClientMetrics;
 import org.apache.hadoop.hdds.scm.OzoneClientConfig;
@@ -124,6 +126,7 @@ import org.apache.hadoop.ozone.client.io.ECKeyOutputStream;
 import org.apache.hadoop.ozone.client.io.KeyDataStreamOutput;
 import org.apache.hadoop.ozone.client.io.KeyInputStream;
 import org.apache.hadoop.ozone.client.io.KeyOutputStream;
+import org.apache.hadoop.ozone.client.checksum.BaseFileChecksumHelper;
 import org.apache.hadoop.ozone.client.io.LengthInputStream;
 import org.apache.hadoop.ozone.client.io.OzoneCryptoInputStream;
 import org.apache.hadoop.ozone.client.io.OzoneDataStreamOutput;
@@ -1462,6 +1465,16 @@ public class RpcClient implements ClientProtocol {
       long size, long existingKeyGeneration, ReplicationConfig replicationConfig,
       Map<String, String> metadata, Map<String, String> tags,
       ObjectAttributes objectAttributes) throws IOException {
+    return rewriteKey(volumeName, bucketName, keyName, size, existingKeyGeneration,
+        replicationConfig, metadata, tags, objectAttributes, null, null);
+  }
+
+  @Override
+  public OzoneOutputStream rewriteKey(String volumeName, String bucketName, String keyName,
+      long size, long existingKeyGeneration, ReplicationConfig replicationConfig,
+      Map<String, String> metadata, Map<String, String> tags,
+      ObjectAttributes objectAttributes, FileChecksum expectedKeyChecksum,
+      ContainerProtos.ChecksumType sourceChecksumType) throws IOException {
     if (omVersion.compareTo(OzoneManagerVersion.ATOMIC_REWRITE_KEY) < 0) {
       throw new IOException("OzoneManager does not support atomic key rewrite.");
     }
@@ -1473,7 +1486,8 @@ public class RpcClient implements ClientProtocol {
         tags);
     builder.setExpectedDataGeneration(existingKeyGeneration)
         .setObjectAttributes(objectAttributes);
-    return openOutputStream(builder.build(), size);
+    return openOutputStream(builder.build(), size, expectedKeyChecksum,
+        sourceChecksumType);
   }
 
   @Override
@@ -1543,6 +1557,13 @@ public class RpcClient implements ClientProtocol {
       throws IOException {
     OpenKeySession openKey = ozoneManagerClient.openKey(keyArgs);
     return createOutputStream(openKey);
+  }
+
+  private OzoneOutputStream openOutputStream(OmKeyArgs keyArgs, long size,
+      FileChecksum expectedKeyChecksum,
+      ContainerProtos.ChecksumType sourceChecksumType) throws IOException {
+    OpenKeySession openKey = ozoneManagerClient.openKey(keyArgs);
+    return createOutputStream(openKey, expectedKeyChecksum, sourceChecksumType);
   }
 
   private void validateObjectTagsSupport(Map<String, String> tags)
@@ -1939,7 +1960,7 @@ public class RpcClient implements ClientProtocol {
     for (OmKeyLocationInfo info: omKeyLocationInfos) {
       ozoneKeyLocations.add(new OzoneKeyLocation(info.getContainerID(),
           info.getLocalID(), info.getLength(), info.getOffset(),
-          lastKeyOffset));
+          lastKeyOffset, info.getBlockID(), info.getPipeline(), info.getToken()));
       lastKeyOffset += info.getLength();
     }
 
@@ -2501,7 +2522,7 @@ public class RpcClient implements ClientProtocol {
    */
   private OzoneInputStream getInputStreamWithRetryFunction(
       OmKeyInfo keyInfo) throws IOException {
-    return createInputStream(keyInfo, omKeyInfo -> {
+    Function<OmKeyInfo, OmKeyInfo> retryFunction = omKeyInfo -> {
       try {
         return getKeyInfo(omKeyInfo.getVolumeName(), omKeyInfo.getBucketName(),
             omKeyInfo.getKeyName(), true);
@@ -2509,7 +2530,14 @@ public class RpcClient implements ClientProtocol {
         LOG.error("Unable to lookup key {} on retry.", keyInfo.getKeyName(), e);
         return null;
       }
-    });
+    };
+    OzoneInputStream inputStream = createInputStream(keyInfo, retryFunction);
+    if (!clientConfig.isReadMigrationRetryEnabled()) {
+      return inputStream;
+    }
+    return new OzoneInputStream(
+        new MigrationKeyReadRetryInputStream(keyInfo, inputStream, retryFunction,
+            omKeyInfo -> createInputStream(omKeyInfo, retryFunction)));
   }
 
   @Override
@@ -2777,7 +2805,27 @@ public class RpcClient implements ClientProtocol {
 
   private OzoneOutputStream createOutputStream(OpenKeySession openKey)
       throws IOException {
-    KeyOutputStream keyOutputStream = createKeyOutputStream(openKey)
+    return createOutputStream(openKey, null, null);
+  }
+
+  private OzoneOutputStream createOutputStream(OpenKeySession openKey,
+      FileChecksum expectedKeyChecksum,
+      ContainerProtos.ChecksumType sourceChecksumType) throws IOException {
+    OzoneClientConfig streamConfig = clientConfig;
+    if (sourceChecksumType != null) {
+      streamConfig = conf.getObject(OzoneClientConfig.class);
+      streamConfig.setChecksumType(sourceChecksumType);
+    }
+    KeyOutputStream.Builder builder = createKeyOutputStream(openKey, streamConfig);
+    if (expectedKeyChecksum != null) {
+      builder.setExpectedKeyChecksum(expectedKeyChecksum.getBytes(),
+          BaseFileChecksumHelper.toContainerChecksumType(
+              expectedKeyChecksum.getChecksumOpt().getChecksumType()));
+    }
+    if (sourceChecksumType != null) {
+      builder.setSourceChecksumType(sourceChecksumType);
+    }
+    KeyOutputStream keyOutputStream = builder
         .build();
     return createOutputStream(openKey, keyOutputStream);
   }
@@ -2828,12 +2876,17 @@ public class RpcClient implements ClientProtocol {
 
   private KeyOutputStream.Builder createKeyOutputStream(
       OpenKeySession openKey) {
+    return createKeyOutputStream(openKey, clientConfig);
+  }
+
+  private KeyOutputStream.Builder createKeyOutputStream(
+      OpenKeySession openKey, OzoneClientConfig streamConfig) {
     KeyOutputStream.Builder builder;
 
     ReplicationConfig replicationConfig =
         openKey.getKeyInfo().getReplicationConfig();
     StreamBufferArgs streamBufferArgs = StreamBufferArgs.getDefaultStreamBufferArgs(
-        replicationConfig, clientConfig);
+        replicationConfig, streamConfig);
     if (replicationConfig.getReplicationType() ==
         HddsProtos.ReplicationType.EC) {
       builder = new ECKeyOutputStream.Builder()
@@ -2849,7 +2902,7 @@ public class RpcClient implements ClientProtocol {
         .setXceiverClientManager(xceiverClientManager)
         .setOmClient(ozoneManagerClient)
         .enableUnsafeByteBufferConversion(unsafeByteBufferConversion)
-        .setConfig(clientConfig)
+        .setConfig(streamConfig)
         .setClientMetrics(clientMetrics)
         .setExecutorServiceSupplier(writeExecutor)
         .setStreamBufferArgs(streamBufferArgs)

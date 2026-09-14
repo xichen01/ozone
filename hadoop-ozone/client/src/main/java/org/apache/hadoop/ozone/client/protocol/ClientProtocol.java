@@ -23,12 +23,14 @@ import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import org.apache.hadoop.crypto.key.KeyProvider;
+import org.apache.hadoop.fs.FileChecksum;
 import org.apache.hadoop.hdds.client.ObjectAttributes;
 import org.apache.hadoop.hdds.client.ReplicationConfig;
 import org.apache.hadoop.hdds.client.ReplicationFactor;
 import org.apache.hadoop.hdds.client.ReplicationType;
 import org.apache.hadoop.hdds.protocol.DatanodeDetails;
 import org.apache.hadoop.hdds.protocol.StorageType;
+import org.apache.hadoop.hdds.protocol.datanode.proto.ContainerProtos;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.ozone.OzoneAcl;
 import org.apache.hadoop.ozone.OzoneFsServerDefaults;
@@ -501,6 +503,13 @@ public interface ClientProtocol {
       long size, long existingKeyGeneration, ReplicationConfig replicationConfig,
       Map<String, String> metadata, Map<String, String> tags,
       ObjectAttributes objectAttributes) throws IOException;
+
+  @SuppressWarnings("checkstyle:ParameterNumber")
+  OzoneOutputStream rewriteKey(String volumeName, String bucketName, String keyName,
+      long size, long existingKeyGeneration, ReplicationConfig replicationConfig,
+      Map<String, String> metadata, Map<String, String> tags,
+      ObjectAttributes objectAttributes, FileChecksum expectedKeyChecksum,
+      ContainerProtos.ChecksumType sourceChecksumType) throws IOException;
 
   /**
    * Writes a key in an existing bucket.
