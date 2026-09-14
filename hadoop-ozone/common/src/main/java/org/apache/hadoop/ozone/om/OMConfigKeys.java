@@ -211,6 +211,10 @@ public final class OMConfigKeys {
       "ozone.lifecycle.service.move.to.trash.enabled";
   public static final boolean
       OZONE_KEY_LIFECYCLE_SERVICE_MOVE_TO_TRASH_ENABLED_DEFAULT = true;
+  public static final String OZONE_KEY_LIFECYCLE_SERVICE_TRANSITION_EC_REPLICATION_CONFIG =
+      "ozone.lifecycle.service.transition.ec.replication.config";
+  public static final String OZONE_KEY_LIFECYCLE_SERVICE_TRANSITION_EC_REPLICATION_CONFIG_DEFAULT =
+      "rs-6-3-1024k";
 
   /**
    * OM Ratis related configurations.

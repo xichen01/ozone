@@ -665,7 +665,7 @@ message JobworkerMigrationKeysTaskProto {
     required bool completeScanning = 7;
     optional string lastScanKey = 8;   // for breakpoint scanning function
     required string ruleId = 9;
-    required hadoop.hdds.StoragePolicyProto storagePolicy = 10;
+    required ECReplicationConfig ecReplicationConfig = 10;
 }
 
 message JobworkerMigrationKeysTxProto {

@@ -2702,6 +2702,13 @@ message LifecycleRule {
 message LifecycleAction {
   optional LifecycleExpiration expiration = 1;
   optional AbortIncompleteMultipartUpload abortIncompleteMultipartUpload = 2;
+  optional LifecycleTransition transition = 3;
+}
+
+message LifecycleTransition {
+  optional uint32 days = 1;
+  optional string date = 2;
+  optional string storageClass = 3;
 }
 
 message LifecycleConfiguration {
@@ -2848,7 +2855,7 @@ message MigrationKeyArgs {
 
   message CreateTask {
     required string ruleId = 1;
-    required hadoop.hdds.StoragePolicyProto storagePolicy = 2;
+    required hadoop.hdds.ECReplicationConfig ecReplicationConfig = 2;
   }
 
   message AddTransaction {

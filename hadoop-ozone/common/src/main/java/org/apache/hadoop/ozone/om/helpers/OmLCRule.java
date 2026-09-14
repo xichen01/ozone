@@ -26,6 +26,7 @@ import jakarta.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 import net.jcip.annotations.Immutable;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -122,6 +123,14 @@ public final class OmLCRule {
       }
     }
     return null;
+  }
+
+  /** Returns all transition actions in this rule. */
+  public List<OmLCTransition> getTransitions() {
+    return actions.stream()
+        .filter(action -> action instanceof OmLCTransition)
+        .map(action -> (OmLCTransition) action)
+        .collect(Collectors.toList());
   }
 
   /**
@@ -238,7 +247,7 @@ public final class OmLCRule {
   public boolean match(OmKeyInfo omKeyInfo) {
     boolean matched = false;
     // verify modification time first
-    if (getExpiration().isExpired(omKeyInfo.getModificationTime())) {
+    if (getExpiration() != null && getExpiration().isExpired(omKeyInfo.getModificationTime())) {
       // verify prefix and filter
       if (prefix != null) {
         if (omKeyInfo.getKeyName().startsWith(prefix)) {
@@ -260,7 +269,7 @@ public final class OmLCRule {
   public boolean match(OmKeyInfo omKeyInfo, String keyPath) {
     boolean matched = false;
     // verify modification time first
-    if (getExpiration().isExpired(omKeyInfo.getModificationTime())) {
+    if (getExpiration() != null && getExpiration().isExpired(omKeyInfo.getModificationTime())) {
       // verify prefix and filter
       if (prefix != null) {
         if (keyPath.startsWith(prefix)) {
@@ -273,10 +282,21 @@ public final class OmLCRule {
     return matched;
   }
 
+  /** Returns whether a key matches this rule and the transition time condition. */
+  public boolean matchTransition(OmKeyInfo omKeyInfo, String keyPath, OmLCTransition transition) {
+    if (!transition.shouldExecute(omKeyInfo.getModificationTime())) {
+      return false;
+    }
+    if (prefix != null) {
+      return keyPath.startsWith(prefix);
+    }
+    return filter == null || filter.match(omKeyInfo, keyPath);
+  }
+
   public boolean match(OmDirectoryInfo dirInfo, String keyPath) {
     boolean matched = false;
     // verify modification time first
-    if (getExpiration().isExpired(dirInfo.getModificationTime())) {
+    if (getExpiration() != null && getExpiration().isExpired(dirInfo.getModificationTime())) {
       // verify prefix and filter
       if (prefix != null) {
         if (keyPath.startsWith(prefix)) {
@@ -326,6 +346,9 @@ public final class OmLCRule {
       if (lifecycleAction.hasAbortIncompleteMultipartUpload()) {
         builder.addAction(OmLCAbortIncompleteMultipartUpload.getFromProtobuf(
             lifecycleAction.getAbortIncompleteMultipartUpload()));
+      }
+      if (lifecycleAction.hasTransition()) {
+        builder.addAction(OmLCTransition.getFromProtobuf(lifecycleAction.getTransition()));
       }
     }
     if (lifecycleRule.hasFilter()) {

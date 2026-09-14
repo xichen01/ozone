@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.hadoop.ozone.om.helpers.OmLCRule;
+import org.apache.hadoop.ozone.om.helpers.OmLCTransition;
 import org.apache.hadoop.ozone.om.helpers.OmLifecycleConfiguration;
 
 /**
@@ -74,6 +75,31 @@ public class OzoneLifecycleConfiguration {
 
     public Integer getDaysAfterInitiation() {
       return daysAfterInitiation;
+    }
+  }
+
+  /** A lifecycle transition to the EC migration target. */
+  public static class OzoneLCTransition {
+    private final Integer days;
+    private final String date;
+    private final String storageClass;
+
+    public OzoneLCTransition(Integer days, String date, String storageClass) {
+      this.days = days;
+      this.date = date;
+      this.storageClass = storageClass;
+    }
+
+    public Integer getDays() {
+      return days;
+    }
+
+    public String getDate() {
+      return date;
+    }
+
+    public String getStorageClass() {
+      return storageClass;
     }
   }
 
@@ -136,16 +162,24 @@ public class OzoneLifecycleConfiguration {
     private final String status;
     private final OzoneLCExpiration expiration;
     private final OzoneLCAbortIncompleteMultipartUpload abortIncompleteMultipartUpload;
+    private final OzoneLCTransition transition;
     private final OzoneLCFilter filter;
 
     public OzoneLCRule(String id, String prefix, String status,
         OzoneLCExpiration expiration, OzoneLCAbortIncompleteMultipartUpload abortIncompleteMultipartUpload,
         OzoneLCFilter filter) {
+      this(id, prefix, status, expiration, abortIncompleteMultipartUpload, null, filter);
+    }
+
+    public OzoneLCRule(String id, String prefix, String status,
+        OzoneLCExpiration expiration, OzoneLCAbortIncompleteMultipartUpload abortIncompleteMultipartUpload,
+        OzoneLCTransition transition, OzoneLCFilter filter) {
       this.id = id;
       this.prefix = prefix;
       this.status = status;
       this.expiration = expiration;
       this.abortIncompleteMultipartUpload = abortIncompleteMultipartUpload;
+      this.transition = transition;
       this.filter = filter;
     }
 
@@ -167,6 +201,10 @@ public class OzoneLifecycleConfiguration {
 
     public OzoneLCAbortIncompleteMultipartUpload getAbortIncompleteMultipartUpload() {
       return abortIncompleteMultipartUpload;
+    }
+
+    public OzoneLCTransition getTransition() {
+      return transition;
     }
 
     public OzoneLCFilter getFilter() {
@@ -209,6 +247,13 @@ public class OzoneLifecycleConfiguration {
             r.getAbortIncompleteMultipartUpload().getDaysAfterInitiation());
       }
 
+      OzoneLifecycleConfiguration.OzoneLCTransition t = null;
+      if (!r.getTransitions().isEmpty()) {
+        OmLCTransition transition = r.getTransitions().get(0);
+        t = new OzoneLifecycleConfiguration.OzoneLCTransition(
+            transition.getDays(), transition.getDate(), transition.getStorageClass());
+      }
+
       OzoneLifecycleConfiguration.OzoneLCFilter f = null;
       if (r.getFilter() != null) {
         LifecycleAndOperator andOperator = null;
@@ -221,7 +266,7 @@ public class OzoneLifecycleConfiguration {
       }
 
       rules.add(new OzoneLifecycleConfiguration.OzoneLCRule(r.getId(),
-          r.getPrefix(), (r.isEnabled() ? "Enabled" : "Disabled"), e, a, f));
+          r.getPrefix(), (r.isEnabled() ? "Enabled" : "Disabled"), e, a, t, f));
     }
 
     return new OzoneLifecycleConfiguration(lifecycleConfiguration.getVolume(),

@@ -33,6 +33,7 @@ import org.apache.hadoop.ozone.om.helpers.OmLCAbortIncompleteMultipartUpload;
 import org.apache.hadoop.ozone.om.helpers.OmLCExpiration;
 import org.apache.hadoop.ozone.om.helpers.OmLCFilter;
 import org.apache.hadoop.ozone.om.helpers.OmLCRule;
+import org.apache.hadoop.ozone.om.helpers.OmLCTransition;
 import org.apache.hadoop.ozone.om.helpers.OmLifecycleConfiguration;
 import org.apache.hadoop.ozone.om.helpers.OmLifecycleRuleAndOperator;
 import org.apache.hadoop.ozone.s3.exception.OS3Exception;
@@ -80,6 +81,9 @@ public class S3LifecycleConfiguration {
     @XmlElement(name = "AbortIncompleteMultipartUpload")
     private AbortIncompleteMultipartUpload abortIncompleteMultipartUpload;
 
+    @XmlElement(name = "Transition")
+    private List<Transition> transitions = new ArrayList<>();
+
     @XmlElement(name = "Filter")
     private Filter filter;
 
@@ -121,6 +125,14 @@ public class S3LifecycleConfiguration {
 
     public void setAbortIncompleteMultipartUpload(AbortIncompleteMultipartUpload abortIncompleteMultipartUpload) {
       this.abortIncompleteMultipartUpload = abortIncompleteMultipartUpload;
+    }
+
+    public List<Transition> getTransitions() {
+      return transitions;
+    }
+
+    public void setTransitions(List<Transition> transitions) {
+      this.transitions = transitions;
     }
 
     public Filter getFilter() {
@@ -176,6 +188,44 @@ public class S3LifecycleConfiguration {
 
     public void setDaysAfterInitiation(Integer daysAfterInitiation) {
       this.daysAfterInitiation = daysAfterInitiation;
+    }
+  }
+
+  /** S3 transition action. Only DEEP_ARCHIVE is supported by the EC backport. */
+  @XmlAccessorType(XmlAccessType.FIELD)
+  @XmlRootElement(name = "Transition")
+  public static class Transition {
+    @XmlElement(name = "Days")
+    private Integer days;
+
+    @XmlElement(name = "Date")
+    private String date;
+
+    @XmlElement(name = "StorageClass")
+    private String storageClass;
+
+    public Integer getDays() {
+      return days;
+    }
+
+    public void setDays(Integer days) {
+      this.days = days;
+    }
+
+    public String getDate() {
+      return date;
+    }
+
+    public void setDate(String date) {
+      this.date = date;
+    }
+
+    public String getStorageClass() {
+      return storageClass;
+    }
+
+    public void setStorageClass(String storageClass) {
+      this.storageClass = storageClass;
     }
   }
 
@@ -336,6 +386,9 @@ public class S3LifecycleConfiguration {
     if (rule.getAbortIncompleteMultipartUpload() != null) {
       builder.addAction(convertToOmAbortIncompleteMultipartUpload(rule.getAbortIncompleteMultipartUpload()));
     }
+    for (Transition transition : rule.getTransitions()) {
+      builder.addAction(convertToOmTransition(transition));
+    }
     if (rule.getFilter() != null) {
       builder.setFilter(convertToOmFilter(rule.getFilter()));
     }
@@ -377,6 +430,18 @@ public class S3LifecycleConfiguration {
       builder.setDaysAfterInitiation(abortIncompleteMultipartUpload.getDaysAfterInitiation());
     }
 
+    return builder.build();
+  }
+
+  private OmLCTransition convertToOmTransition(Transition transition) throws OMException {
+    OmLCTransition.Builder builder = new OmLCTransition.Builder()
+        .setStorageClass(transition.getStorageClass());
+    if (transition.getDays() != null) {
+      builder.setDays(transition.getDays());
+    }
+    if (transition.getDate() != null) {
+      builder.setDate(transition.getDate());
+    }
     return builder.build();
   }
 
@@ -464,6 +529,13 @@ public class S3LifecycleConfiguration {
     if (ozoneRule.getAbortIncompleteMultipartUpload() != null) {
       rule.setAbortIncompleteMultipartUpload(
           convertFromOzoneAbortIncompleteMultipartUpload(ozoneRule.getAbortIncompleteMultipartUpload()));
+    }
+    if (ozoneRule.getTransition() != null) {
+      Transition transition = new Transition();
+      transition.setDays(ozoneRule.getTransition().getDays());
+      transition.setDate(ozoneRule.getTransition().getDate());
+      transition.setStorageClass(ozoneRule.getTransition().getStorageClass());
+      rule.setTransitions(java.util.Collections.singletonList(transition));
     }
     if (ozoneRule.getFilter() != null) {
       rule.setFilter(convertFromOzoneFilter(ozoneRule.getFilter()));

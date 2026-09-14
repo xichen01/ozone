@@ -5375,4 +5375,10 @@
       ozone.lifecycle.service.state.save.keys.processed is satisfied.
     </description>
   </property>
+  <property>
+    <name>ozone.lifecycle.service.transition.ec.replication.config</name>
+    <value>rs-6-3-1024k</value>
+    <tag>OM, LIFECYCLE</tag>
+    <description>EC replication configuration used by DEEP_ARCHIVE lifecycle transitions.</description>
+  </property>
 </configuration>
