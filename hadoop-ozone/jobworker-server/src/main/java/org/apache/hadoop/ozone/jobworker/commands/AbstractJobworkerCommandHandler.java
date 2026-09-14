@@ -28,6 +28,7 @@ import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolP
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandResultCode;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.CommandStatus;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto;
+import org.apache.hadoop.hdds.utils.FaultInjector;
 import org.apache.hadoop.ozone.jobworker.JobworkerConnectionManager;
 import org.apache.hadoop.ozone.jobworker.JobworkerStateContext;
 import org.slf4j.Logger;
@@ -47,6 +48,7 @@ public abstract class AbstractJobworkerCommandHandler implements JobworkerComman
   private final AtomicInteger queuedCount = new AtomicInteger(0);
   private final ExecutorService executorService;
   private final OMJobworkerCommandProto.Type type;
+  private volatile FaultInjector injector;
 
   /**
    * Create a new command handler for the specified type using the provided executor service.
@@ -178,6 +180,9 @@ public abstract class AbstractJobworkerCommandHandler implements JobworkerComman
                               JobworkerConnectionManager connectionManager) {
     try {
       updateCommandStatus(context, command, CommandStatus.Status.EXECUTING);
+      if (injector != null) {
+        injector.pause();
+      }
       boolean success = processCommand(command, context, connectionManager);
 
       context.getCommandManager().updateCommand(command, commandStatus -> {
@@ -261,5 +266,10 @@ public abstract class AbstractJobworkerCommandHandler implements JobworkerComman
   @VisibleForTesting
   public void setQueuedCount(int queuedCount) {
     this.queuedCount.set(queuedCount);
+  }
+
+  @VisibleForTesting
+  public void setInjector(FaultInjector injector) {
+    this.injector = injector;
   }
 }

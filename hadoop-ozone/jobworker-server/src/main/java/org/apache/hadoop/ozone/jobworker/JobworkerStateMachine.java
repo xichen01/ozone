@@ -32,7 +32,10 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.apache.hadoop.hdds.conf.ConfigurationSource;
 import org.apache.hadoop.hdds.protocol.JobworkerDetails;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos;
+import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos.OMJobworkerCommandProto;
+import org.apache.hadoop.hdds.utils.FaultInjector;
 import org.apache.hadoop.ozone.jobworker.JobworkerEndpointStateMachine.EndpointStates;
+import org.apache.hadoop.ozone.jobworker.commands.AbstractJobworkerCommandHandler;
 import org.apache.hadoop.ozone.jobworker.commands.JobworkerCommandDispatcher;
 import org.apache.hadoop.ozone.jobworker.commands.JobworkerCommandManager;
 import org.apache.hadoop.ozone.jobworker.commands.JobworkerCommandProcessor;
@@ -146,6 +149,15 @@ public class JobworkerStateMachine implements Closeable {
    */
   public void setContext(JobworkerStateContext context) {
     this.context = context;
+  }
+
+  @VisibleForTesting
+  public void setHandlerInjector(OMJobworkerCommandProto.Type commandType,
+      FaultInjector injector) {
+    if (commandDispatcher.getHandler(commandType) instanceof AbstractJobworkerCommandHandler) {
+      ((AbstractJobworkerCommandHandler) commandDispatcher.getHandler(commandType))
+          .setInjector(injector);
+    }
   }
 
   /**
