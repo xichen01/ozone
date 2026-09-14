@@ -63,13 +63,13 @@ public class TestOMAllocateIdBatchRequest {
   @BeforeEach
   public void setup(@TempDir File tempDir) throws Exception {
     ozoneManager = Mockito.mock(OzoneManager.class);
-    omMetrics = OMMetrics.create();
-    
     OzoneConfiguration ozoneConfiguration = new OzoneConfiguration();
+    omMetrics = OMMetrics.create(ozoneConfiguration);
+
     ozoneConfiguration.set(OMConfigKeys.OZONE_OM_DB_DIRS, tempDir.getAbsolutePath());
-    
+
     omMetadataManager = new OmMetadataManagerImpl(ozoneConfiguration, ozoneManager);
-    
+
     when(ozoneManager.getMetrics()).thenReturn(omMetrics);
     when(ozoneManager.getMetadataManager()).thenReturn(omMetadataManager);
     when(ozoneManager.isRatisEnabled()).thenReturn(true);

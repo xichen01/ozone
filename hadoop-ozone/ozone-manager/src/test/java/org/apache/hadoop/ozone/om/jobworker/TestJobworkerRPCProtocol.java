@@ -28,6 +28,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeoutException;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.MockJobworkerDetails;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos;
@@ -65,7 +66,8 @@ public class TestJobworkerRPCProtocol {
   private String omServiceId;
 
   @BeforeEach
-  public void setUp() throws IOException, AuthenticationException {
+  public void setUp()
+      throws IOException, AuthenticationException, InterruptedException, TimeoutException {
 
     OzoneConfiguration conf = createNewTestPath();
     OmTestManagers omTestManagers = new OmTestManagers(conf);

@@ -1032,7 +1032,7 @@ public class TestOMKeyCommitRequest extends OMKeyRequestTests {
             .setKeyName(keyName).setBucketName(bucketName)
             .setType(replicationConfig.getReplicationType())
             .setFactor(((RatisReplicationConfig) replicationConfig).getReplicationFactor())
-            .addAllKeyLocations(keyLocations).build();
+            .addAllKeyLocations(keyLocations);
 
     CommitKeyRequest commitKeyRequest =
         CommitKeyRequest.newBuilder().setKeyArgs(builder)

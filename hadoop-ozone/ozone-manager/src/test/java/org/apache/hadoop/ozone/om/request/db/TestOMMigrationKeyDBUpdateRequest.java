@@ -72,8 +72,8 @@ public class TestOMMigrationKeyDBUpdateRequest {
   @BeforeEach
   public void setup(@TempDir File tempDir) throws Exception {
     ozoneManager = Mockito.mock(OzoneManager.class);
-    omMetrics = OMMetrics.create();
     OzoneConfiguration ozoneConfiguration = new OzoneConfiguration();
+    omMetrics = OMMetrics.create(ozoneConfiguration);
     ozoneConfiguration.set(OMConfigKeys.OZONE_OM_DB_DIRS,
         tempDir.getAbsolutePath());
     ozoneConfiguration.set(OzoneConfigKeys.OZONE_METADATA_DIRS,
