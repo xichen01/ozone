@@ -34,6 +34,8 @@ import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_KEY_LIFECYCLE_SERVIC
 import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_KEY_LIFECYCLE_SERVICE_STATE_SAVE_INTERVAL_MS_DEFAULT;
 import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_KEY_LIFECYCLE_SERVICE_STATE_SAVE_KEYS_PROCESSED;
 import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_KEY_LIFECYCLE_SERVICE_STATE_SAVE_KEYS_PROCESSED_DEFAULT;
+import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_KEY_LIFECYCLE_SERVICE_TRANSITION_EC_REPLICATION_CONFIG;
+import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_KEY_LIFECYCLE_SERVICE_TRANSITION_EC_REPLICATION_CONFIG_DEFAULT;
 import static org.apache.hadoop.ozone.om.helpers.BucketLayout.OBJECT_STORE;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -50,6 +52,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashSet;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -61,6 +64,9 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hdds.conf.ConfigurationSource;
+import org.apache.hadoop.hdds.client.ECReplicationConfig;
+import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTxProto;
+import org.apache.hadoop.hdds.protocol.proto.HddsProtos.MigrationKeyProto;
 import org.apache.hadoop.hdds.conf.StorageUnit;
 import org.apache.hadoop.hdds.utils.BackgroundService;
 import org.apache.hadoop.hdds.utils.BackgroundTask;
@@ -87,12 +93,15 @@ import org.apache.hadoop.ozone.om.helpers.OmKeyArgs;
 import org.apache.hadoop.ozone.om.helpers.OmKeyInfo;
 import org.apache.hadoop.ozone.om.helpers.OmLCFilter;
 import org.apache.hadoop.ozone.om.helpers.OmLCRule;
+import org.apache.hadoop.ozone.om.helpers.OmLCTransition;
 import org.apache.hadoop.ozone.om.helpers.OmLifecycleConfiguration;
 import org.apache.hadoop.ozone.om.helpers.OmLifecycleScanState;
 import org.apache.hadoop.ozone.om.helpers.OmMultipartKeyInfo;
 import org.apache.hadoop.ozone.om.helpers.OmMultipartUpload;
 import org.apache.hadoop.ozone.om.helpers.OmVolumeArgs;
 import org.apache.hadoop.ozone.om.ratis.utils.OzoneManagerRatisUtils;
+import org.apache.hadoop.ozone.om.jobworker.MigrationTaskManager;
+import org.apache.hadoop.ozone.om.util.OMSequenceIdGenerator;
 import org.apache.hadoop.ozone.om.request.OMClientRequest;
 import org.apache.hadoop.ozone.om.request.util.OMMultipartUploadUtils;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos;
@@ -134,6 +143,7 @@ public class KeyLifecycleService extends BackgroundService {
   private int ratisByteLimit;
   private long stateSaveIntervalMs;
   private long maxKeysProcessedPerState;
+  private final ECReplicationConfig transitionEcReplicationConfig;
   private ClientId clientId = ClientId.randomId();
   private AtomicLong callId = new AtomicLong(0);
   private OzoneTrash ozoneTrash;
@@ -181,6 +191,9 @@ public class KeyLifecycleService extends BackgroundService {
           OZONE_KEY_LIFECYCLE_SERVICE_STATE_SAVE_KEYS_PROCESSED_DEFAULT);
       maxKeysProcessedPerState = OZONE_KEY_LIFECYCLE_SERVICE_STATE_SAVE_KEYS_PROCESSED_DEFAULT;
     }
+    this.transitionEcReplicationConfig = new ECReplicationConfig(conf.get(
+        OZONE_KEY_LIFECYCLE_SERVICE_TRANSITION_EC_REPLICATION_CONFIG,
+        OZONE_KEY_LIFECYCLE_SERVICE_TRANSITION_EC_REPLICATION_CONFIG_DEFAULT));
     LOG.info("stateSaveIntervalMs = {}, maxKeysProcessedPerState = {}", stateSaveIntervalMs, maxKeysProcessedPerState);
     this.inFlight = new ConcurrentHashMap();
     this.omMetadataManager = ozoneManager.getMetadataManager();
@@ -396,8 +409,13 @@ public class KeyLifecycleService extends BackgroundService {
           List<OmLCRule> mpuRules = ruleList.stream()
               .filter(r -> r.getAbortIncompleteMultipartUpload() != null)
               .collect(Collectors.toList());
+          List<OmLCRule> transitionRules = ruleList.stream()
+              .filter(r -> !r.getTransitions().isEmpty())
+              .collect(Collectors.toList());
+          Map<String, List<MigrationKeyProto>> migrationKeysByRule = new HashMap<>();
 
-          if (!expirationRules.isEmpty()) {
+          if (!expirationRules.isEmpty() ||
+              (bucket.getBucketLayout() == OBJECT_STORE && !transitionRules.isEmpty())) {
             LimitedExpiredObjectList expiredKeyList = new LimitedExpiredObjectList(listMaxSize);
             LimitedExpiredObjectList expiredDirList = new LimitedExpiredObjectList(listMaxSize);
             Table<String, OmKeyInfo> keyTable = omMetadataManager.getKeyTable(bucket.getBucketLayout());
@@ -434,7 +452,8 @@ public class KeyLifecycleService extends BackgroundService {
                   expiredDirList, scanStateBuilder);
             } else {
               // use bucket name as key iterator prefix
-              evaluateBucket(bucket, keyTable, expirationRules, expiredKeyList, scanStateBuilder);
+              evaluateBucket(bucket, keyTable, expirationRules, transitionRules, expiredKeyList,
+                  migrationKeysByRule, scanStateBuilder);
             }
 
             boolean scanFinished = !scanAborted;
@@ -456,6 +475,10 @@ public class KeyLifecycleService extends BackgroundService {
                 handleAndClearFullList(bucket, expiredDirList, true, scanStateBuilder, scanFinished);
               }
             }
+          }
+
+          if (bucket.getBucketLayout() == OBJECT_STORE && !transitionRules.isEmpty()) {
+            createMigrationTasks(bucket, transitionRules, migrationKeysByRule);
           }
 
           if (!mpuRules.isEmpty()) {
@@ -1013,7 +1036,9 @@ public class KeyLifecycleService extends BackgroundService {
     }
 
     private void evaluateBucket(OmBucketInfo bucketInfo,
-        Table<String, OmKeyInfo> keyTable, List<OmLCRule> ruleList, LimitedExpiredObjectList expiredKeyList,
+        Table<String, OmKeyInfo> keyTable, List<OmLCRule> expirationRules,
+        List<OmLCRule> transitionRules, LimitedExpiredObjectList expiredKeyList,
+        Map<String, List<MigrationKeyProto>> migrationKeysByRule,
         OmLifecycleScanState.Builder scanStateBuilder) {
       String volumeName = bucketInfo.getVolumeName();
       String bucketName = bucketInfo.getBucketName();
@@ -1041,13 +1066,77 @@ public class KeyLifecycleService extends BackgroundService {
           if (seekPerformed && keyValue.getKey().equals(scanStateBuilder.getLastScannedKey())) {
             continue;
           }
-          processKey(bucketInfo, keyValue.getValue(), ruleList, expiredKeyList, scanStateBuilder);
+          OmKeyInfo key = keyValue.getValue();
+          processKey(bucketInfo, key, expirationRules, expiredKeyList, scanStateBuilder);
+          processTransitionKey(key, transitionRules, migrationKeysByRule);
           numKeyIterated++;
           lastScannedKey = keyValue.getKey();
         }
       } catch (IOException e) {
         // log failure and continue the process to delete/move files already identified in this run
         LOG.warn("Failed to iterate through bucket {}/{}", volumeName, bucketName, e);
+      }
+    }
+
+    private void processTransitionKey(OmKeyInfo key, List<OmLCRule> rules,
+        Map<String, List<MigrationKeyProto>> migrationKeysByRule) {
+      for (OmLCRule rule : rules) {
+        for (OmLCTransition transition : rule.getTransitions()) {
+          if (OmLCTransition.DEEP_ARCHIVE.equalsIgnoreCase(transition.getStorageClass()) &&
+              rule.matchTransition(key, key.getKeyName(), transition) &&
+              !transitionEcReplicationConfig.equals(key.getReplicationConfig())) {
+            migrationKeysByRule.computeIfAbsent(rule.getId(), ignored -> new ArrayList<>())
+                .add(MigrationKeyProto.newBuilder()
+                    .setKey(key.getKeyName())
+                    .setUpdateID(key.getUpdateID())
+                    .build());
+            break;
+          }
+        }
+      }
+    }
+
+    private void createMigrationTasks(OmBucketInfo bucketInfo, List<OmLCRule> rules,
+        Map<String, List<MigrationKeyProto>> migrationKeysByRule) throws IOException {
+      for (OmLCRule rule : rules) {
+        List<MigrationKeyProto> migrationKeys = migrationKeysByRule.get(rule.getId());
+        if (migrationKeys == null || migrationKeys.isEmpty()) {
+          continue;
+        }
+        try {
+          if (ozoneManager.getMigrationTaskManager().hasActiveTask(
+              bucketInfo.getVolumeName(), bucketInfo.getBucketName(), rule.getId(),
+              transitionEcReplicationConfig)) {
+            LOG.debug("An active EC migration task already exists for {}/{} rule {}",
+                bucketInfo.getVolumeName(), bucketInfo.getBucketName(), rule.getId());
+            continue;
+          }
+          long taskId = ozoneManager.getSequenceIdGenerator().getNextId(
+              OMSequenceIdGenerator.MIGRATION_KEYS_TASK_ID);
+          String taskKey = MigrationTaskManager.generateTaskKey(
+              bucketInfo.getVolumeName(), bucketInfo.getBucketName(), taskId);
+          if (!ozoneManager.getMigrationTaskManager().createTaskIfAbsent(
+              taskKey, rule.getId(), transitionEcReplicationConfig)) {
+            continue;
+          }
+
+          long transactionId = ozoneManager.getSequenceIdGenerator().getNextId(
+              OMSequenceIdGenerator.MIGRATION_KEYS_TX_ID);
+          JobworkerMigrationKeysTxProto transaction = JobworkerMigrationKeysTxProto.newBuilder()
+              .setTxId(transactionId)
+              .setVolume(bucketInfo.getVolumeName())
+              .setBucket(bucketInfo.getBucketName())
+              .setEcReplicationConfig(transitionEcReplicationConfig.toProto())
+              .addAllMigrationKeys(migrationKeys)
+              .setTaskKey(taskKey)
+              .build();
+          ozoneManager.getMigrationTaskManager().addNewTransaction(taskKey, transaction);
+          ozoneManager.getMigrationTaskManager().markScanningCompletedIfPresent(taskKey);
+          LOG.info("Created EC migration task {} for {} keys from lifecycle rule {}",
+              taskKey, migrationKeys.size(), rule.getId());
+        } catch (ServiceException e) {
+          throw new IOException("Failed to allocate lifecycle migration ID", e);
+        }
       }
     }
 
