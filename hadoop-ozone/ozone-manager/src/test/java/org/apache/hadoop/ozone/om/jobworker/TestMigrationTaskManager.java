@@ -30,13 +30,12 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.apache.commons.lang3.RandomStringUtils;
-import org.apache.hadoop.hdds.client.OzoneStoragePolicy;
+import org.apache.hadoop.hdds.client.ECReplicationConfig;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTaskProto;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTxProto;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerTaskStatus;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.MigrationKeyProto;
-import org.apache.hadoop.hdds.protocol.proto.HddsProtos.StoragePolicyProto;
 import org.apache.hadoop.hdds.server.ServerUtils;
 import org.apache.hadoop.hdds.utils.db.cache.CacheKey;
 import org.apache.hadoop.hdds.utils.db.cache.CacheValue;
@@ -219,7 +218,8 @@ public class TestMigrationTaskManager {
   public void testCreateTaskIfAbsent() throws Exception {
     String taskKey = MigrationTaskManager.generateTaskKey("vol1", "bucket1", random.nextLong());
     Assertions.assertFalse(migrationTaskManager.isTaskExists(taskKey));
-    Assertions.assertTrue(migrationTaskManager.createTaskIfAbsent(taskKey, "RuleId1", OzoneStoragePolicy.COLD));
+    ECReplicationConfig ecReplicationConfig = new ECReplicationConfig("rs-6-3-1024k");
+    Assertions.assertTrue(migrationTaskManager.createTaskIfAbsent(taskKey, "RuleId1", ecReplicationConfig));
     
     // Verify task was created
     Assertions.assertTrue(migrationTaskManager.isTaskExists(taskKey));
@@ -227,14 +227,13 @@ public class TestMigrationTaskManager {
     Assertions.assertNotNull(createdTask);
     Assertions.assertEquals(JobworkerTaskStatus.PENDING, createdTask.getMigrationStatus());
     Assertions.assertEquals("RuleId1", createdTask.getRuleId());
-    Assertions.assertEquals(OzoneStoragePolicy.COLD,
-        OzoneStoragePolicy.fromProto(createdTask.getStoragePolicy()));
+    Assertions.assertEquals(ecReplicationConfig.toProto(), createdTask.getEcReplicationConfig());
     Assertions.assertTrue(createdTask.getStartTime() > 0);
     Assertions.assertTrue(createdTask.getLastUpdateTime() > 0);
 
     // Call again - should not create duplicate
     long originalStartTime = createdTask.getStartTime();
-    Assertions.assertFalse(migrationTaskManager.createTaskIfAbsent(taskKey, "RuleId1", OzoneStoragePolicy.COLD));
+    Assertions.assertFalse(migrationTaskManager.createTaskIfAbsent(taskKey, "RuleId1", ecReplicationConfig));
     JobworkerMigrationKeysTaskProto unchangedTask = migrationTaskManager.getTask(taskKey);
     Assertions.assertEquals(originalStartTime, unchangedTask.getStartTime());
   }
@@ -565,7 +564,7 @@ public class TestMigrationTaskManager {
         .setLastUpdateTime(System.currentTimeMillis())
         .setCompleteScanning(false)
         .setRuleId(RandomStringUtils.randomAlphanumeric(32))
-        .setStoragePolicy(StoragePolicyProto.WARM)
+        .setEcReplicationConfig(new ECReplicationConfig("rs-6-3-1024k").toProto())
         .build();
   }
 
@@ -586,7 +585,7 @@ public class TestMigrationTaskManager {
         .setTxId(txId)
         .setVolume("test-volume")
         .setBucket("test-bucket")
-        .setStoragePolicy(StoragePolicyProto.HOT)
+        .setEcReplicationConfig(new ECReplicationConfig("rs-6-3-1024k").toProto())
         .setTaskKey(taskKey);
     
     for (int i = 0; i < keyCount; i++) {

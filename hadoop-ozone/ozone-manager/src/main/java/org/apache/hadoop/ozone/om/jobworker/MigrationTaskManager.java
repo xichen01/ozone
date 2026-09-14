@@ -27,7 +27,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.TreeMap;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.hadoop.hdds.client.StoragePolicy;
+import org.apache.hadoop.hdds.client.ECReplicationConfig;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTaskProto;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTxProto;
@@ -153,13 +153,13 @@ public class MigrationTaskManager {
    * Creates a new task if it does not already exist.
    * Returns true if created, false if it already existed (race-safe).
    */
-  public boolean createTaskIfAbsent(String taskKey, String ruleId, StoragePolicy storagePolicy)
+  public boolean createTaskIfAbsent(String taskKey, String ruleId, ECReplicationConfig ecReplicationConfig)
       throws IOException {
     // Fast-path: if already exists, return false
     if (taskTable.isExist(taskKey)) {
       return false;
     }
-    dbUpdateManager.keyMigrationCreateTask(taskKey, ruleId, storagePolicy);
+    dbUpdateManager.keyMigrationCreateTask(taskKey, ruleId, ecReplicationConfig);
     return true;
   }
 
@@ -288,6 +288,27 @@ public class MigrationTaskManager {
    */
   public List<TaskEntry> listTask(String volume, String bucket) throws IOException {
     return listTask(generateTaskKeyPrefix(volume, bucket));
+  }
+
+  /**
+   * Checks whether a non-final task already exists for the lifecycle rule.
+   */
+  public boolean hasActiveTask(String volume, String bucket, String ruleId,
+      ECReplicationConfig ecReplicationConfig) throws IOException {
+    for (TaskEntry entry : listTask(volume, bucket)) {
+      JobworkerMigrationKeysTaskProto task = entry.getTask();
+      if (task == null || !ruleId.equals(task.getRuleId()) ||
+          !ecReplicationConfig.toProto().equals(task.getEcReplicationConfig())) {
+        continue;
+      }
+      JobworkerTaskStatus status = task.getMigrationStatus();
+      if (status != JobworkerTaskStatus.COMPLETED &&
+          status != JobworkerTaskStatus.FAILED &&
+          status != JobworkerTaskStatus.CANCELED) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private List<TaskEntry> listTask(String taskKeyPrefix) throws IOException {

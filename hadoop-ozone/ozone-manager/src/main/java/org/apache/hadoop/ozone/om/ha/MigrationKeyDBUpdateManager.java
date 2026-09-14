@@ -19,16 +19,13 @@ package org.apache.hadoop.ozone.om.ha;
 
 import java.io.IOException;
 import com.google.protobuf.ServiceException;
-import org.apache.hadoop.hdds.client.OzoneStoragePolicy;
-import org.apache.hadoop.hdds.client.StoragePolicy;
+import org.apache.hadoop.hdds.client.ECReplicationConfig;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTxProto;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerTaskStatus;
 import org.apache.hadoop.ozone.om.OzoneManager;
-import org.apache.hadoop.ozone.om.helpers.OMRatisHelper;
 import org.apache.hadoop.ozone.om.jobworker.MigrationTaskManager;
 import org.apache.hadoop.ozone.om.ratis.OzoneManagerRatisServer;
 import org.apache.hadoop.ozone.om.ratis.utils.OzoneManagerRatisUtils;
-import org.apache.hadoop.ozone.om.request.OMClientRequest;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.MigrationKeyArgs.AddTransaction;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.MigrationKeyArgs.CreateTask;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.MigrationKeyOperationType;
@@ -40,8 +37,6 @@ import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.OMReque
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.OMResponse;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.Type;
 import org.apache.ratis.protocol.ClientId;
-import org.apache.ratis.protocol.Message;
-import org.apache.ratis.protocol.RaftClientRequest;
 import org.apache.ratis.rpc.CallId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -168,17 +163,18 @@ public class MigrationKeyDBUpdateManager {
    * Create a new migration task.
    *
    * @param taskKey       The task key
-   * @param storagePolicy
+   * @param ecReplicationConfig target EC replication configuration
    * @throws IOException if the operation fails
    */
-  public void keyMigrationCreateTask(String taskKey, String ruleId, StoragePolicy storagePolicy) throws IOException {
+  public void keyMigrationCreateTask(String taskKey, String ruleId,
+      ECReplicationConfig ecReplicationConfig) throws IOException {
 
     MigrationKeyArgs migrationKeyArgs = MigrationKeyArgs.newBuilder()
         .setTaskKey(taskKey)
         .setCreateTask(CreateTask
             .newBuilder()
             .setRuleId(ruleId)
-            .setStoragePolicy(OzoneStoragePolicy.toProto(storagePolicy))
+            .setEcReplicationConfig(ecReplicationConfig.toProto())
             .build())
         .build();
 
@@ -266,23 +262,11 @@ public class MigrationKeyDBUpdateManager {
     OMResponse omResponse;
     
     if (isRatisEnabled()) {
-      // Submit through Ratis
-      OMClientRequest omClientRequest =
-          OzoneManagerRatisUtils.createClientRequest(omRequest, ozoneManager);
-      omRequest = omClientRequest.preExecute(ozoneManager);
-
+      // Ratis submission does not perform preExecute, so do it before submitting.
+      omRequest = OzoneManagerRatisUtils.createClientRequest(omRequest, ozoneManager)
+          .preExecute(ozoneManager);
       OzoneManagerRatisServer server = ozoneManager.getOmRatisServer();
-      RaftClientRequest raftClientRequest = RaftClientRequest.newBuilder()
-          .setClientId(clientId)
-          .setServerId(server.getRaftPeerId())
-          .setGroupId(server.getRaftGroupId())
-          .setCallId(CallId.getAndIncrement())
-          .setMessage(Message.valueOf(
-              OMRatisHelper.convertRequestToByteString(omRequest)))
-          .setType(RaftClientRequest.writeRequestType())
-          .build();
-      
-      omResponse = server.submitRequest(omRequest, raftClientRequest);
+      omResponse = server.submitRequest(omRequest, clientId, CallId.getAndIncrement());
     } else {
       // Submit directly to OM
       omResponse = ozoneManager.getOmServerProtocol().submitRequest(null, omRequest);

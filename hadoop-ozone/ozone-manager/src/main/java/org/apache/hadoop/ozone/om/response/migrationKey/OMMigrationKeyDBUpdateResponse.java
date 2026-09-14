@@ -17,13 +17,13 @@
 
 package org.apache.hadoop.ozone.om.response.migrationKey;
 
-import static org.apache.hadoop.ozone.om.OmMetadataManagerImpl.JOBWORKER_MIGRATION_KEYS_TASK_TABLE;
-import static org.apache.hadoop.ozone.om.OmMetadataManagerImpl.JOBWORKER_MIGRATION_KEYS_TRANSACTION_TABLE;
+import static org.apache.hadoop.ozone.om.codec.OMDBDefinition.JOBWORKER_MIGRATION_KEYS_TASK_TABLE;
+import static org.apache.hadoop.ozone.om.codec.OMDBDefinition.JOBWORKER_MIGRATION_KEYS_TRANSACTION_TABLE;
 import static org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.Status.OK;
 
 import com.google.common.base.Preconditions;
+import jakarta.annotation.Nonnull;
 import java.io.IOException;
-import javax.annotation.Nonnull;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTaskProto;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTxProto;

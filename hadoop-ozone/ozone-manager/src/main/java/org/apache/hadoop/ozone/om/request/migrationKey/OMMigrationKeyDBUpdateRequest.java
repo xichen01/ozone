@@ -31,6 +31,7 @@ import org.apache.hadoop.hdds.utils.db.cache.CacheValue;
 import org.apache.hadoop.ozone.om.OMMetadataManager;
 import org.apache.hadoop.ozone.om.OzoneManager;
 import org.apache.hadoop.ozone.om.exceptions.OMException;
+import org.apache.hadoop.ozone.om.execution.flowcontrol.ExecutionContext;
 import org.apache.hadoop.ozone.om.jobworker.MigrationTaskManager;
 import org.apache.hadoop.ozone.om.request.OMClientRequest;
 import org.apache.hadoop.ozone.om.request.util.OmResponseUtil;
@@ -128,7 +129,8 @@ public class OMMigrationKeyDBUpdateRequest extends OMClientRequest {
 
   @Override
   public OMClientResponse validateAndUpdateCache(OzoneManager ozoneManager,
-      long transactionLogIndex) {
+      ExecutionContext context) {
+    long transactionLogIndex = context.getIndex();
 
     MigrationKeyDBUpdateRequest request = getOmRequest().getMigrationKeyDBUpdateRequest();
     OMMetadataManager omMetadataManager = ozoneManager.getMetadataManager();
@@ -323,7 +325,7 @@ public class OMMigrationKeyDBUpdateRequest extends OMClientRequest {
         .setLastUpdateTime(migrationKeyArgs.getOperationTime())
         .setCompleteScanning(false)
         .setRuleId(migrationKeyArgs.getCreateTask().getRuleId())
-        .setStoragePolicy(migrationKeyArgs.getCreateTask().getStoragePolicy())
+        .setEcReplicationConfig(migrationKeyArgs.getCreateTask().getEcReplicationConfig())
         .build();
 
     taskTable.addCacheEntry(new CacheKey<>(taskKey),

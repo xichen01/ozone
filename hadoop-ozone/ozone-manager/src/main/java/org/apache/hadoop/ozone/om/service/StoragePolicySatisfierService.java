@@ -366,7 +366,7 @@ public class StoragePolicySatisfierService extends BackgroundService {
         // Determine final status based on scanning completion and remaining tasks
         JobworkerTaskStatus finalStatus;
         if (!running.get()) {
-          finalStatus = JobworkerTaskStatus.PAUSED;
+          finalStatus = JobworkerTaskStatus.MIGRATION_PAUSED;
         } else if (task.getCompleteScanning() && !hasMoreTasks) {
           finalStatus = JobworkerTaskStatus.COMPLETED;
         } else if (noAvailableJobworker) {
