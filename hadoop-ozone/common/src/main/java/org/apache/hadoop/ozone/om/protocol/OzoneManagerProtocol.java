@@ -91,6 +91,16 @@ import org.apache.hadoop.security.token.TokenInfo;
 public interface OzoneManagerProtocol
     extends IOmMetadataReader, OzoneManagerSecurityProtocol, Closeable {
 
+  /**
+   * Cancels a key migration task.
+   *
+   * @param taskKey migration task key
+   * @throws IOException if the request fails
+   */
+  default void cancelMigrationKeyTask(String taskKey) throws IOException {
+    throw new UnsupportedOperationException("Migration task cancellation is not supported.");
+  }
+
   @SuppressWarnings("checkstyle:ConstantName")
   /**
    * Version 1: Initial version.

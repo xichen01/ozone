@@ -248,6 +248,9 @@ import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.TenantL
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.TenantRevokeAdminRequest;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.TenantRevokeUserAccessIdRequest;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.Type;
+import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.MigrationKeyArgs;
+import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.MigrationKeyDBUpdateRequest;
+import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.MigrationKeyOperationType;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.VolumeInfo;
 import org.apache.hadoop.ozone.protocolPB.OMPBHelper;
 import org.apache.hadoop.ozone.security.OzoneTokenIdentifier;
@@ -290,6 +293,21 @@ public final class OzoneManagerProtocolClientSideTranslatorPB
     this.clientID = clientId;
     this.transport = omTransport;
     this.s3AuthCheck = false;
+  }
+
+  @Override
+  public void cancelMigrationKeyTask(String taskKey) throws IOException {
+    MigrationKeyDBUpdateRequest request = MigrationKeyDBUpdateRequest.newBuilder()
+        .setType(MigrationKeyOperationType.KEY_MIGRATION_CANCEL_TASK)
+        .setMigrationKeyArgs(MigrationKeyArgs.newBuilder()
+            .setTaskKey(taskKey)
+            .setCancelTask(MigrationKeyArgs.CancelTask.newBuilder().build())
+            .build())
+        .build();
+    OMRequest omRequest = createOMRequest(Type.MigrationKeyDBUpdate)
+        .setMigrationKeyDBUpdateRequest(request)
+        .build();
+    handleError(submitRequest(omRequest));
   }
 
   /**

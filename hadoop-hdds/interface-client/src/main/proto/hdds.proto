@@ -653,6 +653,8 @@ enum JobworkerTaskStatus {
     COMPLETED = 4;
     FAILED = 5;
     CANCELED = 6;
+    FAILING = 7;
+    CANCELING = 8;
 }
 
 message JobworkerMigrationKeysTaskProto {

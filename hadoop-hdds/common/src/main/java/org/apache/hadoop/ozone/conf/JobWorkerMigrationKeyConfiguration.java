@@ -214,4 +214,21 @@ public class JobWorkerMigrationKeyConfiguration {
     this.storagePolicySatisfierTimeoutMs = storagePolicySatisfierTimeoutMs;
     return this;
   }
+
+  @Config(key = "ozone.jobworker.migration.key.storage.policy.satisfier.leader.ready.wait.time",
+      defaultValue = "0ms",
+      type = ConfigType.TIME,
+      tags = {ConfigTag.JOBWORKER},
+      description = "Time to wait after becoming OM leader before starting migration processing.")
+  private long storagePolicySatisfierLeaderReadyWaitTimeMs;
+
+  public long getStoragePolicySatisfierLeaderReadyWaitTimeMs() {
+    return storagePolicySatisfierLeaderReadyWaitTimeMs;
+  }
+
+  public JobWorkerMigrationKeyConfiguration setStoragePolicySatisfierLeaderReadyWaitTimeMs(
+      long leaderReadyWaitTimeMs) {
+    this.storagePolicySatisfierLeaderReadyWaitTimeMs = leaderReadyWaitTimeMs;
+    return this;
+  }
 }

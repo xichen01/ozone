@@ -2835,12 +2835,15 @@ message MigrationKeyDBUpdateResponse {
 }
 
 enum MigrationKeyOperationType {
+  KEY_MIGRATION_UNKNOWN = 0;
   KEY_MIGRATION_COMPLETE_TRANSACTION = 1;
   KEY_MIGRATION_UPDATE_TASK_STATUS = 2;
   KEY_MIGRATION_MARK_SCANNING_COMPLETED = 3;
   KEY_MIGRATION_CLEANUP_TASK = 4;
   KEY_MIGRATION_CREATE_TASK = 5;
   KEY_MIGRATION_ADD_TRANSACTION = 6;
+  KEY_MIGRATION_CANCEL_TASK = 8;
+  KEY_MIGRATION_DELETE_TRANSACTIONS = 9;
 }
 
 message MigrationKeyArgs {
@@ -2863,10 +2866,19 @@ message MigrationKeyArgs {
     required hadoop.hdds.JobworkerMigrationKeysTxProto migrationKeysTxProto = 2;
   }
 
+  message CancelTask {
+  }
+
+  message DeleteTransactions {
+    repeated string transactionKeys = 1;
+  }
+
   required string taskKey = 1;
   optional uint64 operationTime = 2;
   optional CompleteTransaction completeTransaction = 3;
   optional UpdateTaskStatus updateTaskStatus = 4;
   optional CreateTask createTask = 5;
   optional AddTransaction addTransaction = 6;
+  optional CancelTask cancelTask = 8;
+  optional DeleteTransactions deleteTransactions = 9;
 }
