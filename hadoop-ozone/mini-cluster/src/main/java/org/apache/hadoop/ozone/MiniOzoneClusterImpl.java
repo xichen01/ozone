@@ -929,7 +929,6 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
       conf.set(OMConfigKeys.OZONE_OM_HTTPS_ADDRESS_KEY,
           localhostWithFreePort());
       conf.setInt(OMConfigKeys.OZONE_OM_RATIS_PORT_KEY, getFreePort());
-      conf.setInt(OMConfigKeys.OZONE_OM_HANDLER_COUNT_KEY, numOfOmHandlers);
       OMJobworkerConfiguration jwConf = conf.getObject(OMJobworkerConfiguration.class);
       jwConf.setGrpcPort(getFreePort());
       conf.setFromObject(jwConf);
