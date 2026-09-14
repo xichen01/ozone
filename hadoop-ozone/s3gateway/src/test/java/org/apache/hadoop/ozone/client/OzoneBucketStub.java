@@ -42,6 +42,7 @@ import java.util.stream.Collectors;
 import javax.xml.bind.DatatypeConverter;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.hadoop.hdds.client.ObjectAttributes;
 import org.apache.hadoop.hdds.client.RatisReplicationConfig;
 import org.apache.hadoop.hdds.client.ReplicationConfig;
 import org.apache.hadoop.hdds.client.ReplicationFactor;
@@ -211,8 +212,8 @@ public final class OzoneBucketStub extends OzoneBucket {
   public OzoneOutputStream rewriteKey(String keyName, long size, long existingKeyGeneration,
       ReplicationConfig rConfig, Map<String, String> metadata, ObjectAttributes objectAttributes)
       throws IOException {
-      return rewriteKey(keyName, size, existingKeyGeneration, rConfig, metadata,
-          Collections.emptyMap(), objectAttributes);
+    return rewriteKey(keyName, size, existingKeyGeneration, rConfig, metadata,
+        Collections.emptyMap(), objectAttributes);
   }
 
   @Override

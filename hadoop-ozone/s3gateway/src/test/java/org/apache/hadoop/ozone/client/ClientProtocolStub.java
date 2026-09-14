@@ -26,12 +26,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 import org.apache.hadoop.crypto.key.KeyProvider;
+import org.apache.hadoop.fs.FileChecksum;
 import org.apache.hadoop.hdds.client.ObjectAttributes;
 import org.apache.hadoop.hdds.client.ReplicationConfig;
 import org.apache.hadoop.hdds.client.ReplicationFactor;
 import org.apache.hadoop.hdds.client.ReplicationType;
 import org.apache.hadoop.hdds.protocol.DatanodeDetails;
 import org.apache.hadoop.hdds.protocol.StorageType;
+import org.apache.hadoop.hdds.protocol.datanode.proto.ContainerProtos;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.ozone.OzoneAcl;
 import org.apache.hadoop.ozone.OzoneFsServerDefaults;
@@ -354,14 +356,6 @@ public class ClientProtocolStub implements ClientProtocol {
   @Override
   public OzoneOutputStream rewriteKey(String volumeName, String bucketName, String keyName,
       long size, long existingKeyGeneration, ReplicationConfig replicationConfig,
-      Map<String, String> metadata) throws IOException {
-    return rewriteKey(volumeName, bucketName, keyName, size, existingKeyGeneration,
-        replicationConfig, metadata, null);
-  }
-
-  @Override
-  public OzoneOutputStream rewriteKey(String volumeName, String bucketName, String keyName,
-      long size, long existingKeyGeneration, ReplicationConfig replicationConfig,
       Map<String, String> metadata, ObjectAttributes objectAttributes)
       throws IOException {
     return getBucket(volumeName, bucketName).rewriteKey(keyName, size, existingKeyGeneration,
@@ -375,6 +369,18 @@ public class ClientProtocolStub implements ClientProtocol {
       throws IOException {
     return getBucket(volumeName, bucketName).rewriteKey(keyName, size, existingKeyGeneration,
         replicationConfig, metadata, tags, objectAttributes);
+  }
+
+  @Override
+  @SuppressWarnings("checkstyle:ParameterNumber")
+  public OzoneOutputStream rewriteKey(String volumeName, String bucketName, String keyName,
+      long size, long existingKeyGeneration, ReplicationConfig replicationConfig,
+      Map<String, String> metadata, Map<String, String> tags,
+      ObjectAttributes objectAttributes, FileChecksum expectedKeyChecksum,
+      ContainerProtos.ChecksumType sourceChecksumType) throws IOException {
+    return getBucket(volumeName, bucketName).rewriteKey(keyName, size, existingKeyGeneration,
+        replicationConfig, metadata, tags, objectAttributes, expectedKeyChecksum,
+        sourceChecksumType);
   }
 
   public OzoneInputStream getKey(String volumeName, String bucketName,
