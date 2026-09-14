@@ -89,6 +89,6 @@ public class TestReplicatedBlockChecksumComputer {
     List<ContainerProtos.ChunkInfo> chunkInfoList =
         Collections.singletonList(chunkInfo);
 
-    return new ReplicatedBlockChecksumComputer(chunkInfoList);
+    return new ReplicatedBlockChecksumComputer(chunkInfoList, len);
   }
 }

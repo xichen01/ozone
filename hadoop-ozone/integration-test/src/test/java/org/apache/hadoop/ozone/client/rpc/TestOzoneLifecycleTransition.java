@@ -19,11 +19,17 @@ package org.apache.hadoop.ozone.client.rpc;
 
 import static org.apache.hadoop.hdds.client.ReplicationFactor.THREE;
 import static org.apache.hadoop.hdds.client.ReplicationType.RATIS;
+import static org.apache.hadoop.hdds.scm.ScmConfigKeys.OZONE_SCM_BLOCK_CLIENT_PORT_KEY;
+import static org.apache.hadoop.hdds.scm.ScmConfigKeys.OZONE_SCM_CLIENT_PORT_KEY;
+import static org.apache.hadoop.hdds.scm.ScmConfigKeys.OZONE_SCM_DATANODE_PORT_KEY;
+import static org.apache.hadoop.hdds.scm.ScmConfigKeys.OZONE_SCM_GRPC_PORT_KEY;
+import static org.apache.hadoop.hdds.scm.ScmConfigKeys.OZONE_SCM_RATIS_PORT_KEY;
 import static org.apache.hadoop.hdds.scm.ScmConfigKeys.OZONE_SCM_CONTAINER_SIZE;
 import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_KEY_LIFECYCLE_SERVICE_ENABLED;
 import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_KEY_LIFECYCLE_SERVICE_INTERVAL;
 import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_KEY_LIFECYCLE_SERVICE_TRANSITION_EC_REPLICATION_CONFIG;
 import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_KEY_LIFECYCLE_SERVICE_TRANSITION_EC_REPLICATION_CONFIG_DEFAULT;
+import static org.apache.ozone.test.GenericTestUtils.PortAllocator.getFreePort;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -47,8 +53,10 @@ import org.apache.hadoop.hdds.client.ECReplicationConfig;
 import org.apache.hadoop.hdds.client.ObjectAttributes;
 import org.apache.hadoop.hdds.client.ReplicationConfig;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
+import org.apache.hadoop.hdds.protocol.datanode.proto.ContainerProtos;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos;
 import org.apache.hadoop.hdds.protocol.jobworker.proto.JobworkerServiceProtocolProtos;
+import org.apache.hadoop.hdds.scm.OzoneClientConfig;
 import org.apache.hadoop.hdds.utils.FaultInjector;
 import org.apache.hadoop.ozone.MiniOzoneCluster;
 import org.apache.hadoop.ozone.MiniOzoneHAClusterImpl;
@@ -58,7 +66,9 @@ import org.apache.hadoop.ozone.client.ObjectStore;
 import org.apache.hadoop.ozone.client.OzoneBucket;
 import org.apache.hadoop.ozone.client.OzoneClient;
 import org.apache.hadoop.ozone.client.OzoneClientFactory;
+import org.apache.hadoop.ozone.client.OzoneKeyDetails;
 import org.apache.hadoop.ozone.client.OzoneVolume;
+import org.apache.hadoop.ozone.client.checksum.BlockLocationChecksumHelper;
 import org.apache.hadoop.ozone.client.io.OzoneOutputStream;
 import org.apache.hadoop.ozone.conf.JobWorkerMigrationKeyConfiguration;
 import org.apache.hadoop.ozone.jobworker.JobworkerConfiguration;
@@ -119,6 +129,11 @@ public class TestOzoneLifecycleTransition {
 
   private static void configureCluster() {
     conf.set(OZONE_SCM_CONTAINER_SIZE, "1GB");
+    conf.setInt(OZONE_SCM_CLIENT_PORT_KEY, getFreePort());
+    conf.setInt(OZONE_SCM_DATANODE_PORT_KEY, getFreePort());
+    conf.setInt(OZONE_SCM_BLOCK_CLIENT_PORT_KEY, getFreePort());
+    conf.setInt(OZONE_SCM_RATIS_PORT_KEY, getFreePort());
+    conf.setInt(OZONE_SCM_GRPC_PORT_KEY, getFreePort());
     conf.setBoolean(OZONE_KEY_LIFECYCLE_SERVICE_ENABLED, true);
     conf.setTimeDuration(OZONE_KEY_LIFECYCLE_SERVICE_INTERVAL, 2, TimeUnit.SECONDS);
     conf.set(OZONE_KEY_LIFECYCLE_SERVICE_TRANSITION_EC_REPLICATION_CONFIG,
@@ -145,13 +160,25 @@ public class TestOzoneLifecycleTransition {
     String keyName = "transition-to-ec";
     createRatisKey(volume, BUCKET_NAME, keyName, KEY_CONTENT,
         Instant.now().minus(2, ChronoUnit.DAYS));
+    String crc32cKeyName = "transition-to-ec-crc32c";
+    OzoneConfiguration crc32cConf = new OzoneConfiguration(conf);
+    OzoneClientConfig crc32cClientConfig = crc32cConf.getObject(OzoneClientConfig.class);
+    crc32cClientConfig.setChecksumType(ContainerProtos.ChecksumType.CRC32C);
+    crc32cConf.setFromObject(crc32cClientConfig);
+    try (OzoneClient crc32cClient = OzoneClientFactory.getRpcClient(crc32cConf)) {
+      createRatisKey(crc32cClient.getObjectStore(), volume.getName(), BUCKET_NAME,
+          crc32cKeyName, KEY_CONTENT, Instant.now().minus(2, ChronoUnit.DAYS));
+    }
     volume.getBucket(BUCKET_NAME).setLifecycleConfiguration(
         createLifecycleConfiguration(BUCKET_NAME, "deep-archive-to-ec"));
 
     GenericTestUtils.waitFor((BooleanSupplier) () -> {
       try {
         OmKeyInfo keyInfo = getKeyInfo(BUCKET_NAME, keyName);
-        return keyInfo != null && keyInfo.getReplicationConfig().equals(expectedEcConfig());
+        OmKeyInfo crc32cKeyInfo = getKeyInfo(BUCKET_NAME, crc32cKeyName);
+        return keyInfo != null && crc32cKeyInfo != null
+            && keyInfo.getReplicationConfig().equals(expectedEcConfig())
+            && crc32cKeyInfo.getReplicationConfig().equals(expectedEcConfig());
       } catch (Exception e) {
         return false;
       }
@@ -160,8 +187,14 @@ public class TestOzoneLifecycleTransition {
     OmKeyInfo migratedKey = getKeyInfo(BUCKET_NAME, keyName);
     assertNotNull(migratedKey);
     assertEquals(expectedEcConfig(), migratedKey.getReplicationConfig());
+    OmKeyInfo migratedCrc32cKey = getKeyInfo(BUCKET_NAME, crc32cKeyName);
+    assertNotNull(migratedCrc32cKey);
+    assertEquals(expectedEcConfig(), migratedCrc32cKey.getReplicationConfig());
     assertKeyContent(BUCKET_NAME, keyName, KEY_CONTENT);
-    assertMigrationTaskCompleted(BUCKET_NAME);
+    assertKeyContent(BUCKET_NAME, crc32cKeyName, KEY_CONTENT);
+    assertMigratedChecksumType(BUCKET_NAME, crc32cKeyName,
+        ContainerProtos.ChecksumType.CRC32C);
+    assertMigrationTaskCompleted(BUCKET_NAME, 2);
   }
 
   @Test
@@ -231,8 +264,6 @@ public class TestOzoneLifecycleTransition {
       createRatisKey(volume, bucketName, keyName, KEY_CONTENT, oldMtime);
       keyNames.add(keyName);
     }
-    volume.getBucket(bucketName).setLifecycleConfiguration(
-        createLifecycleConfiguration(bucketName, "cancel-rule"));
 
     JobworkerCommandDelayInjector injector = new JobworkerCommandDelayInjector();
     for (JobworkerService jobworker : cluster.getJobworkers()) {
@@ -240,6 +271,8 @@ public class TestOzoneLifecycleTransition {
           JobworkerServiceProtocolProtos.OMJobworkerCommandProto.Type.migrateKeyCommand,
           injector);
     }
+    volume.getBucket(bucketName).setLifecycleConfiguration(
+        createLifecycleConfiguration(bucketName, "cancel-rule"));
 
     GenericTestUtils.waitFor(() -> {
       try {
@@ -299,9 +332,14 @@ public class TestOzoneLifecycleTransition {
   private void createRatisKey(OzoneVolume volume, String bucketName, String keyName,
       String content, Instant mtime)
       throws IOException {
+    createRatisKey(store, volume.getName(), bucketName, keyName, content, mtime);
+  }
+
+  private void createRatisKey(ObjectStore keyStore, String volumeName, String bucketName,
+      String keyName, String content, Instant mtime) throws IOException {
     ObjectAttributes attributes = new ObjectAttributes();
     attributes.setMtime(mtime.toEpochMilli());
-    OzoneBucket bucket = volume.getBucket(bucketName);
+    OzoneBucket bucket = keyStore.getVolume(volumeName).getBucket(bucketName);
     byte[] contentBytes = content.getBytes(StandardCharsets.UTF_8);
     try (OzoneOutputStream output = bucket.createKey(keyName, contentBytes.length,
         ReplicationConfig.fromTypeAndFactor(RATIS, THREE), Collections.emptyMap(),
@@ -361,7 +399,23 @@ public class TestOzoneLifecycleTransition {
     }
   }
 
+  private void assertMigratedChecksumType(String bucketName, String keyName,
+      ContainerProtos.ChecksumType expectedChecksumType) throws IOException {
+    OzoneKeyDetails keyDetails = store.getS3Volume().getBucket(bucketName).getKey(keyName);
+    RpcClient rpcClient = (RpcClient) ozoneClient.getProxy();
+    BlockLocationChecksumHelper.KeyChecksumInfo checksumInfo =
+        BlockLocationChecksumHelper.computeFileChecksum(
+            rpcClient.getXceiverClientManager(), keyDetails.getOzoneKeyLocations(),
+            keyDetails.getReplicationConfig());
+    assertEquals(expectedChecksumType, checksumInfo.getChecksumType());
+  }
+
   private void assertMigrationTaskCompleted(String bucketName)
+      throws IOException, InterruptedException, TimeoutException {
+    assertMigrationTaskCompleted(bucketName, 1);
+  }
+
+  private void assertMigrationTaskCompleted(String bucketName, int expectedKeyCount)
       throws IOException, InterruptedException, TimeoutException {
     GenericTestUtils.waitFor(() -> {
       try {
@@ -378,8 +432,8 @@ public class TestOzoneLifecycleTransition {
         .getMigrationTaskManager().listTask(store.getS3Volume().getName(), bucketName);
     assertEquals(1, tasks.size());
     HddsProtos.JobworkerMigrationKeysTaskProto task = tasks.get(0).getTask();
-    assertEquals(1, task.getTotalKeyCount());
-    assertEquals(1, task.getMigratedKeyCount());
+    assertEquals(expectedKeyCount, task.getTotalKeyCount());
+    assertEquals(expectedKeyCount, task.getMigratedKeyCount());
     assertEquals(0, task.getFailedKeyCount());
     assertTrue(task.getCompleteScanning());
     assertEquals(0, cluster.getOMLeader().getMigrationTaskManager().getAllTransactions().size());
