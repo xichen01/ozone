@@ -24,6 +24,7 @@ import static org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.
 import com.google.common.base.Preconditions;
 import jakarta.annotation.Nonnull;
 import java.io.IOException;
+import java.util.List;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTaskProto;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTxProto;
@@ -71,6 +72,8 @@ public class OMMigrationKeyDBUpdateResponse extends OMClientResponse {
     case KEY_MIGRATION_CLEANUP_TASK:
     case KEY_MIGRATION_CREATE_TASK:
     case KEY_MIGRATION_ADD_TRANSACTION:
+    case KEY_MIGRATION_CANCEL_TASK:
+    case KEY_MIGRATION_DELETE_TRANSACTIONS:
       Preconditions.checkArgument(dbUpdateResult.operationData instanceof MigrationOperationData);
       break;
     default:
@@ -108,6 +111,12 @@ public class OMMigrationKeyDBUpdateResponse extends OMClientResponse {
       break;
     case KEY_MIGRATION_ADD_TRANSACTION:
       executeMigrationAddTransaction(omMetadataManager, batchOperation, dbUpdateResult);
+      break;
+    case KEY_MIGRATION_CANCEL_TASK:
+      executeMigrationUpdateTaskStatus(omMetadataManager, batchOperation, dbUpdateResult);
+      break;
+    case KEY_MIGRATION_DELETE_TRANSACTIONS:
+      executeMigrationDeleteTransactions(omMetadataManager, batchOperation, dbUpdateResult);
       break;
     default:
       // This should never happen due to constructor validation, but keep for safety
@@ -180,6 +189,15 @@ public class OMMigrationKeyDBUpdateResponse extends OMClientResponse {
     LOG.debug("Executed migration adds transaction DB operations for the task: {}", migrationData.getTaskKey());
   }
 
+  private void executeMigrationDeleteTransactions(OMMetadataManager omMetadataManager,
+      BatchOperation batchOperation, DBUpdateResult result) throws IOException {
+    MigrationOperationData migrationData = (MigrationOperationData) result.getOperationData();
+    for (String transactionKey : migrationData.getTransactionKeysToDelete()) {
+      omMetadataManager.getJobworkerMigrationKeysTxTable()
+          .deleteWithBatch(batchOperation, transactionKey);
+    }
+  }
+
   /**
    * Generic result class that encapsulates computed results from the request phase.
    * This class is designed to be extensible for different types of DB update operations.
@@ -245,6 +263,14 @@ public class OMMigrationKeyDBUpdateResponse extends OMClientResponse {
       return new DBUpdateResult(MigrationKeyOperationType.KEY_MIGRATION_ADD_TRANSACTION, migrationData);
     }
 
+    public static DBUpdateResult createMigrationDeleteTransactionsResult(String taskKey,
+        List<String> transactionKeys) {
+      Preconditions.checkArgument(!StringUtils.isEmpty(taskKey));
+      Preconditions.checkNotNull(transactionKeys);
+      MigrationOperationData migrationData = new MigrationOperationData(taskKey, transactionKeys);
+      return new DBUpdateResult(MigrationKeyOperationType.KEY_MIGRATION_DELETE_TRANSACTIONS, migrationData);
+    }
+
     public MigrationKeyOperationType getOperationType() {
       return operationType;
     }
@@ -263,25 +289,37 @@ public class OMMigrationKeyDBUpdateResponse extends OMClientResponse {
     private final String transactionKey;
     private final JobworkerMigrationKeysTaskProto task;
     private final JobworkerMigrationKeysTxProto transaction;
+    private final List<String> transactionKeysToDelete;
 
     public MigrationOperationData(String taskKey) {
-      this(taskKey, null, null, null);
+      this(taskKey, null, null, null, null);
     }
 
     public MigrationOperationData(String taskKey, JobworkerMigrationKeysTaskProto task) {
-      this(taskKey, null, task, null);
+      this(taskKey, null, task, null, null);
     }
 
     public MigrationOperationData(String taskKey, String transactionKey, JobworkerMigrationKeysTaskProto task) {
-      this(taskKey, transactionKey, task, null);
+      this(taskKey, transactionKey, task, null, null);
     }
 
     public MigrationOperationData(String taskKey, String transactionKey, JobworkerMigrationKeysTaskProto task,
         JobworkerMigrationKeysTxProto transaction) {
+      this(taskKey, transactionKey, task, transaction, null);
+    }
+
+    public MigrationOperationData(String taskKey, List<String> transactionKeysToDelete) {
+      this(taskKey, null, null, null, transactionKeysToDelete);
+    }
+
+    private MigrationOperationData(String taskKey, String transactionKey,
+        JobworkerMigrationKeysTaskProto task, JobworkerMigrationKeysTxProto transaction,
+        List<String> transactionKeysToDelete) {
       this.taskKey = taskKey;
       this.transactionKey = transactionKey;
       this.task = task;
       this.transaction = transaction;
+      this.transactionKeysToDelete = transactionKeysToDelete;
     }
 
     public String getTaskKey() {
@@ -298,6 +336,10 @@ public class OMMigrationKeyDBUpdateResponse extends OMClientResponse {
 
     public JobworkerMigrationKeysTxProto getTransaction() {
       return transaction;
+    }
+
+    public List<String> getTransactionKeysToDelete() {
+      return transactionKeysToDelete;
     }
   }
 }

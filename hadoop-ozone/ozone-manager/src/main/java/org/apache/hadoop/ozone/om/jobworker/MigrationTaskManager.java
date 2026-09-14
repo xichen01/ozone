@@ -179,6 +179,28 @@ public class MigrationTaskManager {
     dbUpdateManager.keyMigrationCleanupTask(taskKey);
   }
 
+  public void cancelTask(String taskKey) throws IOException {
+    if (taskKey == null || taskKey.trim().isEmpty()) {
+      throw new IllegalArgumentException("Task key cannot be null or empty");
+    }
+    JobworkerMigrationKeysTaskProto currentTask = getTask(taskKey);
+    if (currentTask == null) {
+      throw new IOException("Migration task not found: " + taskKey);
+    }
+    if (isTaskFinal(currentTask)) {
+      throw new IOException("Migration task is already final: " + taskKey);
+    }
+    dbUpdateManager.cancelMigrationTask(taskKey);
+  }
+
+  public void deleteTransactions(String taskKey, List<String> transactionKeys)
+      throws IOException {
+    if (taskKey == null || taskKey.trim().isEmpty()) {
+      throw new IllegalArgumentException("Task key cannot be null or empty");
+    }
+    dbUpdateManager.deleteTransactions(taskKey, transactionKeys);
+  }
+
   /**
    * Lists all transactions across all tasks.
    */
@@ -301,14 +323,20 @@ public class MigrationTaskManager {
           !ecReplicationConfig.toProto().equals(task.getEcReplicationConfig())) {
         continue;
       }
-      JobworkerTaskStatus status = task.getMigrationStatus();
-      if (status != JobworkerTaskStatus.COMPLETED &&
-          status != JobworkerTaskStatus.FAILED &&
-          status != JobworkerTaskStatus.CANCELED) {
+      if (!isTaskFinal(task)) {
         return true;
       }
     }
     return false;
+  }
+
+  public static boolean isTaskFinal(JobworkerMigrationKeysTaskProto task) {
+    JobworkerTaskStatus status = task.getMigrationStatus();
+    return status == JobworkerTaskStatus.COMPLETED ||
+        status == JobworkerTaskStatus.FAILED ||
+        status == JobworkerTaskStatus.FAILING ||
+        status == JobworkerTaskStatus.CANCELED ||
+        status == JobworkerTaskStatus.CANCELING;
   }
 
   private List<TaskEntry> listTask(String taskKeyPrefix) throws IOException {

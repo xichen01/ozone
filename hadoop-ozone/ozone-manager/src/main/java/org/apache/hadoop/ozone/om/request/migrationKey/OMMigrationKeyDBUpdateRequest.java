@@ -22,6 +22,8 @@ import static org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.
 
 import com.google.common.base.Preconditions;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTaskProto;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTxProto;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerTaskStatus;
@@ -40,6 +42,7 @@ import org.apache.hadoop.ozone.om.response.migrationKey.OMMigrationKeyDBUpdateRe
 import org.apache.hadoop.ozone.om.response.migrationKey.OMMigrationKeyDBUpdateResponse.DBUpdateResult;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.MigrationKeyArgs.AddTransaction;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.MigrationKeyArgs.CompleteTransaction;
+import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.MigrationKeyArgs.DeleteTransactions;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.MigrationKeyDBUpdateRequest;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.MigrationKeyDBUpdateResponse;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.MigrationKeyArgs;
@@ -107,6 +110,14 @@ public class OMMigrationKeyDBUpdateRequest extends OMClientRequest {
       break;
     case KEY_MIGRATION_MARK_SCANNING_COMPLETED:
     case KEY_MIGRATION_CLEANUP_TASK:
+      break;
+    case KEY_MIGRATION_CANCEL_TASK:
+      break;
+    case KEY_MIGRATION_DELETE_TRANSACTIONS:
+      if (!migrationKeyArgs.hasDeleteTransactions()) {
+        throw new OMException("delete transactions args missing for the key: " + taskKey,
+            OMException.ResultCodes.INVALID_REQUEST);
+      }
       break;
     default:
       throw new OMException("Unsupported operation type: " +
@@ -180,6 +191,10 @@ public class OMMigrationKeyDBUpdateRequest extends OMClientRequest {
       return processCreateTask(omMetadataManager, migrationArgs, transactionLogIndex);
     case KEY_MIGRATION_ADD_TRANSACTION:
       return processAddTransaction(omMetadataManager, migrationArgs, transactionLogIndex);
+    case KEY_MIGRATION_CANCEL_TASK:
+      return processCancelTask(omMetadataManager, migrationArgs, transactionLogIndex);
+    case KEY_MIGRATION_DELETE_TRANSACTIONS:
+      return processDeleteTransactions(omMetadataManager, migrationArgs, transactionLogIndex);
     default:
       throw new OMException("Unsupported operation type: " + request.getType(),
           OMException.ResultCodes.INVALID_REQUEST);
@@ -368,5 +383,45 @@ public class OMMigrationKeyDBUpdateRequest extends OMClientRequest {
     LOG.debug("create a new migration transaction {} for task {}", transactionKey, taskKey);
     return DBUpdateResult.createMigrationAddTransactionResult(
         taskKey, transactionKey, updatedTask, newTxProto);
+  }
+
+  private DBUpdateResult processCancelTask(OMMetadataManager omMetadataManager,
+      MigrationKeyArgs migrationKeyArgs, long transactionLogIndex) throws Exception {
+    String taskKey = migrationKeyArgs.getTaskKey();
+    Table<String, JobworkerMigrationKeysTaskProto> taskTable =
+        omMetadataManager.getJobworkerMigrationKeysTaskTable();
+    JobworkerMigrationKeysTaskProto currentTask = taskTable.get(taskKey);
+    if (currentTask == null) {
+      throw new OMException("Migration task not found for key: " + taskKey,
+          OMException.ResultCodes.INVALID_REQUEST);
+    }
+    if (MigrationTaskManager.isTaskFinal(currentTask)) {
+      throw new OMException("Migration task is already final: " + taskKey,
+          OMException.ResultCodes.INVALID_REQUEST);
+    }
+    JobworkerMigrationKeysTaskProto updatedTask = currentTask.toBuilder()
+        .setMigrationStatus(JobworkerTaskStatus.CANCELING)
+        .setLastUpdateTime(migrationKeyArgs.getOperationTime())
+        .build();
+    taskTable.addCacheEntry(new CacheKey<>(taskKey),
+        CacheValue.get(transactionLogIndex, updatedTask));
+    return DBUpdateResult.createMigrationUpdateTaskStatusResult(taskKey, updatedTask);
+  }
+
+  private DBUpdateResult processDeleteTransactions(OMMetadataManager omMetadataManager,
+      MigrationKeyArgs migrationKeyArgs, long transactionLogIndex) throws Exception {
+    String taskKey = migrationKeyArgs.getTaskKey();
+    DeleteTransactions deleteTransactions = migrationKeyArgs.getDeleteTransactions();
+    Table<String, JobworkerMigrationKeysTxProto> txTable =
+        omMetadataManager.getJobworkerMigrationKeysTxTable();
+    List<String> deletedKeys = new ArrayList<>();
+    for (String transactionKey : deleteTransactions.getTransactionKeysList()) {
+      if (txTable.isExist(transactionKey)) {
+        txTable.addCacheEntry(new CacheKey<>(transactionKey),
+            CacheValue.get(transactionLogIndex));
+        deletedKeys.add(transactionKey);
+      }
+    }
+    return DBUpdateResult.createMigrationDeleteTransactionsResult(taskKey, deletedKeys);
   }
 }

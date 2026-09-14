@@ -99,6 +99,12 @@ public class MigrateKeyCommandListener implements JobworkerCommandListener {
         LOG.warn("Migration task {} not found in task table", taskKey);
         return;
       }
+      if (!taskManager.isTransactionExists(
+          MigrationTaskManager.getTransactionKey(taskKey, txId))) {
+        LOG.debug("Migration transaction {} was already removed, ignoring late success",
+            MigrationTaskManager.getTransactionKey(taskKey, txId));
+        return;
+      }
       if (!isValidMigrationResults(executionResultsProto, command, jobworkerDetails)) {
         taskManager.completeTransaction(taskKey, txId, keyCount);
         return;
@@ -140,6 +146,12 @@ public class MigrateKeyCommandListener implements JobworkerCommandListener {
       long txId = command.getTxId();
       if (!taskManager.isTaskExists(taskKey)) {
         LOG.warn("Migration task {} not found in task table", taskKey);
+        return;
+      }
+      if (!taskManager.isTransactionExists(
+          MigrationTaskManager.getTransactionKey(taskKey, txId))) {
+        LOG.debug("Migration transaction {} was already removed, ignoring late failure",
+            MigrationTaskManager.getTransactionKey(taskKey, txId));
         return;
       }
 

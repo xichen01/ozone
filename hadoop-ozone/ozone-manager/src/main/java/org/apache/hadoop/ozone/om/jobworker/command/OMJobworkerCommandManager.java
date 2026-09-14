@@ -20,6 +20,7 @@ package org.apache.hadoop.ozone.om.jobworker.command;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -310,6 +311,27 @@ public class OMJobworkerCommandManager {
     commandInfoMaps.forEach((type, commandInfoMap) -> {
       commandInfoMap.clear();
     });
+  }
+
+  public void cleanupCommandsById(OMJobworkerCommandProto.Type commandType,
+      List<Long> commandIds) {
+    if (commandIds == null || commandIds.isEmpty()) {
+      return;
+    }
+    Map<Long, JobworkerCommandInfo> commandInfoMap = commandInfoMaps.get(commandType);
+    if (commandInfoMap == null) {
+      return;
+    }
+    List<Long> removed = new ArrayList<>();
+    for (Long commandId : commandIds) {
+      JobworkerCommandInfo commandInfo = commandInfoMap.remove(commandId);
+      if (commandInfo != null) {
+        removed.add(commandInfo.getCommandId());
+      }
+    }
+    if (!removed.isEmpty()) {
+      LOG.debug("Cleaned up {} in-flight {} commands", removed.size(), commandType);
+    }
   }
 
   /**

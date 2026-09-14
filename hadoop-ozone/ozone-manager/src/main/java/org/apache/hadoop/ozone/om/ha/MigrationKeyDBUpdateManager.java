@@ -18,6 +18,7 @@
 package org.apache.hadoop.ozone.om.ha;
 
 import java.io.IOException;
+import java.util.List;
 import com.google.protobuf.ServiceException;
 import org.apache.hadoop.hdds.client.ECReplicationConfig;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.JobworkerMigrationKeysTxProto;
@@ -213,6 +214,33 @@ public class MigrationKeyDBUpdateManager {
 
     executeOperation(request);
     LOG.debug("Successfully added a migration transaction for the task: {}", taskKey);
+  }
+
+  public void cancelMigrationTask(String taskKey) throws IOException {
+    MigrationKeyArgs migrationKeyArgs = MigrationKeyArgs.newBuilder()
+        .setTaskKey(taskKey)
+        .setCancelTask(MigrationKeyArgs.CancelTask.newBuilder().build())
+        .build();
+    MigrationKeyDBUpdateRequest request = MigrationKeyDBUpdateRequest.newBuilder()
+        .setType(MigrationKeyOperationType.KEY_MIGRATION_CANCEL_TASK)
+        .setMigrationKeyArgs(migrationKeyArgs)
+        .build();
+    executeOperation(request);
+  }
+
+  public void deleteTransactions(String taskKey, List<String> transactionKeys)
+      throws IOException {
+    MigrationKeyArgs migrationKeyArgs = MigrationKeyArgs.newBuilder()
+        .setTaskKey(taskKey)
+        .setDeleteTransactions(MigrationKeyArgs.DeleteTransactions.newBuilder()
+            .addAllTransactionKeys(transactionKeys)
+            .build())
+        .build();
+    MigrationKeyDBUpdateRequest request = MigrationKeyDBUpdateRequest.newBuilder()
+        .setType(MigrationKeyOperationType.KEY_MIGRATION_DELETE_TRANSACTIONS)
+        .setMigrationKeyArgs(migrationKeyArgs)
+        .build();
+    executeOperation(request);
   }
 
   /**
